@@ -44,7 +44,7 @@ struct multiboot {
    uint32_t vbe_interface_seg;
    uint32_t vbe_interface_off;
    uint32_t vbe_interface_len;
-}  __packed;
+} __attribute__((packed));
 
 typedef struct multiboot_module {
     uint32_t mod_start;   /* 模块在内存中的起始物理地址 */
@@ -52,7 +52,25 @@ typedef struct multiboot_module {
     uint32_t string;      /* 指向模块名字符串（通常是物理地址或已被 GRUB 转换）*/
     uint32_t reserved;
 } multiboot_module_t;
-struct multiboot *multiboot_info;
-multiboot_module_t *mod;
+
+// 内存映射条目
+typedef struct multiboot_mmap_entry {
+    uint32_t size;        // 本条目大小(不包括size字段本身)
+    uint32_t base_addr_low;   // 基地址低32位
+    uint32_t base_addr_high;  // 基地址高32位
+    uint32_t length_low;      // 长度低32位
+    uint32_t length_high;     // 长度高32位
+    uint32_t type;        // 类型: 1=RAM, 2=保留, 3=ACPI等
+} __attribute__((packed)) multiboot_mmap_entry_t;
+
+// 内存类型定义
+#define MULTIBOOT_MEMORY_AVAILABLE         1
+#define MULTIBOOT_MEMORY_RESERVED          2
+#define MULTIBOOT_MEMORY_ACPI_RECLAIMABLE 3
+#define MULTIBOOT_MEMORY_NVS               4
+#define MULTIBOOT_MEMORY_UNUSABLE          5
+
+extern struct multiboot *multiboot_info;
+extern multiboot_module_t *mod;
 
 #endif /* ndef MULTIBOOT_H */

@@ -4,6 +4,9 @@
 //#include "page.h"
 #include "mm.h"
 #include "highmem_mapping.h"
+#include "multiboot.h"
+#include "mm/buddy.h"
+#include "printf.h"
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
 #define pde_t uint32_t
@@ -167,4 +170,65 @@ int km_init(void)
      }
   }
   return 0;
+}
+
+// ============ 内存管理初始化和辅助函数 ============
+
+struct multiboot *multiboot_info;
+extern void* _kernel_end_virtual;
+
+// 内存管理初始化函数
+int mm_init(void) {
+    printf("mm_init: starting memory management initialization\n");
+
+    if (!multiboot_info) {
+        printf("mm_init: no multiboot info\n");
+        return -1;
+    }
+
+    // 计算物理内存大小
+    uint32_t mem_upper_kb = multiboot_info->mem_upper;
+    uint32_t mem_upper_bytes = mem_upper_kb * 1024;
+    uint32_t total_memory_mb = mem_upper_kb / 1024;
+
+    printf("mm_init: detected %u MB physical memory (mem_upper=%u KB)\n",
+           total_memory_mb, mem_upper_kb);
+
+    // 初始化物理内存管理器 (PMM)
+    printf("mm_init: initializing physical memory manager...\n");
+    pmm_init();
+
+    printf("mm_init: basic memory detection complete (buddy system disabled)\n");
+    printf("mm_init: memory management initialization complete\n");
+    return 0;
+}
+
+// 打印内存检测结果
+void print_memory_detection_result(void) {
+    if (!multiboot_info) {
+        printf("=== Memory Detection ===\nNo multiboot info\n");
+        return;
+    }
+
+    uint32_t mem_mb = multiboot_info->mem_upper / 1024;
+    printf("=== Memory Detection Result ===\n");
+    printf("Physical Memory: %u MB\n", mem_mb);
+    printf("================================\n");
+}
+
+// 设置内核页目录(占位符)
+pde_t *setupkvm(void) {
+    // 简单返回0,表示暂未实现
+    printf("setupkvm: not implemented\n");
+    return 0;
+}
+
+// 初始化用户虚拟内存(占位符)
+int inituvm(pde_t *pgdir, char *init, uint32_t sz) {
+    return 0;
+}
+
+// 释放虚拟内存(占位符)
+void freevm(pde_t *pgdir) {
+    // 什么都不做
 }

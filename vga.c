@@ -2,7 +2,39 @@
 #include "vga.h"
 #include "string.h"
 #include "x86/io.h"
-static uint16_t* const VGA_BUFFER = (uint16_t*)0xB8000; // 映射到高端的VGA内存
+
+// 串口端口定义
+#define SERIAL_COM1 0x3F8
+
+// 串口初始化
+static void serial_init() {
+    outb(SERIAL_COM1 + 1, 0x00);    // 禁用中断
+    outb(SERIAL_COM1 + 3, 0x80);    // 启用DLAB (设置波特率除数)
+    outb(SERIAL_COM1 + 0, 0x03);    // 设置除数为3 (38400波特率)
+    outb(SERIAL_COM1 + 1, 0x00);    //
+    outb(SERIAL_COM1 + 3, 0x03);    // 8位,无 parity, 1停止位
+    outb(SERIAL_COM1 + 2, 0xC7);    // 启用FIFO, 清空, 14字节阈值
+    outb(SERIAL_COM1 + 4, 0x0B);    // 启用IRQ, 设置RTS/DSR
+}
+
+// 串口输出字符
+static void serial_putchar(char c) {
+    while ((inb(SERIAL_COM1 + 5) & 0x20) == 0); // 等待发送缓冲区空
+    outb(SERIAL_COM1, c);
+}
+
+// 串口输出字符串
+static void serial_puts(const char *str) {
+    while (*str) {
+        if (*str == '\n') {
+            serial_putchar('\r');
+        }
+        serial_putchar(*str);
+        str++;
+    }
+}
+
+static uint16_t* const VGA_BUFFER = (uint16_t*)0xC00B8000; // 映射到高端的VGA内存
 static uint8_t vga_color = 0x0F; // 白字黑底
 static uint32_t vga_row = 0;
 static uint32_t vga_col = 0;
@@ -49,6 +81,10 @@ static void update_cursor() {
 }
 
 void vga_init(void) {
+    // 初始化串口
+    serial_init();
+    serial_puts("=== Serial initialized ===\r\n");
+
     for (uint32_t y = 0; y < VGA_HEIGHT; y++) {
         for (uint32_t x = 0; x < VGA_WIDTH; x++) {
             VGA_BUFFER[y * VGA_WIDTH + x] = (vga_color << 8) | ' ';
@@ -66,6 +102,13 @@ void vga_setcolor(uint8_t fg, uint8_t bg) {
 }
 
 void vga_putc(char c) {
+    // 输出到串口
+    serial_putchar(c);
+    if (c == '\n') {
+        serial_putchar('\r');  // 串口需要\r\n
+    }
+
+    // 输出到VGA
     if (c == '\n') {
         vga_col = 0;
         ++vga_row;
@@ -73,7 +116,7 @@ void vga_putc(char c) {
             vga_row = VGA_HEIGHT - 1;
         }
         return;*/
-    }else{   
+    }else{
        VGA_BUFFER[vga_row * VGA_WIDTH + vga_col] = (vga_color << 8) | c;
        ++vga_col;
     }
@@ -86,7 +129,7 @@ void vga_putc(char c) {
         }
     }*/
 
-    
+
     if (vga_col >= 80) {
         vga_col -= 80;
         ++vga_row;

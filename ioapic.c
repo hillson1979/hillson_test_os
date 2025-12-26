@@ -81,8 +81,7 @@ uint32_t get_ioapic_id(void) {
 // 读取版本寄存器
 uint8_t get_ioapic_version(void) {
     uint32_t ver_reg = ioapicread(0x01);
-    uint8_t *version = ver_reg & 0xFF;
-    return *version;
+    return ver_reg & 0xFF;
 }
 
 // 在尝试读取之前，先检查基本可访问性
@@ -131,9 +130,10 @@ ioapicinit(void)
   //check_ioapic_accessible();
   //maxintr = (ioapicread(REG_VER) >> 16) & 0xFF;get_ioapic_version
 
-  uint8_t version =get_ioapic_version();
+  uint32_t ver_reg = ioapicread(REG_VER);
+  uint8_t version = ver_reg & 0xFF;
   printf("I/O APIC Version: %u\n", version);
-  maxintr = (version >> 16) & 0xFF;
+  maxintr = (ver_reg >> 16) & 0xFF;
 
   id = ioapicread(REG_ID) >> 24;
   //id=get_ioapic_id();

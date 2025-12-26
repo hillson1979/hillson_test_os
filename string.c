@@ -140,4 +140,15 @@ char *strchr(const char *s, int c) {
   return NULL;
 }
 
+// 安全的字符串复制函数，避免缓冲区溢出
+char *safestrcpy(char *dest, const char *src, int n) {
+  char *p = dest;
+  while (*src && n > 1) {
+    *p++ = *src++;
+    n--;
+  }
+  *p = '\0';
+  return dest;
+}
+
 #endif /* !defined(HOSTED) */

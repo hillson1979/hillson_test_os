@@ -17,6 +17,7 @@ INCLUDES = -I./include
 
 # 源文件
 C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c
+# C_SOURCES += mm/buddy.c mm/slab.c mm/kmalloc.c mm/test_memory.c  # 暂时禁用，需要修复依赖
 ASM_SOURCES = boot.s vectors.s task_impl.s interrupt_exit.s trap_entry.s #copy_user_32.s
 
 # 目标文件

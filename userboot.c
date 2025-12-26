@@ -21,20 +21,41 @@ extern void interrupt_exit(void);
 #define USER_STACK_SIZE PAGE_SIZE
 
 int load_module_to_user(uint32_t *pd_user) {
-    if (!(multiboot_info->flags & (1 << 3)))
-        return -1;
+    printf("[load_module_to_user] Starting...\n");
+    printf("[load_module_to_user] multiboot_info flags=0x%x\n", multiboot_info->flags);
 
+    if (!(multiboot_info->flags & (1 << 3))) {
+        printf("[load_module_to_user] No modules flag in multiboot!\n");
+        return -1;
+    }
+
+    printf("[load_module_to_user] mods_addr=0x%x\n", multiboot_info->mods_addr);
     multiboot_module_t *mods = (multiboot_module_t *)phys_to_virt(multiboot_info->mods_addr);
     uint32_t mod_start = mods[0].mod_start;
     uint32_t mod_end   = mods[0].mod_end;
 
+    printf("[load_module_to_user] Module: start=0x%x end=0x%x size=0x%x\n",
+           mod_start, mod_end, mod_end - mod_start);
+
+    // 先直接读取物理内存，看看原始数据
+    uint8_t *raw_phys = (uint8_t *)mod_start;
+    printf("[load_module_to_user] Raw physical bytes at 0x%x: %02x %02x %02x %02x\n",
+           mod_start, raw_phys[0], raw_phys[1], raw_phys[2], raw_phys[3]);
+
     Elf32_Ehdr *eh = (Elf32_Ehdr *)phys_to_virt(mod_start);
+
+    printf("[load_module_to_user] ELF header at virtual 0x%x\n", eh);
+    printf("[load_module_to_user] First 4 bytes: 0x%x 0x%x 0x%x 0x%x\n",
+           eh->e_ident[0], eh->e_ident[1], eh->e_ident[2], eh->e_ident[3]);
 
     // 检查 ELF 魔数
     if (eh->e_ident[0] != 0x7F || eh->e_ident[1] != 'E' || eh->e_ident[2] != 'L' || eh->e_ident[3] != 'F') {
         printf("[load_module_to_user] Not a valid ELF file!\n");
+        printf("[load_module_to_user] Expected: 0x7F 'E' 'L' 'F'\n");
         return -2;
     }
+
+    printf("[load_module_to_user] ELF file validated!\n");
 
     // 遍历 Program Header
     Elf32_Phdr *ph = (Elf32_Phdr *)phys_to_virt(mod_start + eh->e_phoff);
@@ -81,6 +102,7 @@ int load_module_to_user(uint32_t *pd_user) {
     tf->esp = VIRT_USER_STACK_TOP;
 
     printf("[load_module_to_user] [map_page] entry=0x%x, stack=0x%x\n",tf->eip, tf->esp);
+
     return 0;
 }
 

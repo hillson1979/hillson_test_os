@@ -42,3 +42,22 @@ alltraps:
 
     # --- 7. 返回到被中断现场 ---
     iret
+
+    # --- trapret 函数：从内核空间返回到用户空间 ---
+    .globl trapret
+    .type trapret, @function
+trapret:
+    # --- 1. 恢复段寄存器 ---
+    popl %ds
+    popl %es
+    popl %fs
+    popl %gs
+
+    # --- 2. 恢复通用寄存器 ---
+    popa
+
+    # --- 3. 丢弃 trapno 和 errcode ---
+    addl $8, %esp
+
+    # --- 4. 返回到用户空间 ---
+    iret

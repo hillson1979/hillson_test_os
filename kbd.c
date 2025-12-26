@@ -6,11 +6,11 @@
 int
 kbdgetc(void)
 {
-  static uint shift;
+  static uint32_t shift;
   static uchar *charcode[4] = {
     normalmap, shiftmap, ctlmap, ctlmap
   };
-  uint st, data, c;
+  uint32_t st, data, c;
 
   st = inb(KBSTATP);
   if((st & KBS_DIB) == 0)

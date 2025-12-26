@@ -1,6 +1,9 @@
 // This file contains definitions for the
 // x86 memory management unit (MMU).
 
+#ifndef X86_MMU_H
+#define X86_MMU_H
+
 // Eflags register
 #define FL_IF           0x00000200      // Interrupt Enable
 
@@ -167,7 +170,7 @@ struct gatedesc {
 //        this interrupt/trap gate explicitly using an int instruction.
 #define SETGATE(gate, istrap, sel, off, d)                \
 {                                                         \
-  (gate).off_15_0 = (uint32_t)(off) & 0xffff;                \
+  (gate).off_15_0 = (uint32_t)(off) & 0xffff;             \
   (gate).cs = (sel);                                      \
   (gate).args = 0;                                        \
   (gate).rsv1 = 0;                                        \
@@ -175,7 +178,9 @@ struct gatedesc {
   (gate).s = 0;                                           \
   (gate).dpl = (d);                                       \
   (gate).p = 1;                                           \
-  (gate).off_31_16 = (uint32_t)(off) >> 16;                  \
+  (gate).off_31_16 = (uint32_t)(off) >> 16;               \
 }
+
+#endif
 
 #endif

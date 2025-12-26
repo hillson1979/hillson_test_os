@@ -8,7 +8,8 @@
 #include "lapic.h"
 #include "segment.h"
 #include "printf.h"
-struct tss_t *tss;                  // 任务状态段
+#include "string.h"
+extern struct tss_t tss;                  // 任务状态段
 #define KERNEL_VA_OFFSET 0xC0000000   // 内核虚拟地址偏移
 
 // 地址转换宏（内核直接映射）
@@ -43,20 +44,23 @@ void descriptor_init(struct descriptor_t *desc, uint32_t base, uint32_t limit)
 
 void tss_init()
 {
+    printf("tss_init: starting\n");
+    printf("tss address: 0x%x, sizeof(tss): %u\n", &tss, sizeof(tss));
     //struct cpu *c = &cpus[logical_cpu_id()];
-    tss=(struct tss_t *)kmalloc_early(sizeof (struct tss_t));//phys_to_virt(pmm_alloc_page());
+    printf("tss_init: before memset, will write %u bytes\n", sizeof(tss));
     memset(&tss, 0, sizeof(tss));
+    printf("tss_init: after memset\n");
 
     // 设置内核栈
     uint32_t esp0;
     asm volatile("mov %%esp, %0" : "=r"(esp0));
-    tss->esp0 = esp0;
-    tss->ss0 = SEG_KDATA << 3;
-    tss->iobase = sizeof(tss);
+    tss.esp0 = esp0;
+    tss.ss0 = SEG_KDATA << 3;
+    tss.iobase = sizeof(tss);
 
     struct cpu *c = &cpus[logical_cpu_id()];
 
-    c->gdt[SEG_TSS] = SEG16(0x89, &c->ts,sizeof(c->ts)-1, 0);
+    c->gdt[SEG_TSS] = SEG16(0x89, &tss, sizeof(tss)-1, 0);
     c->gdt[SEG_TSS].s = 0;
 
     // 使用descriptor_init初始化TSS描述符
@@ -71,7 +75,7 @@ void tss_init()
     desc->DPL = 0;
     //desc->type = 0x9;      // 32位可用TSS
     */
-    printf("TSS init: addr=0x%x, ESP0=0x%x\n", &tss, tss->esp0);
+    printf("TSS init: addr=0x%x, ESP0=0x%x\n", &tss, tss.esp0);
     printf("TSS init:selector=0x%x \n", SEG_TSS << 3);
     //ltr(SEG_TSS << 3);
     //uint16_t tss_selector = SEG_TSS << 3;
