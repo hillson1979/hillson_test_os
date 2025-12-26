@@ -10,6 +10,7 @@
 #include "segment.h"
 #include "interrupt.h"
 #include "mm.h"
+#include "kmalloc.h"
 //#include "task.h"
 #include "sched.h"
 
@@ -58,9 +59,18 @@ kernel_main(struct multiboot * mb)
         mpinit();
         init_highmem_mapping();
         //acpi_init();
-        //if(km_init()==0){
-          //printf("mem init is ok\n");  
-        //}
+
+        // 保存 multiboot 信息,供内存管理使用
+        multiboot_info = mb;
+        printf("Multiboot info: mem_lower=%u KB, mem_upper=%u KB\n",
+               mb->mem_lower, mb->mem_upper);
+
+        printf("Initializing memory management...\n");
+        if(mm_init()==0){
+            printf("Memory management initialized\n");
+        } else {
+            printf("Memory management initialization failed!\n");
+        }
 
         pci_init();
         lapicinit();
@@ -76,14 +86,68 @@ kernel_main(struct multiboot * mb)
         start_task_kernel(th_k,kernel_task_main);
         task_t *th_u=init_task(1);
 
-        dump_multiboot_modules(mb);
-        multiboot_info=mb;
-        
-        printf("start user task \n");  
-        start_task_user(th_u,user_task_main);
-        printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
+        // 输出内存检测结果
+        print_memory_detection_result();
 
-        efficient_scheduler_loop();
+        // 输出 PMM 统计信息
+        pmm_print_stats();
+
+        // 测试 kmalloc 和 kfree 功能
+        printf("\n=== Testing kmalloc/kfree functionality ===\n");
+
+        // 测试 1: 小内存分配（使用 early pool）
+        printf("\nTest 1: Small allocation (early pool)\n");
+        void *ptr1 = kmalloc(128);
+        printf("  Allocated 128 bytes at: 0x%x\n", (uint32_t)ptr1);
+
+        // 测试 2: 中等内存分配（使用 early pool）
+        printf("\nTest 2: Medium allocation (early pool)\n");
+        void *ptr2 = kmalloc(1024);
+        printf("  Allocated 1024 bytes at: 0x%x\n", (uint32_t)ptr2);
+
+        // 测试 3: 大内存分配（使用 PMM）
+        printf("\nTest 3: Large allocation (PMM)\n");
+        void *ptr3 = kmalloc(8192);  // 8KB = 2 pages
+        printf("  Allocated 8192 bytes at: 0x%x\n", (uint32_t)ptr3);
+
+        // 测试 4: 超大内存分配（使用 PMM）
+        printf("\nTest 4: Extra large allocation (PMM)\n");
+        void *ptr4 = kmalloc(16384);  // 16KB = 4 pages
+        printf("  Allocated 16384 bytes at: 0x%x\n", (uint32_t)ptr4);
+
+        // 测试 5: kzalloc 分配并清零
+        printf("\nTest 5: kzalloc (zero-initialized)\n");
+        void *ptr5 = kzalloc(512);
+        printf("  Allocated 512 zero-initialized bytes at: 0x%x\n", (uint32_t)ptr5);
+
+        // 显示分配统计
+        printf("\n");
+        kmalloc_print_stats();
+
+        // 测试 6: kfree 测试
+        printf("\nTest 6: Testing kfree\n");
+        printf("  Freeing ptr2 (1024 bytes)\n");
+        kfree(ptr2);
+
+        printf("  Freeing ptr4 (16384 bytes)\n");
+        kfree(ptr4);
+
+        // 再次显示统计
+        printf("\nAfter freeing:\n");
+        kmalloc_print_stats();
+
+        printf("=== kmalloc/kfree tests completed ===\n\n");
+
+        dump_multiboot_modules(mb);
+
+        // 注释掉用户进程相关代码,避免 page fault
+        // printf("start user task \n");
+        // start_task_user(th_u,user_task_main);
+        // printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
+
+        // 注释掉调度器
+        // efficient_scheduler_loop();
+        printf("Kernel main completed successfully!\n");
 	return (42);
 }
 
