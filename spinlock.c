@@ -1,12 +1,14 @@
 // Mutual exclusion spin locks.
 
 #include "types.h"
-#include "defs.h"
 #include "param.h"
-#include "x86.h"
+#include "x86/io.h"
+#include "x86/mmu.h"
 #include "memlayout.h"
-#include "mmu.h"
 #include "proc.h"
+#include "lapic.h"
+#include "kernel.h"
+#include "kmalloc.h"
 #include "spinlock.h"
 
 void
@@ -38,7 +40,7 @@ acquire(struct spinlock *lk)
   __sync_synchronize();
 
   // Record info about lock acquisition for debugging.
-  lk->cpu = cpus[logical_cpu_id()];//mycpu();
+  lk->cpu = &cpus[logical_cpu_id()];//mycpu();
   getcallerpcs(&lk, lk->pcs);
 }
 
@@ -69,17 +71,17 @@ release(struct spinlock *lk)
 
 // Record the current call stack in pcs[] by following the %ebp chain.
 void
-getcallerpcs(void *v, uint pcs[])
+getcallerpcs(void *v, uint32_t pcs[])
 {
-  uint *ebp;
+  uint32_t *ebp;
   int i;
 
-  ebp = (uint*)v - 2;
+  ebp = (uint32_t*)v - 2;
   for(i = 0; i < 10; i++){
-    if(ebp == 0 || ebp < (uint*)KERNBASE || ebp == (uint*)0xffffffff)
+    if(ebp == 0 || ebp < (uint32_t*)KERNBASE || ebp == (uint32_t*)0xffffffff)
       break;
     pcs[i] = ebp[1];     // saved %eip
-    ebp = (uint*)ebp[0]; // saved %ebp
+    ebp = (uint32_t*)ebp[0]; // saved %ebp
   }
   for(; i < 10; i++)
     pcs[i] = 0;
@@ -94,6 +96,30 @@ holding(struct spinlock *lock)
   r = lock->locked && lock->cpu == mycpu();
   popcli();
   return r;
+}
+
+// Wrapper functions for hal.h interface
+void spinlock_init(spinlock_t *lock)
+{
+  initlock(lock, "");
+}
+
+spinlock_t *spinlock_new()
+{
+  spinlock_t *lock = kmalloc(sizeof(spinlock_t));
+  if (lock)
+    initlock(lock, "");
+  return lock;
+}
+
+void spinlock_acquire(spinlock_t *lock)
+{
+  acquire(lock);
+}
+
+void spinlock_release(spinlock_t *lock)
+{
+  release(lock);
 }
 
 

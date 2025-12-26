@@ -7,9 +7,6 @@
 
 #define IRQ(n) (n+32)
 
-#define CR0_PG  (1U<<31)  /* Paging enable */
-#define CR0_WP  (1U<<16)  /* Write-protect - allow page faults in kernel mode */
-
 static inline void outb(uint16_t port, uint8_t value) {
   __asm__ volatile ("outb %1, %0" : : "dN" (port), "a" (value));
 }

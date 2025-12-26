@@ -9,10 +9,7 @@
 #define X86_EXECUTE 0x200
 #define X86_COW     0x400
 typedef unsigned int   uint32_t;
-typedef struct spinlock {
-  volatile unsigned val;
-  volatile unsigned interrupts;
-} spinlock_t;
+#include "spinlock.h"
 
 typedef struct address_space {
   uint32_t *directory;

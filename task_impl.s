@@ -21,7 +21,7 @@
 
 # TSS 结构定义
 .set TSS_ESP0_OFFSET, 4
-.set TSS_SIZE, 104       # TSS结构大小
+.set TSS_SIZE, 108       # TSS结构大小 (108字节)
 
 # 外部符号声明
 .extern do_irq_handler    # C语言实现的中断处理函数
