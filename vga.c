@@ -140,8 +140,15 @@ void vga_putc(char c) {
 }
 
 void vga_puts(const char* s) {
+    // 检查指针是否在合理范围内
+    // 用户空间: 0x0 - 0xBFFFFFFF
+    // 内核空间: 0xC0000000 - 0xFFFFFFFF
+    if ((uint32_t)s >= 0xC0000000 || (uint32_t)s < 0x1000) {
+        // 指针无效，不显示任何东西，直接返回
+        return;
+    }
+
     while (*s) {
-       
        vga_putc(*s++);
        if (*s =='\0')return;
      }

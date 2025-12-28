@@ -30,7 +30,22 @@ int load_module_to_user(uint32_t *pd_user) {
     }
 
     printf("[load_module_to_user] mods_addr=0x%x\n", multiboot_info->mods_addr);
+    printf("[load_module_to_user] mods_count=0x%x\n", multiboot_info->mods_count);
+
+    if (multiboot_info->mods_count == 0) {
+        printf("[load_module_to_user] ERROR - No modules loaded!\n");
+        return -1;
+    }
+
     multiboot_module_t *mods = (multiboot_module_t *)phys_to_virt(multiboot_info->mods_addr);
+    printf("[load_module_to_user] mods pointer=%p\n", mods);
+
+    // 直接从物理地址读取，避免可能的映射问题
+    printf("[load_module_to_user] Reading mod_start from phys 0x%x...\n", multiboot_info->mods_addr);
+    uint32_t *raw_mods = (uint32_t *)phys_to_virt(multiboot_info->mods_addr);
+    printf("[load_module_to_user] Raw words at mods_addr: 0x%x 0x%x 0x%x 0x%x\n",
+           raw_mods[0], raw_mods[1], raw_mods[2], raw_mods[3]);
+
     uint32_t mod_start = mods[0].mod_start;
     uint32_t mod_end   = mods[0].mod_end;
 
@@ -101,7 +116,8 @@ int load_module_to_user(uint32_t *pd_user) {
     map_page(pd_user, VIRT_USER_STACK_TOP - PAGE_SIZE, stack_pa, USER_PTE_FLAGS);
     tf->esp = VIRT_USER_STACK_TOP;
 
-    printf("[load_module_to_user] [map_page] entry=0x%x, stack=0x%x\n",tf->eip, tf->esp);
+    // 调试输出暂时禁用，可能导致 Page Fault
+    // printf("[load_module_to_user] [map_page] entry=0x%x, stack=0x%x\n",tf->eip, tf->esp);
 
     return 0;
 }

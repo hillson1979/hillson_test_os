@@ -100,23 +100,60 @@ typedef struct {
 
 page_t alloc_page_table_() {
     page_t pg;
-    pg.phys = (uint32_t*)pmm_alloc_page();       // 物理地址
-    pg.virt = (uint32_t*)phys_to_virt(pg.phys);  // 转换到内核虚拟地址
+    uint32_t phys = pmm_alloc_page();           // 物理地址
+    pg.phys = (uint32_t*)phys;
+
+    // 确保这个物理页在内核页目录中有映射（按需映射）
+    uint32_t virt_addr = (uint32_t)phys_to_virt(phys);
+    uint32_t kernel_pd_index = virt_addr >> 22;
+    uint32_t kernel_pt_index = (virt_addr >> 12) & 0x3FF;
+
+    // 检查内核页目录是否有对应的页表
+    extern uint32_t pd[];
+    if (!(pd[kernel_pd_index] & PAGE_PRESENT)) {
+        // 内核页目录也没有页表，需要创建一个
+        printf("[alloc_page_table_] Creating kernel page table for pd_idx=%u\n", kernel_pd_index);
+        // 直接在内核页目录中创建映射
+        // 使用 map_4k_page() 来创建页表
+        extern void map_4k_page(uint32_t, uint32_t, uint32_t);
+        map_4k_page(phys, virt_addr, 0x3);
+    } else {
+        // 页表存在，检查具体的页映射
+        uint32_t *kernel_pt = (uint32_t*)phys_to_virt(pd[kernel_pd_index] & ~0xFFF);
+        if (!(kernel_pt[kernel_pt_index] & PAGE_PRESENT)) {
+            // 为内核创建这个物理页的映射
+            printf("[alloc_page_table_] Mapping phys=0x%x to kernel space at 0x%x\n", phys, virt_addr);
+            kernel_pt[kernel_pt_index] = phys | 0x3;
+            // 刷新 TLB
+            __asm__ volatile ("invlpg (%0)" : : "r" (virt_addr) : "memory");
+        }
+    }
+
+    pg.virt = (uint32_t*)virt_addr;  // 转换到内核虚拟地址
+    printf("[alloc_page_table_] Before memset: pg.virt=0x%x, phys=0x%x\n", pg.virt, phys);
     memset(pg.virt, 0, PAGE_SIZE);
+    printf("[alloc_page_table_] After memset succeeded\n");
     return pg;
 }
 void copy_kernel_mappings_to_pd(uint32_t *pd_user) {
+    // printf("[copy_kernel_mappings_to_pd] START: pd_user=0x%x\n", (uint32_t)pd_user);
     // kernel occupies PDE indexes 768..1023 (0xC0000000 >> 22 == 768)
     for (int i = 768; i < 1024; ++i) {
+        // printf("[copy_kernel_mappings_to_pd] Loop i=%u\n", i);
         uint32_t entry = pd[i];
+        // printf("[copy_kernel_mappings_to_pd] pd[%u]=0x%x\n", i, entry);
         // 如果原来 pd_kernel[i] 为 0，就跳过
         if ((entry & PTE_P) == 0) {
+            // printf("[copy_kernel_mappings_to_pd] Skipping (not present)\n");
             pd_user[i] = 0;
             continue;
         }
         // 清除用户位（U/S），保持内核只在 supervisor 模式访问
+        // printf("[copy_kernel_mappings_to_pd] Writing to pd_user[%u]=0x%x\n", i, entry & ~PTE_U);
         pd_user[i] = entry & ~PTE_U;
+        // printf("[copy_kernel_mappings_to_pd] Wrote pd_user[%u]=0x%x\n", i, pd_user[i]);
     }
+    // printf("[copy_kernel_mappings_to_pd] END\n");
 }
 
 #define PHYS_VIDEO 0xB8000
@@ -124,10 +161,14 @@ void copy_kernel_mappings_to_pd(uint32_t *pd_user) {
 
 void task_prepare_pde(){
 
+       // printf("[task_prepare_pde] START\n");
        page_t pde = alloc_page_table_();
+       // printf("[task_prepare_pde] alloc_page_table_ returned: phys=0x%x, virt=0x%x\n", (uint32_t)pde.phys, (uint32_t)pde.virt);
        th_u->pde = (uint32_t*)pde.phys;   // CR3 必须用物理地址
        uint32_t *pd_user = pde.virt;      // 内核里可以直接访问 PDE 内容
-       
+
+       // printf("[task_prepare_pde] th_u->pde=0x%x, pd_user=0x%x\n", (uint32_t)th_u->pde, (uint32_t)pd_user);
+
        th_u->cr3 = pd_user;
 
       /* // 比如把用户虚拟地址 0x08000000 映射到物理地址 0x00400000
@@ -142,7 +183,7 @@ void task_prepare_pde(){
        load_module_to_user(th_u->pde);
 
        // 复制内核高端映射，保证 kernel addresses 仍可访问
-       copy_kernel_mappings_to_pd(th_u->pde);
+       copy_kernel_mappings_to_pd(pd_user);
 
        // 映射到用户虚拟空间
        //map_page(th_u->pde, VIRT_USER_STACK_TOP - PAGE_SIZE, th_u->user_stack, PTE_P|PTE_W|PTE_U);
@@ -170,6 +211,10 @@ void task_to_user_mode()
 
     struct trapframe *tf = task->tf;
 
+    // 简单调试：输出一个字符表示进入 task_to_user_mode
+    extern void vga_putc(char c);
+    vga_putc('1'); // 标记进入 task_to_user_mode
+
     tf->edi = 1;
     tf->esi = 2;
     tf->ebp = 3;
@@ -185,8 +230,12 @@ void task_to_user_mode()
     tf->ss = (SEG_UDATA << 3) | DPL_USER;
     tf->cs = (SEG_UCODE << 3) | DPL_USER;
 
-    //tf->esp = VIRT_USER_STACK_TOP;
-    //tf->eip = VIRT_MEM_BASE_USER;
+    // 注意：不要覆盖 load_module_to_user() 设置的 eip 和 esp
+    // 因为 tf 结构体可能被重新分配，或者需要确保值的一致性
+    // 但 load_module_to_user() 已经正确设置了这些值
+
+    // tf->esp = VIRT_USER_STACK_TOP;
+    // tf->eip = 0x80000000;  // 不要硬编码！使用 load_module_to_user() 设置的值
     tf->eflags = FL_IF; // 开中断
 
     // 设置当前CPU的TSS
@@ -194,6 +243,15 @@ void task_to_user_mode()
     c->ts.ss0 = SEG_KDATA << 3;
     c->ts.esp0 = (uint32_t)th_u->kstack;     // 指向栈顶 (uint32_t)task->kstack + sizeof(task->kstack);
     ltr(SEG_TSS << 3);
+
+    // 关键修复：在切换 CR3 之前，将 trapframe 复制到当前栈上
+    // 这样切换页表后，栈上的 trapframe 仍然可访问
+    struct trapframe stack_tf;
+    memcpy(&stack_tf, tf, sizeof(struct trapframe));
+
+    // 验证关键字段
+    printf("[task_to_user_mode] stack_tf.eip=0x%x, stack_tf.esp=0x%x\n", stack_tf.eip, stack_tf.esp);
+    printf("[task_to_user_mode] stack_tf.cs=0x%x, stack_tf.ss=0x%x\n", stack_tf.cs, stack_tf.ss);
 
     // 切换用户页表
     asm volatile ("movl %0, %%cr3" :: "r"(task->pde) : "memory");
@@ -203,8 +261,8 @@ void task_to_user_mode()
         "cli\n\t"                // 禁中断
         "movl %0, %%esp\n\t"     // 切换栈指针到 trapframe
        "jmp interrupt_exit\n\t"
-       :: "r"(tf) : "memory"
- 
+       :: "r"(&stack_tf) : "memory"
+
     );
 
     // 不会执行到这里
@@ -295,7 +353,8 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
         // 栈放在页尾（从高地址往下长）
         newtask->kstack = (uint32_t*)((uint8_t*)page + PAGE_SIZE);
 
-        newtask->tf = (struct trapframe *)((uint8_t*)newtask->kstack + 4096 - sizeof(struct trapframe));
+        // trapframe 在栈顶下方
+        newtask->tf = (struct trapframe *)((uint8_t*)newtask->kstack - sizeof(struct trapframe));
 	newtask->waitpid = 0;
 	newtask->name = "task_";//strdup(fsi->filename);
 	newtask->pid = nextid++;

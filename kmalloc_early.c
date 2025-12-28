@@ -2,7 +2,9 @@
 #include "memlayout.h"
 #include "printf.h"
 #include "mm.h"
+#include "mm/buddy.h"
 #include "multiboot.h"
+#include "highmem_mapping.h"
 
 /* 早期内存池 - 用于内核初始化阶段 */
 #define EARLY_MEM_POOL_SIZE  (1 * 1024 * 1024)  // 1MB 临时内存池
@@ -74,10 +76,8 @@ extern struct multiboot *multiboot_info;
 // PMM 状态
 static uint32_t pmm_start = 0;        // 物理内存管理起始地址
 static uint32_t pmm_end = 0;          // 物理内存管理结束地址
-static uint32_t pmm_next_free = 0;    // 下一个空闲页
 static uint32_t pmm_total_pages = 0;  // 总页数
-static uint32_t pmm_free_count = 0;   // 空闲页数（改名避免与函数冲突）
-static uint32_t pmm_allocated_pages = 0; // 已分配页数
+static bool pmm_buddy_enabled = false;  // Buddy System 是否已启用
 
 // 初始化 PMM
 void pmm_init(void) {
@@ -88,69 +88,181 @@ void pmm_init(void) {
 
     // 计算物理内存范围
     uint32_t kernel_end_phys = V2P((uint32_t)_kernel_end_virtual);
-    pmm_start = (kernel_end_phys + 4095) & ~4095;  // 页对齐
 
-    // 从 multiboot 获取物理内存大小
-    uint32_t mem_upper_bytes = multiboot_info->mem_upper * 1024;
-    pmm_end = mem_upper_bytes;  // 使用扩展内存作为上限
+    // 为 Buddy System 预留空间
+    // Buddy System 数据放在 16MB，系统会按需建立页表映射
+    // 当访问 0xC1000000+ 时，map_4k_page 会自动创建页表
+    uint32_t buddy_data_phys = 0x1000000;  // 16MB
+    uint32_t buddy_data_reserved = 20 * 1024 * 1024;  // 20MB 预留空间
+    pmm_start = 0x2400000;  // 36MB - 从这里开始管理物理内存
 
-    pmm_total_pages = (pmm_end - pmm_start) / 4096;
-    pmm_free_count = pmm_total_pages;
-    pmm_next_free = pmm_start;
-    pmm_allocated_pages = 0;
+    printf("pmm_init: kernel_end_phys=0x%x\n", kernel_end_phys);
+    printf("pmm_init: placing buddy system data at 16MB (0x1000000)\n");
+    printf("pmm_init: page tables will be created on-demand when accessing 0xC1000000+\n");
+    printf("pmm_init: buddy system data size: %u MB at 0x%x-0x%x\n",
+           buddy_data_reserved / (1024 * 1024),
+           buddy_data_phys, buddy_data_phys + buddy_data_reserved);
+
+    // PMM 管理的内存范围 - 从4MB到实际物理内存顶部
+    // 根据实际检测到的内存大小设置 pmm_end
+    uint32_t total_phys_mem = (multiboot_info->mem_upper + 640) * 1024;  // 总物理内存（字节）
+    pmm_end = total_phys_mem - 1;  // 物理内存顶部
+    if (pmm_end > 0xFFFFFFFF) {
+        pmm_end = 0xFFFFFFFF;  // 最大不超过 4GB
+    }
+    // 确保至少有一些内存可管理
+    if (pmm_end < pmm_start) {
+        pmm_end = pmm_start + 0x1000000;  // 至少 16MB
+    }
+    pmm_total_pages = (pmm_end - pmm_start + 1) / 4096;
+
+    // 计算管理实际内存需要的 Buddy System 数据结构大小
+    uint32_t max_order = 20;  // 支持 2^20 = 1,048,576 页 = 4GB
+    uint32_t max_blocks = pmm_total_pages + max_order;
+
+    uint32_t blocks_size = max_blocks * sizeof(buddy_block_t);
+    uint32_t freelists_size = (max_order + 1) * sizeof(uint32_t);
+    uint32_t nextfree_size = max_blocks * sizeof(uint32_t);
+    uint32_t buddy_data_size = (blocks_size + freelists_size + nextfree_size + 4095) & ~4095;
+
+    printf("pmm_init: buddy system data structures for %u MB:\n",
+           (pmm_total_pages * 4096) / (1024 * 1024));
+    printf("  max_blocks=%u, buddy_data_size=%u MB (%u bytes)\n",
+           max_blocks, buddy_data_size / (1024 * 1024), buddy_data_size);
+
+    // Buddy System 数组在 16MB，通过按需映射访问
+    uint32_t buddy_data_virt = buddy_data_phys + KERNEL_VIRT_BASE;
+    printf("pmm_init: buddy_data_virt=0x%x (will be mapped on-demand)\n", buddy_data_virt);
 
     printf("pmm_init: physical memory manager initialized\n");
-    printf("  start: 0x%x, end: 0x%x\n", pmm_start, pmm_end);
+    printf("  start: 0x%x (%u MB), end: 0x%x (%u MB)\n",
+           pmm_start, pmm_start / (1024 * 1024),
+           pmm_end, pmm_end / (1024 * 1024));
     printf("  total pages: %u (%u MB)\n", pmm_total_pages,
            (pmm_total_pages * 4096) / (1024 * 1024));
+
+    // 初始化 Buddy System - 管理从36MB到内存顶部的全部地址空间
+    uint32_t base_page = pmm_start / 4096;
+    uint32_t min_order = 0;  // 最小块：1 页
+
+    // 计算合适的 max_order（不超过实际管理页数）
+    while ((1 << max_order) > pmm_total_pages && max_order > 0) {
+        max_order--;
+    }
+
+    printf("pmm_init: initializing buddy system...\n");
+    printf("  base_page=%u, managed_pages=%u, max_order=%u\n",
+           base_page, pmm_total_pages, max_order);
+
+    // 为内核保留前 128MB 内存 (32768 页)
+    uint32_t kernel_reserved_pages = 32768;  // 128MB
+    printf("pmm_init: reserving %u MB for kernel (pages %u-%u)\n",
+           (kernel_reserved_pages * 4096) / (1024 * 1024),
+           base_page, base_page + kernel_reserved_pages - 1);
+
+    if (buddy_init_with_memory(base_page, pmm_total_pages, min_order, max_order,
+                               buddy_data_virt, kernel_reserved_pages) == 0) {
+        pmm_buddy_enabled = true;
+        printf("pmm_init: buddy system enabled successfully\n");
+    } else {
+        pmm_buddy_enabled = false;
+        printf("pmm_init: WARNING - buddy system initialization failed\n");
+    }
 }
 
 // 分配一个物理页
 uint32_t pmm_alloc_page(void) {
-    if (pmm_next_free >= pmm_end) {
-        printf("pmm_alloc_page: out of memory!\n");
-        printf("  allocated: %u/%u pages\n", pmm_allocated_pages, pmm_total_pages);
+    return pmm_alloc_page_type(MEM_ALLOC_KERNEL);
+}
+
+// 按类型分配一个物理页
+uint32_t pmm_alloc_page_type(uint8_t alloc_type) {
+    if (pmm_buddy_enabled) {
+        // 使用 Buddy System 分配
+        uint32_t page = buddy_alloc_type(0, alloc_type);  // order 0 = 1 page
+        if (page == 0) {
+            printf("pmm_alloc_page_type: buddy system out of memory (type=%u)!\n", alloc_type);
+            return 0;
+        }
+        return page * 4096;  // 转换为物理地址
+    } else {
+        // Buddy System 未启用，不应该到达这里
+        printf("pmm_alloc_page_type: ERROR - buddy system not enabled!\n");
         return 0;
     }
-
-    uint32_t addr = pmm_next_free;
-    pmm_next_free += 4096;
-    pmm_free_count--;
-    pmm_allocated_pages++;
-
-    return addr;  // 返回物理地址
 }
 
 // 分配多个连续的物理页
 uint32_t pmm_alloc_pages(uint32_t count) {
-    if (count == 0) return 0;
-
-    // 检查是否有足够的连续内存
-    if (pmm_next_free + count * 4096 > pmm_end) {
-        printf("pmm_alloc_pages: out of memory (need %u pages)!\n", count);
-        printf("  allocated: %u/%u pages\n", pmm_allocated_pages, pmm_total_pages);
-        return 0;
-    }
-
-    uint32_t addr = pmm_next_free;
-    pmm_next_free += count * 4096;
-    pmm_free_count -= count;
-    pmm_allocated_pages += count;
-
-    return addr;  // 返回物理地址
+    return pmm_alloc_pages_type(count, MEM_ALLOC_KERNEL);
 }
 
-// 释放物理页（当前简单实现不支持释放）
+// 按类型分配多个连续的物理页
+uint32_t pmm_alloc_pages_type(uint32_t count, uint8_t alloc_type) {
+    if (count == 0) return 0;
+
+    if (pmm_buddy_enabled) {
+        // 计算需要的 order
+        uint32_t order = pages_to_order(count);
+
+        // 从 Buddy System 分配
+        uint32_t page = buddy_alloc_type(order, alloc_type);
+        if (page == 0) {
+            printf("pmm_alloc_pages_type: buddy system out of memory (need %u pages, type=%u)!\n",
+                   count, alloc_type);
+            return 0;
+        }
+
+        return page * 4096;  // 转换为物理地址
+    } else {
+        printf("pmm_alloc_pages_type: ERROR - buddy system not enabled!\n");
+        return 0;
+    }
+}
+
+// 释放物理页
 void pmm_free_page(uint32_t phys_addr) {
-    // TODO: 实现页释放功能
-    printf("pmm_free_page: not implemented yet (addr=0x%x)\n", phys_addr);
+    if (phys_addr == 0) {
+        printf("pmm_free_page: warning - freeing null address\n");
+        return;
+    }
+
+    if (!pmm_buddy_enabled) {
+        printf("pmm_free_page: ERROR - buddy system not enabled!\n");
+        return;
+    }
+
+    // 转换为页号
+    uint32_t page = phys_addr / 4096;
+
+    // 释放到 Buddy System (order 0 = 1 page)
+    if (buddy_free(page, 0) != 0) {
+        printf("pmm_free_page: failed to free page at 0x%x\n", phys_addr);
+    }
 }
 
 // 释放多个物理页
 void pmm_free_pages(uint32_t phys_addr, uint32_t count) {
-    // TODO: 实现页释放功能
-    printf("pmm_free_pages: not implemented yet (addr=0x%x, count=%u)\n",
-           phys_addr, count);
+    if (phys_addr == 0 || count == 0) {
+        printf("pmm_free_pages: warning - invalid parameters (addr=0x%x, count=%u)\n",
+               phys_addr, count);
+        return;
+    }
+
+    if (!pmm_buddy_enabled) {
+        printf("pmm_free_pages: ERROR - buddy system not enabled!\n");
+        return;
+    }
+
+    // 计算页号和 order
+    uint32_t page = phys_addr / 4096;
+    uint32_t order = pages_to_order(count);
+
+    // 释放到 Buddy System
+    if (buddy_free(page, order) != 0) {
+        printf("pmm_free_pages: failed to free pages at 0x%x (count=%u)\n",
+               phys_addr, count);
+    }
 }
 
 // 打印 PMM 统计信息
@@ -159,11 +271,17 @@ void pmm_print_stats(void) {
     printf("  Memory range: 0x%x - 0x%x\n", pmm_start, pmm_end);
     printf("  Total pages:  %u (%u MB)\n", pmm_total_pages,
            (pmm_total_pages * 4096) / (1024 * 1024));
-    printf("  Free pages:   %u (%u MB)\n", pmm_free_count,
-           (pmm_free_count * 4096) / (1024 * 1024));
-    printf("  Allocated:    %u pages (%u MB)\n", pmm_allocated_pages,
-           (pmm_allocated_pages * 4096) / (1024 * 1024));
-    printf("  Next free:    0x%x\n", pmm_next_free);
+    printf("  Buddy System: %s\n", pmm_buddy_enabled ? "enabled" : "disabled");
+
+    if (pmm_buddy_enabled) {
+        uint32_t free_pages, used_pages, total_pages;
+        buddy_stats(&free_pages, &used_pages, &total_pages);
+        printf("  Free pages:   %u (%u MB)\n", free_pages,
+               (free_pages * 4096) / (1024 * 1024));
+        printf("  Used pages:   %u (%u MB)\n", used_pages,
+               (used_pages * 4096) / (1024 * 1024));
+    }
+
     printf("==========================================\n");
 }
 
@@ -244,12 +362,15 @@ void kfree(void *ptr) {
     printf("kfree: freeing %u bytes (%u pages) at virt=0x%x, phys=0x%x\n",
            hdr->size, hdr->page_count, (uint32_t)hdr->virt_addr, hdr->phys_addr);
 
-    // 如果是物理页分配（page_count > 0），标记释放
+    // 如果是物理页分配（page_count > 0），真正释放物理页
     if (hdr->page_count > 0) {
-        // 简单实现：暂不支持真正释放物理页
-        // TODO: 实现真正的物理页释放
-        printf("kfree: physical page release not yet implemented\n");
+        if (hdr->page_count == 1) {
+            pmm_free_page(hdr->phys_addr);
+        } else {
+            pmm_free_pages(hdr->phys_addr, hdr->page_count);
+        }
     }
+    // 注意：早期内存池（page_count == 0）的分配不能释放
 
     // 清除分配记录
     hdr->in_use = false;
@@ -297,4 +418,39 @@ void kmalloc_print_stats(void) {
            total_phys_pages,
            (total_phys_pages * 4096) / (1024 * 1024));
     printf("=====================================\n");
+}
+
+/* ============ 用户空间内存分配 ============ */
+
+// 分配用户空间物理页
+uint32_t umem_alloc_pages(uint32_t count) {
+    if (count == 0) {
+        return 0;
+    }
+
+    // 使用 PMM 的用户空间类型分配
+    uint32_t phys_addr = pmm_alloc_pages_type(count, MEM_ALLOC_USER);
+    if (phys_addr == 0) {
+        printf("umem_alloc_pages: failed to allocate %u pages for user space\n", count);
+        return 0;
+    }
+
+    printf("umem_alloc_pages: allocated %u pages for user space at phys=0x%x\n",
+           count, phys_addr);
+
+    return phys_addr;
+}
+
+// 释放用户空间物理页
+void umem_free_pages(uint32_t phys_addr, uint32_t count) {
+    if (phys_addr == 0 || count == 0) {
+        printf("umem_free_pages: warning - invalid parameters (addr=0x%x, count=%u)\n",
+               phys_addr, count);
+        return;
+    }
+
+    printf("umem_free_pages: freeing %u user pages at phys=0x%x\n", count, phys_addr);
+
+    // 使用 PMM 释放
+    pmm_free_pages(phys_addr, count);
 }

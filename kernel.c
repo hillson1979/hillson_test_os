@@ -72,13 +72,24 @@ kernel_main(struct multiboot * mb)
             printf("Memory management initialization failed!\n");
         }
 
-        pci_init();
+        printf("After mm_init, before hardware init\n");
+
+        // 必须初始化 LAPIC，因为 logical_cpu_id() 依赖它
         lapicinit();
-        ioapicinit();
+
+        printf("Before seginit\n");
         seginit();
+        printf("After seginit\n");
+
+        printf("Before tss_init\n");
         tss_init();
+        printf("After tss_init\n");
+
+        printf("Before tvinit\n");
         tvinit();
-        printf("pci lapic ioapic segment idt , init is ok\n");
+        printf("After tvinit\n");
+
+        printf("segment idt init is ok\n");
         idtinit();
 
         task_t *th_k=init_task(0);
@@ -86,6 +97,8 @@ kernel_main(struct multiboot * mb)
         start_task_kernel(th_k,kernel_task_main);
         task_t *th_u=init_task(1);
 
+        // 注释掉kmalloc测试,避免影响用户进程加载
+        /*
         // 输出内存检测结果
         print_memory_detection_result();
 
@@ -137,17 +150,15 @@ kernel_main(struct multiboot * mb)
         kmalloc_print_stats();
 
         printf("=== kmalloc/kfree tests completed ===\n\n");
+        */
 
-        dump_multiboot_modules(mb);
+        // 启动用户进程
+        printf("start user task \n");
+        start_task_user(th_u,user_task_main);
+        printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
 
-        // 注释掉用户进程相关代码,避免 page fault
-        // printf("start user task \n");
-        // start_task_user(th_u,user_task_main);
-        // printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
-
-        // 注释掉调度器
-        // efficient_scheduler_loop();
+        // 启动调度器
+        efficient_scheduler_loop();
         printf("Kernel main completed successfully!\n");
 	return (42);
 }
-

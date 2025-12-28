@@ -15,9 +15,11 @@ loader:
     /* AT&T Syntax (GNU as) */
     movl    $pd, %eax                    /* MAGIC START! */
     movl    $pt + 3, (%eax)              /* pd[0] = pt + 3 (WRITE | PRESENT) */
-    movl    $pt + 3, 0xC00(%eax)         /* pd[0xC00] = pt + 3 (映射 0xC0000000 区域) */
+    movl    $pt + 3, 0x300(%eax)         /* pd[0x300] = pt + 3 (映射 0xC0000000-0xC03FFFFF) */
+    movl    $pt + 3, 0x301(%eax)         /* pd[0x301] = pt + 3 (映射 0xC0400000-0xC07FFFFF) */
+    movl    $pt + 3, 0xC00(%eax)         /* pd[0xC00] = pt + 3 (保留兼容性) */
 
-    /* 循环初始化 pt 表（1024 项），设置恒等映射 */
+    /* 循环初始化 pt 表（1024项），设置4MB恒等映射 */
     movl    $pt, %edx                    /* edx = pt 基地址 */
     movl    $0, %ecx                     /* ecx = 0（循环计数器） */
 
@@ -28,7 +30,7 @@ loader:
     movl    %eax, (%edx, %ecx, 4)        /* pt[ecx] = eax */
 
     incl    %ecx                         /* ecx++ */
-    cmpl    $2048, %ecx                  /* if (ecx != 1024) */
+    cmpl    $1024, %ecx                  /* 1024 项 */
     jne     .Lloop                       /*     goto .Lloop */
 
     /* 启用分页 */
