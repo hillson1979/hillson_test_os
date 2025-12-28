@@ -1,0 +1,1841 @@
+CPU Reset (CPU 0)
+EAX=00000000 EBX=00000000 ECX=00000000 EDX=00000000
+ESI=00000000 EDI=00000000 EBP=00000000 ESP=00000000
+EIP=00000000 EFL=00000000 [-------] CPL=0 II=0 A20=0 SMM=0 HLT=0
+ES =0000 00000000 00000000 00000000
+CS =0000 00000000 00000000 00000000
+SS =0000 00000000 00000000 00000000
+DS =0000 00000000 00000000 00000000
+FS =0000 00000000 00000000 00000000
+GS =0000 00000000 00000000 00000000
+LDT=0000 00000000 00000000 00000000
+TR =0000 00000000 00000000 00000000
+GDT=     00000000 00000000
+IDT=     00000000 00000000
+CR0=00000000 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=00000000 DR7=00000000
+CCS=00000000 CCD=00000000 CCO=DYNAMIC
+EFER=0000000000000000
+FCW=0000 FSW=0000 [ST=0] FTW=ff MXCSR=00000000
+FPR0=0000000000000000 0000 FPR1=0000000000000000 0000
+FPR2=0000000000000000 0000 FPR3=0000000000000000 0000
+FPR4=0000000000000000 0000 FPR5=0000000000000000 0000
+FPR6=0000000000000000 0000 FPR7=0000000000000000 0000
+XMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000
+XMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000
+XMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000
+XMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000
+CPU Reset (CPU 0)
+EAX=00000000 EBX=00000000 ECX=00000000 EDX=00000663
+ESI=00000000 EDI=00000000 EBP=00000000 ESP=00000000
+EIP=0000fff0 EFL=00000002 [-------] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0000 00000000 0000ffff 00009300
+CS =f000 ffff0000 0000ffff 00009b00
+SS =0000 00000000 0000ffff 00009300
+DS =0000 00000000 0000ffff 00009300
+FS =0000 00000000 0000ffff 00009300
+GS =0000 00000000 0000ffff 00009300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 0000ffff
+IDT=     00000000 0000ffff
+CR0=60000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00000000 CCO=DYNAMIC
+EFER=0000000000000000
+FCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80
+FPR0=0000000000000000 0000 FPR1=0000000000000000 0000
+FPR2=0000000000000000 0000 FPR3=0000000000000000 0000
+FPR4=0000000000000000 0000 FPR5=0000000000000000 0000
+FPR6=0000000000000000 0000 FPR7=0000000000000000 0000
+XMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000
+XMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000
+XMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000
+XMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000
+SMM: enter
+EAX=00000000 EBX=00000000 ECX=02000000 EDX=02000628
+ESI=0000000b EDI=02000000 EBP=00014e40 ESP=00006c5c
+EIP=000ea61d EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00cf9b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=ffffffff CCO=CLR
+EFER=0000000000000000
+SMM: after RSM
+EAX=00000000 EBX=00000000 ECX=02000000 EDX=02000628
+ESI=0000000b EDI=02000000 EBP=00014e40 ESP=00006c5c
+EIP=000ea61d EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+Servicing hardware INT=0x08
+SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=00006cff
+ESI=00006cb4 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 008f9300
+CS =f000 000f0000 ffffffff 008f9b00
+SS =0000 00000000 ffffffff 008f9300
+DS =0000 00000000 ffffffff 008f9300
+FS =0000 00000000 ffffffff 008f9300
+GS =0000 00000000 ffffffff 008f9300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006c74 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=00006cff
+ESI=00006cb4 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=befe8ad0
+ESI=000e8380 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=000f7e25 EFL=00000016 [----AP-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=00006c60 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=befe8ad0
+ESI=000e8380 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =0000 00000000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+c[?7l[2JServicing hardware INT=0x08
+[0mSeaBIOS (version 1.16.3-debian-1.16.3-2Servicing hardware INT=0x08
+)
+
+
+iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMSMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 008f9300
+CS =f000 000f0000 ffffffff 008f9b00
+SS =0000 00000000 ffffffff 008f9300
+DS =0000 00000000 ffffffff 008f9300
+FS =0000 00000000 ffffffff 008f9300
+GS =ca00 000ca000 ffffffff 008f9300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006956 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e25 EFL=00000016 [----AP-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=00006942 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006950 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=befcaf60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e25 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=0000693c CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=befcaf60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+M+BEFCAF6SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006956 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e25 EFL=00000016 [----AP-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=00006942 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006950 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=bef0af60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e25 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=0000693c CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=bef0af60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+0+BEF0AF60 CA00
+Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                           Servicing hardware INT=0x08
+                                    
+
+
+Booting from Hard Disk...
+Boot faileServicing hardware INT=0x08
+d: could not read the boot disk
+
+Booting from Floppy..Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x08
+.
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x08
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Boot failed: could not read the boot disServicing hardware INT=0x08
+k
+
+Booting from DVD/CD..Servicing hardware INT=0x08
+.
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+[01;01H[2JServicing hardware INT=0x08
+[02;30HGNU GRUB  verServicing hardware INT=0x08
+s[02;43H[02;44Hion 2.12[04;02H┌─────────────────────────Servicing hardware INT=0x08
+─[04;28H[04;29H──────────────────────────────────Servicing hardware INT=0x08
+─[04;63H[04;64H───────────────┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79HServicing hardware INT=0x08
+│[11;79H[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└────────────────────────Servicing hardware INT=0x08
+─[18;27H[18;28H──────────────────────────────────────Servicing hardware INT=0x08
+─[18;66H[18;67H────────────┘[20;02H     Use the ↑ and ↓ keServicing hardware INT=0x08
+ys to select which entry is highlighted.       Servicing hardware INT=0x08
+ [20;72H[20;73H  
+      Press enter to boot the selected OSServicing hardware INT=0x08
+,[21;42H[21;43H `e' to edit the commands       
+      beServicing hardware INT=0x08
+fore booting or `c' for a command-lServicing hardware INT=0x08
+ine.                           [05;80H [05;03H[0;30;47m*My OServicing hardware INT=0x08
+S[05;08H[05;09H - Shell Demo                           Servicing hardware INT=0x08
+                              [06;03H[0m My OS -Servicing hardware INT=0x08
+ Test Program                    Servicing hardware INT=0x08
+                                 Servicing hardware INT=0x08
+ [06;77H[06;78H [07;03H                                  Servicing hardware INT=0x08
+                                          [08;03H Servicing hardware INT=0x08
+ [08;04H[08;05H                                            Servicing hardware INT=0x08
+ [08;49H[08;50H                             [09;03H           Servicing hardware INT=0x08
+                                             Servicing hardware INT=0x08
+                    [10;03HServicing hardware INT=0x08
+ [10;03H[10;04H                                 Servicing hardware INT=0x08
+                                     Servicing hardware INT=0x08
+ [10;74H[10;75H    [11;03H                                   Servicing hardware INT=0x08
+                                 Servicing hardware INT=0x08
+        [12;03H                    Servicing hardware INT=0x08
+ [12;23H[12;24H                                  Servicing hardware INT=0x08
+ [12;58H[12;59H                    [13;03H              Servicing hardware INT=0x08
+ [13;17H[13;18H                                    Servicing hardware INT=0x08
+                         [14;03H                 Servicing hardware INT=0x08
+ [14;20H[14;21H                                        Servicing hardware INT=0x08
+                  [15;03H                  Servicing hardware INT=0x08
+ [15;21H[15;22H                                     Servicing hardware INT=0x08
+                 Servicing hardware INT=0x08
+   [16;03H                                Servicing hardware INT=0x08
+                       Servicing hardware INT=0x08
+ [16;58H[16;59H                    [17;03H        Servicing hardware INT=0x08
+ [17;11H[17;12H                    Servicing hardware INT=0x08
+ [17;32H[17;33H                        Servicing hardware INT=0x08
+ [17;57H[17;58H                    Servicing hardware INT=0x08
+ [17;78H[17;80H 
+
+
+
+
+
+   The highlighted enServicing hardware INT=0x08
+try will be executed automaServicing hardware INT=0x08
+tically in 5s.          Servicing hardware INT=0x08
+      Servicing hardware INT=0x08
+ [05;78HServicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highlighted entry wiServicing hardware INT=0x08
+l[23;28H[23;29Hl be executed automatiServicing hardware INT=0x08
+c[23;51H[23;52Hally in 4s.            Servicing hardware INT=0x08
+ [23;75H[23;76H   Servicing hardware INT=0x08
+ [05;78HServicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Servicing hardware INT=0x08
+  The highlighted entry will be executServicing hardware INT=0x08
+ed automatically in 3s.                Servicing hardware INT=0x08
+ [05;78HServicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The hServicing hardware INT=0x08
+i[23;09H[23;10Hghlighted entry will be executed auServicing hardware INT=0x08
+t[23;45H[23;46Homatically in 2s.              Servicing hardware INT=0x08
+ [23;77H[23;78H Servicing hardware INT=0x08
+ [05;78HServicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The hiServicing hardware INT=0x08
+g[23;10H[23;11Hhlighted entry will be executed auServicing hardware INT=0x08
+t[23;45H[23;46Homatically in 1s.                Servicing hardware INT=0x08
+ [05;78HServicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The hiServicing hardware INT=0x08
+g[23;10H[23;11Hhlighted entry will be execServicing hardware INT=0x08
+uted automatically inServicing hardware INT=0x08
+ 0s.                 [01;01H[2JServicing hardware INT=0x08
+[2JServicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+=== Serial initialized ===
+Kernel Booted!
+Physical: 0x100000
+Virtual:  0xC0000000
+cpuid is 0 
+lapicid is 0 
+ ---IOAPIC ---
+ioapicid is 0 
+ioapic addr is is 0xFEC00000 
+Highmem mapping initialized
+Identity mapped: 0xC0000000-0xC03FFFFF
+Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...
+Allocating new page table for directory entry 772
+alloc_page_table: virt=0xC1000000, phys=0x1000000, pd_idx=772
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
+  Allocated PT at phys=0x200000
+  Writing PDE: pd[772] = 0x200003
+  pd[772] now = 0x200003
+  pt_virt = 0xC0200000 (from pd[772]=0x200003)
+  Clearing page table...
+  Filling PTEs: phys=0x1000000 -> virt=0xC1000000
+  Flushing TLB for virt=0xC1000000
+  Done!
+Allocated new page table for directory entry 0xC1000000
+Allocated new page table for directory entry 0xC1000000
+phys_addr is 0x1000000
+virt_addr is 0xC1000000
+pte is 0x0
+  Mapped 0xC1000000 (phys 0x1000000)
+  Mapped 0xC1100000 (phys 0x1100000)
+  Mapped 0xC1200000 (phys 0x1200000)
+  Mapped 0xC1300000 (phys 0x1300000)
+Allocating new page table for directory entry 773
+alloc_page_table: virt=0xC1400000, phys=0x1400000, pd_idx=773
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
+  Allocated PT at phys=0x201000
+  Writing PDE: pd[773] = 0x201003
+  pd[773] now = 0x201003
+  pt_virt = 0xC0201000 (from pd[773]=0x201003)
+  Clearing page table...
+  Filling PTEs: phys=0x1400000 -> virt=0xC1400000
+  Flushing TLB for virt=0xC1400000
+  Done!
+Allocated new page table for directory entry 0xC1400000
+Allocated new page table for directory entry 0xC1400000
+phys_addr is 0x1400000
+virt_addr is 0xC1400000
+pte is 0x0
+  Mapped 0xC1400000 (phys 0x1400000)
+  Mapped 0xC1500000 (phys 0x1500000)
+  Mapped 0xC1600000 (phys 0x1600000)
+  Mapped 0xC1700000 (phys 0x1700000)
+Allocating new page table for directory entry 774
+alloc_page_table: virt=0xC1800000, phys=0x1800000, pd_idx=774
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
+  Allocated PT at phys=0x202000
+  Writing PDE: pd[774] = 0x202003
+  pd[774] now = 0x202003
+  pt_virt = 0xC0202000 (from pd[774]=0x202003)
+  Clearing page table...
+  Filling PTEs: phys=0x1800000 -> virt=0xC1800000
+  Flushing TLB for virt=0xC1800000
+  Done!
+Allocated new page table for directory entry 0xC1800000
+Allocated new page table for directory entry 0xC1800000
+phys_addr is 0x1800000
+virt_addr is 0xC1800000
+pte is 0x0
+  Mapped 0xC1800000 (phys 0x1800000)
+  Mapped 0xC1900000 (phys 0x1900000)
+  Mapped 0xC1A00000 (phys 0x1A00000)
+  Mapped 0xC1B00000 (phys 0x1B00000)
+Allocating new page table for directory entry 775
+alloc_page_table: virt=0xC1C00000, phys=0x1C00000, pd_idx=775
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
+  Allocated PT at phys=0x203000
+  Writing PDE: pd[775] = 0x203003
+  pd[775] now = 0x203003
+  pt_virt = 0xC0203000 (from pd[775]=0x203003)
+  Clearing page table...
+  Filling PTEs: phys=0x1C00000 -> virt=0xC1C00000
+  Flushing TLB for virt=0xC1C00000
+  Done!
+Allocated new page table for directory entry 0xC1C00000
+Allocated new page table for directory entry 0xC1C00000
+phys_addr is 0x1C00000
+virt_addr is 0xC1C00000
+pte is 0x0
+  Mapped 0xC1C00000 (phys 0x1C00000)
+  Mapped 0xC1D00000 (phys 0x1D00000)
+  Mapped 0xC1E00000 (phys 0x1E00000)
+  Mapped 0xC1F00000 (phys 0x1F00000)
+Allocating new page table for directory entry 776
+alloc_page_table: virt=0xC2000000, phys=0x2000000, pd_idx=776
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
+  Allocated PT at phys=0x204000
+  Writing PDE: pd[776] = 0x204003
+  pd[776] now = 0x204003
+  pt_virt = 0xC0204000 (from pd[776]=0x204003)
+  Clearing page table...
+  Filling PTEs: phys=0x2000000 -> virt=0xC2000000
+  Flushing TLB for virt=0xC2000000
+  Done!
+Allocated new page table for directory entry 0xC2000000
+Allocated new page table for directory entry 0xC2000000
+phys_addr is 0x2000000
+virt_addr is 0xC2000000
+pte is 0x0
+  Mapped 0xC2000000 (phys 0x2000000)
+  Mapped 0xC2100000 (phys 0x2100000)
+  Mapped 0xC2200000 (phys 0x2200000)
+  Mapped 0xC2300000 (phys 0x2300000)
+Allocating new page table for directory entry 777
+alloc_page_table: virt=0xC2400000, phys=0x2400000, pd_idx=777
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
+  Allocated PT at phys=0x205000
+  Writing PDE: pd[777] = 0x205003
+  pd[777] now = 0x205003
+  pt_virt = 0xC0205000 (from pd[777]=0x205003)
+  Clearing page table...
+  Filling PTEs: phys=0x2400000 -> virt=0xC2400000
+  Flushing TLB for virt=0xC2400000
+  Done!
+Allocated new page table for directory entry 0xC2400000
+Allocated new page table for directory entry 0xC2400000
+phys_addr is 0x2400000
+virt_addr is 0xC2400000
+pte is 0x0
+  Mapped 0xC2400000 (phys 0x2400000)
+  Mapped 0xC2500000 (phys 0x2500000)
+  Mapped 0xC2600000 (phys 0x2600000)
+  Mapped 0xC2700000 (phys 0x2700000)
+Allocating new page table for directory entry 778
+alloc_page_table: virt=0xC2800000, phys=0x2800000, pd_idx=778
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
+  Allocated PT at phys=0x206000
+  Writing PDE: pd[778] = 0x206003
+  pd[778] now = 0x206003
+  pt_virt = 0xC0206000 (from pd[778]=0x206003)
+  Clearing page table...
+  Filling PTEs: phys=0x2800000 -> virt=0xC2800000
+  Flushing TLB for virt=0xC2800000
+  Done!
+Allocated new page table for directory entry 0xC2800000
+Allocated new page table for directory entry 0xC2800000
+phys_addr is 0x2800000
+virt_addr is 0xC2800000
+pte is 0x0
+  Mapped 0xC2800000 (phys 0x2800000)
+  Mapped 0xC2900000 (phys 0x2900000)
+  Mapped 0xC2A00000 (phys 0x2A00000)
+  Mapped 0xC2B00000 (phys 0x2B00000)
+Allocating new page table for directory entry 779
+alloc_page_table: virt=0xC2C00000, phys=0x2C00000, pd_idx=779
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x207000, virt=0xC0207000
+  Allocated PT at phys=0x207000
+  Writing PDE: pd[779] = 0x207003
+  pd[779] now = 0x207003
+  pt_virt = 0xC0207000 (from pd[779]=0x207003)
+  Clearing page table...
+  Filling PTEs: phys=0x2C00000 -> virt=0xC2C00000
+  Flushing TLB for virt=0xC2C00000
+  Done!
+Allocated new page table for directory entry 0xC2C00000
+Allocated new page table for directory entry 0xC2C00000
+phys_addr is 0x2C00000
+virt_addr is 0xC2C00000
+pte is 0x0
+  Mapped 0xC2C00000 (phys 0x2C00000)
+  Mapped 0xC2D00000 (phys 0x2D00000)
+  Mapped 0xC2E00000 (phys 0x2E00000)
+  Mapped 0xC2F00000 (phys 0x2F00000)
+Buddy system data area mapped successfully
+Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
+Virtual address layout:
+  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
+  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
+    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
+    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
+Multiboot info: mem_lower=639 KB, mem_upper=3144576 KB
+Initializing memory management...
+mm_init: starting memory management initialization
+mm_init: detected 3070 MB physical memory (mem_upper=3144576 KB)
+mm_init: initializing physical memory manager...
+pmm_init: kernel_end_phys=0x3A6000
+pmm_init: placing buddy system data at 16MB (0x1000000)
+pmm_init: page tables will be created on-demand when accessing 0xC1000000+
+pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
+pmm_init: buddy system data structures for 3035 MB:
+  max_blocks=777108, buddy_data_size=11 MB (12435456 bytes)
+pmm_init: buddy_data_virt=0xC1000000 (will be mapped on-demand)
+pmm_init: physical memory manager initialized
+  start: 0x2400000 (36 MB), end: 0xBFF7FFFF (3071 MB)
+  total pages: 777088 (3035 MB)
+pmm_init: initializing buddy system...
+  base_page=9216, managed_pages=777088, max_order=19
+pmm_init: reserving 128 MB for kernel (pages 9216-41983)
+buddy_init: base_page=9216, total_pages=777088, max_order=19
+buddy_init: kernel_reserved_pages=32768 (128 MB)
+buddy_init: using pre-allocated memory at 0xC1000000
+buddy_init: max_blocks=777107, sizeof(buddy_block_t)=12
+buddy_init: blocks_size=9325284, freelists_size=80, nextfree_size=3108428
+buddy_init: buddy_blocks_array=?
+buddy_init: free_lists_array=?
+buddy_init: next_free_array=?
+buddy_init: skipping write test, proceeding to memset...
+buddy_init: before memset free_lists
+buddy_init: before memset next_free
+buddy_init: after memset
+buddy_init: creating initial free blocks
+buddy_init: initialized 1 block (order 19 = 524288 pages)
+buddy_init: SUCCESS - buddy system ready
+pmm_init: buddy system enabled successfully
+mm_init: basic memory detection complete (buddy system disabled)
+mm_init: memory management initialization complete
+Memory management initialized
+check_exception old: 0xffffffff new 0xe
+     0: v=0e e=0000 i=0 cpl=0 IP=0010:c0107687 pc=c0107687 SP=0018:c0107674 CR2=fbc01076
+EAX=c010f2ca EBX=c0297b80 ECX=00000000 EDX=c010f2ca
+ESI=00000000 EDI=00000000 EBP=c0107674 ESP=c0107674
+EIP=c0107687 EFL=00000082 [--S----] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+CS =0010 00000000 ffffffff 00cf9a00 DPL=0 CS32 [-R-]
+SS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+DS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+FS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+GS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000010b0 00000020
+IDT=     00000000 00000000
+CR0=80000011 CR2=fbc01076 CR3=00101003 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=0000000c CCD=c0107680 CCO=SUBL
+EFER=0000000000000000
+check_exception old: 0xe new 0xd
+     1: v=08 e=0000 i=0 cpl=0 IP=0010:c0107687 pc=c0107687 SP=0018:c0107674 env->regs[R_EAX]=c010f2ca
+EAX=c010f2ca EBX=c0297b80 ECX=00000000 EDX=c010f2ca
+ESI=00000000 EDI=00000000 EBP=c0107674 ESP=c0107674
+EIP=c0107687 EFL=00000082 [--S----] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+CS =0010 00000000 ffffffff 00cf9a00 DPL=0 CS32 [-R-]
+SS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+DS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+FS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+GS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000010b0 00000020
+IDT=     00000000 00000000
+CR0=80000011 CR2=fbc01076 CR3=00101003 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=0000000c CCD=c0107680 CCO=SUBL
+EFER=0000000000000000
+check_exception old: 0x8 new 0xd
+Triple fault
+CPU Reset (CPU 0)
+EAX=c010f2ca EBX=c0297b80 ECX=00000000 EDX=c010f2ca
+ESI=00000000 EDI=00000000 EBP=c0107674 ESP=c0107674
+EIP=c0107687 EFL=00000082 [--S----] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+CS =0010 00000000 ffffffff 00cf9a00 DPL=0 CS32 [-R-]
+SS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+DS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+FS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+GS =0018 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000010b0 00000020
+IDT=     00000000 00000000
+CR0=80000011 CR2=fbc01076 CR3=00101003 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=0000000c CCD=c0107680 CCO=SUBL
+EFER=0000000000000000
+FCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80
+FPR0=0000000000000000 0000 FPR1=0000000000000000 0000
+FPR2=0000000000000000 0000 FPR3=0000000000000000 0000
+FPR4=0000000000000000 0000 FPR5=0000000000000000 0000
+FPR6=0000000000000000 0000 FPR7=0000000000000000 0000
+XMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000
+XMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000
+XMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000
+XMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000
+CPU Reset (CPU 0)
+EAX=00000006 EBX=000f3632 ECX=00000000 EDX=00000cf9
+ESI=00000000 EDI=00100000 EBP=00000000 ESP=00000fc8
+EIP=000ef288 EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00cf9b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=000f6228 CCD=00009dd4 CCO=CLR
+EFER=0000000000000000
+FCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80
+FPR0=0000000000000000 0000 FPR1=0000000000000000 0000
+FPR2=0000000000000000 0000 FPR3=0000000000000000 0000
+FPR4=0000000000000000 0000 FPR5=0000000000000000 0000
+FPR6=0000000000000000 0000 FPR7=0000000000000000 0000
+XMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000
+XMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000
+XMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000
+XMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000
+SMM: enter
+EAX=00000000 EBX=00000000 ECX=02000000 EDX=02000628
+ESI=0000000b EDI=02000000 EBP=00014e40 ESP=00006c5c
+EIP=000ea61d EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00cf9b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00cf9300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=ffffffff CCO=CLR
+EFER=0000000000000000
+SMM: after RSM
+EAX=00000000 EBX=00000000 ECX=02000000 EDX=02000628
+ESI=0000000b EDI=02000000 EBP=00014e40 ESP=00006c5c
+EIP=000ea61d EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+Servicing hardware INT=0x08
+SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=00006cff
+ESI=00006cb4 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 008f9300
+CS =f000 000f0000 ffffffff 008f9b00
+SS =0000 00000000 ffffffff 008f9300
+DS =0000 00000000 ffffffff 008f9300
+FS =0000 00000000 ffffffff 008f9300
+GS =0000 00000000 ffffffff 008f9300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006c74 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=00006cff
+ESI=00006cb4 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=befe8ad0
+ESI=000e8380 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=000f7e25 EFL=00000016 [----AP-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=00006c60 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=befe8ad0
+ESI=000e8380 EDI=beffec55 EBP=00006c74 ESP=00006c74
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =0000 00000000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+Servicing hardware INT=0x08
+c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2Servicing hardware INT=0x08
+)
+
+
+iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMSMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 008f9300
+CS =f000 000f0000 ffffffff 008f9b00
+SS =0000 00000000 ffffffff 008f9300
+DS =0000 00000000 ffffffff 008f9300
+FS =0000 00000000 ffffffff 008f9300
+GS =ca00 000ca000 ffffffff 008f9300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006956 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e25 EFL=00000016 [----AP-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=00006942 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006950 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=befcaf60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e25 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=0000693c CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=befcaf60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+M+BEFCAF6SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006956 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006996 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=000f7e25 EFL=00000016 [----AP-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=00006942 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000005
+ESI=00000000 EDI=beffec55 EBP=00006956 ESP=00006956
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e0b EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000000 CCD=00006950 CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=000069ff
+ESI=00006990 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e0e EFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000044 CCD=00000000 CCO=EFLAGS
+EFER=0000000000000000
+SMM: enter
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=bef0af60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=000f7e25 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+CS =0008 00000000 ffffffff 00c09b00 DPL=0 CS32 [-RA]
+SS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+DS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+FS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+GS =0010 00000000 ffffffff 00c09300 DPL=0 DS   [-WA]
+LDT=0000 00000000 0000ffff 00008200 DPL=0 LDT
+TR =0000 00000000 0000ffff 00008b00 DPL=0 TSS32-busy
+GDT=     000f61e0 00000037
+IDT=     000f621e 00000000
+CR0=00000011 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000008 CCD=0000693c CCO=ADDL
+EFER=0000000000000000
+SMM: after RSM
+EAX=000000b5 EBX=00007e28 ECX=00005678 EDX=00000003
+ESI=bef0af60 EDI=beffec55 EBP=00006950 ESP=00006950
+EIP=00007e28 EFL=00000006 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
+ES =d900 000d9000 ffffffff 00809300
+CS =f000 000f0000 ffffffff 00809b00
+SS =0000 00000000 ffffffff 00809300
+DS =0000 00000000 ffffffff 00809300
+FS =0000 00000000 ffffffff 00809300
+GS =ca00 000ca000 ffffffff 00809300
+LDT=0000 00000000 0000ffff 00008200
+TR =0000 00000000 0000ffff 00008b00
+GDT=     00000000 00000000
+IDT=     00000000 000003ff
+CR0=00000010 CR2=00000000 CR3=00000000 CR4=00000000
+DR0=00000000 DR1=00000000 DR2=00000000 DR3=00000000 
+DR6=ffff0ff0 DR7=00000400
+CCS=00000004 CCD=00000001 CCO=EFLAGS
+EFER=0000000000000000
+0+BEF0AF60 CA00
+Press CtrServicing hardware INT=0x08
+l-B to configure iPXE (PCI 00:03.0)...                                                                              Servicing hardware INT=0x08
+ 
+
+
+Booting from Hard DiServicing hardware INT=0x08
+sk...
+Boot failed: could not read the boot disk
+
+Booting from FloServicing hardware INT=0x08
+ppy..Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x08
+.
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
+Boot failed: could not read the boot diServicing hardware INT=0x08
+sk
+
+Booting from DVD/CD..Servicing hardware INT=0x08
+.
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+Servicing hardware INT=0x08
+[01;01H[2JServicing hardware INT=0x08
+[02;30HGNU GRUB  versionServicing hardware INT=0x08
+ [02;47H[02;48H2.12[04;02H┌─────────────────────────Servicing hardware INT=0x08
+─[04;28H[04;29H────────────────────────────Servicing hardware INT=0x08
+──────────────────────┐[05;02H│[05;79H│[06;02H│[06;79HServicing hardware INT=0x08
+│[06;79H[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79HServicing hardware INT=0x08
+│[18;02H└─────────────────────────────────────────────Servicing hardware INT=0x08
+────────────────Servicing hardware INT=0x08
+───────────────┘[20;02H     UServicing hardware INT=0x08
+s[20;08H[20;09He the ↑ and ↓ keys to select whichServicing hardware INT=0x08
+ entry is highlighted.        Servicing hardware INT=0x08
+ [20;73H[20;74H 
+      Press enter to boot the selecServicing hardware INT=0x08
+t[21;36H[21;37Hed OS, `e' to edit the commands     Servicing hardware INT=0x08
+  
+      before booting or `c'Servicing hardware INT=0x08
+ [22;28H[22;29Hfor a command-line.         Servicing hardware INT=0x08
+                  [05;80H [05;03H[0;30;47m*My OSServicing hardware INT=0x08
+ [05;09H[05;10H- Shell DemServicing hardware INT=0x08
+o                                   Servicing hardware INT=0x08
+ [05;57H[05;58H                     [06;03H[0m My OS - Test ProgServicing hardware INT=0x08
+ram                                Servicing hardware INT=0x08
+ [06;56H[06;57H                      [07;03H         Servicing hardware INT=0x08
+ [07;12H[07;13H                                            Servicing hardware INT=0x08
+ [07;57H[07;58H                     [08;03H             Servicing hardware INT=0x08
+ [08;16H[08;17H                                         Servicing hardware INT=0x08
+ [08;58H[08;59H                    [09;03H            Servicing hardware INT=0x08
+                         Servicing hardware INT=0x08
+                                 Servicing hardware INT=0x08
+ [09;73H[09;74H     [10;03H                             Servicing hardware INT=0x08
+ [10;32H[10;33H                                      Servicing hardware INT=0x08
+ [10;71H[10;72H       [11;03H             Servicing hardware INT=0x08
+ [11;16H[11;17H                               Servicing hardware INT=0x08
+ [11;48H[11;49H                              [12;03H   Servicing hardware INT=0x08
+ [12;06H[12;07H                         Servicing hardware INT=0x08
+                                            Servicing hardware INT=0x08
+ [12;76H[12;77H  [13;03H                 Servicing hardware INT=0x08
+ [13;20H[13;21H                              Servicing hardware INT=0x08
+                         Servicing hardware INT=0x08
+   [14;03H                         Servicing hardware INT=0x08
+                      Servicing hardware INT=0x08
+ [14;50H[14;51H                 Servicing hardware INT=0x08
+           [15;03H           Servicing hardware INT=0x08
+ [15;14H[15;15H             qemu-system-i386: terminating on signal 15 from pid 9773 (timeout)

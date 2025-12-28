@@ -91,6 +91,9 @@ void syscall_dispatch_1(struct trapframe *tf) {
 enum {
     SYS_PRINTF = 1,
     SYS_EXIT,
+    SYS_YIELD,
+    SYS_GET_MEM_STATS,
+    SYS_READ_MEM,
 };
 
 void syscall_dispatch(struct trapframe *tf) {
@@ -100,16 +103,62 @@ void syscall_dispatch(struct trapframe *tf) {
     uint32_t arg3 = tf->edx;
 
     switch (num) {
-        case SYS_PRINTF:
-            printf("[user] %s", (char*)arg1);
+        case SYS_PRINTF: {
+            // 直接输出用户空间的字符串 (逐字符读取)
+            const char *str = (const char*)arg1;
+            char c;
+            while ((c = *str++) != '\0') {
+                vga_putc(c);
+            }
             tf->eax = 0;
             break;
+        }
         case SYS_EXIT:
             printf("[user] exit code=%d\n", arg1);
             tf->eax = 0;
             break;
+        case SYS_YIELD:
+            // 让出CPU,调度其他任务
+            tf->eax = 0;
+            break;
+        case SYS_GET_MEM_STATS: {
+            // 获取内存统计
+            extern uint32_t buddy_get_total_pages(void);
+            extern uint32_t buddy_get_free_pages(void);
+            extern uint32_t buddy_get_used_pages(void);
+
+            struct mem_stats {
+                uint32_t total_pages;
+                uint32_t free_pages;
+                uint32_t used_pages;
+            } *stats = (struct mem_stats*)arg1;
+
+            if (stats) {
+                stats->total_pages = buddy_get_total_pages();
+                stats->free_pages = buddy_get_free_pages();
+                stats->used_pages = buddy_get_used_pages();
+                tf->eax = 0;
+            } else {
+                tf->eax = -1;
+            }
+            break;
+        }
+        case SYS_READ_MEM: {
+            // 读取内存地址
+            uint32_t addr = arg1;
+            uint32_t *value = (uint32_t*)arg2;
+
+            if (value && addr >= 0xC0000000) {
+                *value = *(uint32_t*)addr;
+                tf->eax = 0;
+            } else {
+                tf->eax = -1;
+            }
+            break;
+        }
         default:
             printf("[syscall] unknown num=%d\n", num);
+            tf->eax = -1;
             break;
     }
 }

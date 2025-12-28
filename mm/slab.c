@@ -3,6 +3,7 @@
 #include "printf.h"
 #include "string.h"
 #include "page.h"
+#include "kmalloc.h"  // for kfree
 
 #define PAGE_SIZE 4096
 
@@ -162,51 +163,51 @@ slab_cache_t* slab_cache_create(const char* name, uint32_t size, uint32_t align,
     cache->partial_slabs = NULL;
     cache->empty_slabs = NULL;
     
-    // 初始化锁
-    spinlock_init(&cache->lock);
-    
-    printf("slab_cache_create: %s, size=%u, align=%u, num_per_slab=%u\n", 
+    // 初始化锁 (暂时禁用，不使用 spinlock)
+    // spinlock_init(&cache->lock);
+
+    printf("slab_cache_create: %s, size=%u, align=%u, num_per_slab=%u\n",
            name, size, align, cache->num_per_slab);
-    
+
     return cache;
 }
 
 // 销毁 slab 缓存
 int slab_cache_destroy(slab_cache_t* cache) {
     slab_t* slab, *next;
-    
+
     if (!cache) {
         return -1;
     }
-    
-    spinlock_acquire(&cache->lock);
-    
+
+    // // spinlock_acquire(&cache->lock);
+
     // 销毁所有 slab
     // 处理 full slabs
     for (slab = cache->full_slabs; slab; slab = next) {
         next = slab->next;
         destroy_slab(cache, slab);
     }
-    
+
     // 处理 partial slabs
     for (slab = cache->partial_slabs; slab; slab = next) {
         next = slab->next;
         destroy_slab(cache, slab);
     }
-    
+
     // 处理 empty slabs
     for (slab = cache->empty_slabs; slab; slab = next) {
         next = slab->next;
         destroy_slab(cache, slab);
     }
-    
+
     // 重置缓存状态
     cache->full_slabs = NULL;
     cache->partial_slabs = NULL;
     cache->empty_slabs = NULL;
-    
-    spinlock_release(&cache->lock);
-    
+
+    // // spinlock_release(&cache->lock);
+
     // 因为使用静态数组，不需要释放内存
     return 0;
 }
@@ -221,7 +222,7 @@ void* slab_alloc(slab_cache_t* cache) {
         return NULL;
     }
     
-    spinlock_acquire(&cache->lock);
+    // spinlock_acquire(&cache->lock);
     
     // 首先尝试从 partial slabs 中分配
     if (cache->partial_slabs) {
@@ -269,7 +270,7 @@ void* slab_alloc(slab_cache_t* cache) {
     else {
         slab = create_slab(cache);
         if (!slab) {
-            spinlock_release(&cache->lock);
+            // spinlock_release(&cache->lock);
             return NULL;
         }
         
@@ -289,7 +290,7 @@ void* slab_alloc(slab_cache_t* cache) {
         }
     }
     
-    spinlock_release(&cache->lock);
+    // spinlock_release(&cache->lock);
     
     // 如果有构造函数，调用它
     if (obj && cache->ctor) {
@@ -326,11 +327,11 @@ void slab_free(slab_cache_t* cache, void* obj) {
         return;
     }
     
-    spinlock_acquire(&cache->lock);
+    // spinlock_acquire(&cache->lock);
     
     // 如果对象已经是空闲的，直接返回
     if (!(slab->free_objects[i / 32] & (1 << (i % 32)))) {
-        spinlock_release(&cache->lock);
+        // spinlock_release(&cache->lock);
         return;
     }
     
@@ -358,7 +359,7 @@ void slab_free(slab_cache_t* cache, void* obj) {
         add_slab_to_list(&cache->partial_slabs, slab);
     }
     
-    spinlock_release(&cache->lock);
+    // spinlock_release(&cache->lock);
 }
 
 // 重新调整缓存大小
@@ -376,7 +377,7 @@ void slab_cache_stats(slab_cache_t* cache, uint32_t* total_objects, uint32_t* us
         return;
     }
     
-    spinlock_acquire(&cache->lock);
+    // spinlock_acquire(&cache->lock);
     
     // 统计 full_slabs
     for (slab = cache->full_slabs; slab; slab = slab->next) {
@@ -397,7 +398,7 @@ void slab_cache_stats(slab_cache_t* cache, uint32_t* total_objects, uint32_t* us
         free += slab->free_count;
     }
     
-    spinlock_release(&cache->lock);
+    // spinlock_release(&cache->lock);
     
     if (total_objects) {
         *total_objects = total;
