@@ -38,45 +38,40 @@
 #define IRQ_SYS_BLOCK   123 // SYS_block=20
 #define IRQ_SPURIOUS    31
 
-// 使用你提供的trapframe结构体定义
+// trapframe结构体定义 - 匹配xv6的布局
+// 注意:字段顺序和栈上实际顺序是**相反**的!
+// pusha压入顺序(从低地址到高地址): EAX, ECX, EDX, EBX, OESP, EBP, ESI, EDI
+// struct定义顺序: EDI, ESI, EBP, OESP, EBX, EDX, ECX, EAX (倒序!)
 struct trapframe {
-  // registers as pushed by pusha
-  //uint32_t vector;
+  // pusha压入的通用寄存器 (顺序与栈上相反!)
   uint32_t edi;
   uint32_t esi;
   uint32_t ebp;
-  uint32_t oesp;      // useless & ignored
+  uint32_t oesp;    // pusha压入的原始ESP值
   uint32_t ebx;
   uint32_t edx;
   uint32_t ecx;
   uint32_t eax;
 
-  // rest of trap frame
+  // alltraps压入的段寄存器 (16位，但用32位对齐)
   uint32_t gs;
-  //uint16_t padding1;
   uint32_t fs;
-  //uint16_t padding2;
   uint32_t es;
-  //uint16_t padding3;
   uint32_t ds;
-  //uint16_t padding4;
-  
+
+  // vectors.S压入的值
   uint32_t trapno;
   uint32_t err;
-  
-  
-  // below here defined by x86 hardware
-  
+
+  // CPU硬件压入的值
   uint32_t eip;
   uint32_t cs;
-  //uint16_t padding5;
   uint32_t eflags;
 
-  // below here only when crossing rings, such as from user to kernel
-  uint32_t esp;
+  // 仅在特权级改变时压入
+  uint32_t esp;      // 用户态ESP
   uint32_t ss;
-  //uint16_t padding6;
-};
+} __attribute__((packed));
 
 /* // 中断帧
 typedef struct intr_frame_t

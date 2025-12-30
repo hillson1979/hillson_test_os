@@ -65,7 +65,7 @@ vector12:
 .global vector13
 vector13:
   pushl $13
-  
+
   jmp alltraps
 .global vector14
 vector14:

@@ -1,1145 +1,0 @@
-c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+BEFCAF60+BEF0AF60 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk...
-Boot failed: could not read the boot disk
-
-Booting from Floppy...
-Boot failed: could not read the boot disk
-
-Booting from DVD/CD...
-[01;01H[2J[02;30HGNU GRUB  version 2.12[04;02H┌────────────────────────────────────────────────────────────────────────────[04;78H[04;79H┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;02H[17;79H│[18;02H└─────────────────────────────────────[18;39H[18;40H───────────────────────────────────────┘[20;02H [20;02H[20;03H    Use the ↑ and ↓ keys to select whic[20;41H[20;42Hh entry is highlighted.          
-      Press enter to boot the selected OS, `e' to edit the commands       
-      before booting or `c' for a command-line.                           [05;80H [05;03H[0;30;47m*My OS - [05;11H[05;12HShell Demo                                                         [06;03H[0m My OS - Test Program                           [06;50H[06;51H                            [07;03H                                                                            [08;03H                                                                            [09;03H                                                                            [10;03H                                                                            [11;03H                                                [11;50H[11;51H                            [12;03H      [12;08H[12;09H                                                                      [13;03H                                                                            [14;03H         [14;11H[14;12H                                                                   [15;03H             [15;15H[15;16H                                                               [16;03H                              [16;32H[16;33H                                              [17;03H                                                                            [17;80H 
-
-
-
-
-
-   The highlighted entry will be executed automatically in 5s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlig[23;14H[23;15Hhted entry will be executed automatically in 4s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted en[23;21H[23;22Htry will be executed automatically in 3s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry[23;24H[23;25H will be executed automatically in 2s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 1s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highli[23;13H[23;14Hghted entry will be executed automatically in 0s.                 [01;01H[2J[2J=== Serial initialized ===
-Kernel Booted!
-Physical: 0x100000
-Virtual:  0xC0000000
-cpuid is 0 
-lapicid is 0 
- ---IOAPIC ---
-ioapicid is 0 
-ioapic addr is is 0xFEC00000 
-Highmem mapping initialized
-Identity mapped: 0xC0000000-0xC03FFFFF
-Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...
-Allocating new page table for directory entry 772
-alloc_page_table: virt=0xC1000000, phys=0x1000000, pd_idx=772
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
-  Allocated PT at phys=0x200000
-  Writing PDE: pd[772] = 0x200003
-  pd[772] now = 0x200003
-  pt_virt = 0xC0200000 (from pd[772]=0x200003)
-  Clearing page table...
-  Filling PTEs: phys=0x1000000 -> virt=0xC1000000
-  Flushing TLB for virt=0xC1000000
-  Done!
-Allocated new page table for directory entry 0xC1000000
-Allocated new page table for directory entry 0xC1000000
-phys_addr is 0x1000000
-virt_addr is 0xC1000000
-pte is 0x0
-  Mapped 0xC1000000 (phys 0x1000000)
-  Mapped 0xC1100000 (phys 0x1100000)
-  Mapped 0xC1200000 (phys 0x1200000)
-  Mapped 0xC1300000 (phys 0x1300000)
-Allocating new page table for directory entry 773
-alloc_page_table: virt=0xC1400000, phys=0x1400000, pd_idx=773
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
-  Allocated PT at phys=0x201000
-  Writing PDE: pd[773] = 0x201003
-  pd[773] now = 0x201003
-  pt_virt = 0xC0201000 (from pd[773]=0x201003)
-  Clearing page table...
-  Filling PTEs: phys=0x1400000 -> virt=0xC1400000
-  Flushing TLB for virt=0xC1400000
-  Done!
-Allocated new page table for directory entry 0xC1400000
-Allocated new page table for directory entry 0xC1400000
-phys_addr is 0x1400000
-virt_addr is 0xC1400000
-pte is 0x0
-  Mapped 0xC1400000 (phys 0x1400000)
-  Mapped 0xC1500000 (phys 0x1500000)
-  Mapped 0xC1600000 (phys 0x1600000)
-  Mapped 0xC1700000 (phys 0x1700000)
-Allocating new page table for directory entry 774
-alloc_page_table: virt=0xC1800000, phys=0x1800000, pd_idx=774
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
-  Allocated PT at phys=0x202000
-  Writing PDE: pd[774] = 0x202003
-  pd[774] now = 0x202003
-  pt_virt = 0xC0202000 (from pd[774]=0x202003)
-  Clearing page table...
-  Filling PTEs: phys=0x1800000 -> virt=0xC1800000
-  Flushing TLB for virt=0xC1800000
-  Done!
-Allocated new page table for directory entry 0xC1800000
-Allocated new page table for directory entry 0xC1800000
-phys_addr is 0x1800000
-virt_addr is 0xC1800000
-pte is 0x0
-  Mapped 0xC1800000 (phys 0x1800000)
-  Mapped 0xC1900000 (phys 0x1900000)
-  Mapped 0xC1A00000 (phys 0x1A00000)
-  Mapped 0xC1B00000 (phys 0x1B00000)
-Allocating new page table for directory entry 775
-alloc_page_table: virt=0xC1C00000, phys=0x1C00000, pd_idx=775
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
-  Allocated PT at phys=0x203000
-  Writing PDE: pd[775] = 0x203003
-  pd[775] now = 0x203003
-  pt_virt = 0xC0203000 (from pd[775]=0x203003)
-  Clearing page table...
-  Filling PTEs: phys=0x1C00000 -> virt=0xC1C00000
-  Flushing TLB for virt=0xC1C00000
-  Done!
-Allocated new page table for directory entry 0xC1C00000
-Allocated new page table for directory entry 0xC1C00000
-phys_addr is 0x1C00000
-virt_addr is 0xC1C00000
-pte is 0x0
-  Mapped 0xC1C00000 (phys 0x1C00000)
-  Mapped 0xC1D00000 (phys 0x1D00000)
-  Mapped 0xC1E00000 (phys 0x1E00000)
-  Mapped 0xC1F00000 (phys 0x1F00000)
-Allocating new page table for directory entry 776
-alloc_page_table: virt=0xC2000000, phys=0x2000000, pd_idx=776
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
-  Allocated PT at phys=0x204000
-  Writing PDE: pd[776] = 0x204003
-  pd[776] now = 0x204003
-  pt_virt = 0xC0204000 (from pd[776]=0x204003)
-  Clearing page table...
-  Filling PTEs: phys=0x2000000 -> virt=0xC2000000
-  Flushing TLB for virt=0xC2000000
-  Done!
-Allocated new page table for directory entry 0xC2000000
-Allocated new page table for directory entry 0xC2000000
-phys_addr is 0x2000000
-virt_addr is 0xC2000000
-pte is 0x0
-  Mapped 0xC2000000 (phys 0x2000000)
-  Mapped 0xC2100000 (phys 0x2100000)
-  Mapped 0xC2200000 (phys 0x2200000)
-  Mapped 0xC2300000 (phys 0x2300000)
-Allocating new page table for directory entry 777
-alloc_page_table: virt=0xC2400000, phys=0x2400000, pd_idx=777
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
-  Allocated PT at phys=0x205000
-  Writing PDE: pd[777] = 0x205003
-  pd[777] now = 0x205003
-  pt_virt = 0xC0205000 (from pd[777]=0x205003)
-  Clearing page table...
-  Filling PTEs: phys=0x2400000 -> virt=0xC2400000
-  Flushing TLB for virt=0xC2400000
-  Done!
-Allocated new page table for directory entry 0xC2400000
-Allocated new page table for directory entry 0xC2400000
-phys_addr is 0x2400000
-virt_addr is 0xC2400000
-pte is 0x0
-  Mapped 0xC2400000 (phys 0x2400000)
-  Mapped 0xC2500000 (phys 0x2500000)
-  Mapped 0xC2600000 (phys 0x2600000)
-  Mapped 0xC2700000 (phys 0x2700000)
-Allocating new page table for directory entry 778
-alloc_page_table: virt=0xC2800000, phys=0x2800000, pd_idx=778
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
-  Allocated PT at phys=0x206000
-  Writing PDE: pd[778] = 0x206003
-  pd[778] now = 0x206003
-  pt_virt = 0xC0206000 (from pd[778]=0x206003)
-  Clearing page table...
-  Filling PTEs: phys=0x2800000 -> virt=0xC2800000
-  Flushing TLB for virt=0xC2800000
-  Done!
-Allocated new page table for directory entry 0xC2800000
-Allocated new page table for directory entry 0xC2800000
-phys_addr is 0x2800000
-virt_addr is 0xC2800000
-pte is 0x0
-  Mapped 0xC2800000 (phys 0x2800000)
-  Mapped 0xC2900000 (phys 0x2900000)
-  Mapped 0xC2A00000 (phys 0x2A00000)
-  Mapped 0xC2B00000 (phys 0x2B00000)
-Allocating new page table for directory entry 779
-alloc_page_table: virt=0xC2C00000, phys=0x2C00000, pd_idx=779
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x207000, virt=0xC0207000
-  Allocated PT at phys=0x207000
-  Writing PDE: pd[779] = 0x207003
-  pd[779] now = 0x207003
-  pt_virt = 0xC0207000 (from pd[779]=0x207003)
-  Clearing page table...
-  Filling PTEs: phys=0x2C00000 -> virt=0xC2C00000
-  Flushing TLB for virt=0xC2C00000
-  Done!
-Allocated new page table for directory entry 0xC2C00000
-Allocated new page table for directory entry 0xC2C00000
-phys_addr is 0x2C00000
-virt_addr is 0xC2C00000
-pte is 0x0
-  Mapped 0xC2C00000 (phys 0x2C00000)
-  Mapped 0xC2D00000 (phys 0x2D00000)
-  Mapped 0xC2E00000 (phys 0x2E00000)
-  Mapped 0xC2F00000 (phys 0x2F00000)
-Buddy system data area mapped successfully
-Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
-Virtual address layout:
-  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
-  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
-    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
-    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
-Multiboot info: mem_lower=639 KB, mem_upper=3144576 KB
-Initializing memory management...
-mm_init: starting memory management initialization
-mm_init: detected 3070 MB physical memory (mem_upper=3144576 KB)
-mm_init: initializing physical memory manager...
-pmm_init: kernel_end_phys=0x3A6000
-pmm_init: placing buddy system data at 16MB (0x1000000)
-pmm_init: page tables will be created on-demand when accessing 0xC1000000+
-pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
-pmm_init: buddy system data structures for 3035 MB:
-  max_blocks=777108, buddy_data_size=11 MB (12435456 bytes)
-pmm_init: buddy_data_virt=0xC1000000 (will be mapped on-demand)
-pmm_init: physical memory manager initialized
-  start: 0x2400000 (36 MB), end: 0xBFF7FFFF (3071 MB)
-  total pages: 777088 (3035 MB)
-pmm_init: initializing buddy system...
-  base_page=9216, managed_pages=777088, max_order=19
-pmm_init: reserving 128 MB for kernel (pages 9216-41983)
-buddy_init: base_page=9216, total_pages=777088, max_order=19
-buddy_init: kernel_reserved_pages=32768 (128 MB)
-buddy_init: using pre-allocated memory at 0xC1000000
-buddy_init: max_blocks=777107, sizeof(buddy_block_t)=12
-buddy_init: blocks_size=9325284, freelists_size=80, nextfree_size=3108428
-buddy_init: buddy_blocks_array=?
-buddy_init: free_lists_array=?
-buddy_init: next_free_array=?
-buddy_init: skipping write test, proceeding to memset...
-buddy_init: before memset free_lists
-buddy_init: before memset next_free
-buddy_init: after memset
-buddy_init: creating initial free blocks
-buddy_init: initialized 1 block (order 19 = 524288 pages)
-buddy_init: SUCCESS - buddy system ready
-pmm_init: buddy system enabled successfully
-mm_init: basic memory detection complete (buddy system disabled)
-mm_init: memory management initialization complete
-Memory management initialized
-c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+BEFCAF60+BEF0AF60 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk...
-Boot failed: could not read the boot disk
-
-Booting from Floppy...
-Boot failed: could not read the boot disk
-
-Booting from DVD/CD...
-[01;01H[2J[02;30HGNU GRUB  version[02;46H[02;47H 2.12[04;02H┌──────────────────────────────────[04;36H[04;37H──────────────────────────[04;62H[04;63H────────────────┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[13;79H[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└───────────────────────────────────────────────────────[18;57H[18;58H─────────────────────┘[20;02H     Use the ↑[20;15H[20;16H and ↓ keys to select which entry is hi[20;54H[20;55Hghlighted.          
-      Press ent[21;15H[21;16Her to boot the selected OS, `e' to edi[21;53H[21;54Ht the commands       
-      before booting or `c' for a command-line.   [22;50H[22;51H                        [05;80H [05;03H[0;30;47m*My OS - Shell Demo                                                         [06;03H[0m My OS - Test Program                                  [06;57H[06;58H                     [07;03H                                                                            [08;03H           [08;13H[08;14H                                                                 [09;03H                    [09;22H[09;23H                                                        [10;03H                       [10;25H[10;26H                                                  [10;75H[10;76H   [11;03H                     [11;23H[11;24H                                                       [12;03H                                                              [12;64H[12;65H              [13;03H                                                                            [14;03H                                                                            [15;03H                           [15;29H[15;30H                                                 [16;03H                              [16;32H[16;33H                                    [16;68H[16;69H          [17;03H                                                                      [17;72H[17;73H      [17;80H 
-
-
-
-
-
-   The highlighted entry will be executed automatically in 5s.        [23;70H[23;71H         [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically[23;55H[23;56H in 4s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- [23;02H  The highlighted entry will [23;30H[23;31Hbe executed automatically in 3s.   [23;65H[23;66H              [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 2s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 1s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be[23;32H[23;33H executed automatically in 0s.                 [01;01H[2J[2J=== Serial initialized ===
-Kernel Booted!
-Physical: 0x100000
-Virtual:  0xC0000000
-cpuid is 0 
-lapicid is 0 
- ---IOAPIC ---
-ioapicid is 0 
-ioapic addr is is 0xFEC00000 
-Highmem mapping initialized
-Identity mapped: 0xC0000000-0xC03FFFFF
-Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...
-Allocating new page table for directory entry 772
-alloc_page_table: virt=0xC1000000, phys=0x1000000, pd_idx=772
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
-  Allocated PT at phys=0x200000
-  Writing PDE: pd[772] = 0x200003
-  pd[772] now = 0x200003
-  pt_virt = 0xC0200000 (from pd[772]=0x200003)
-  Clearing page table...
-  Filling PTEs: phys=0x1000000 -> virt=0xC1000000
-  Flushing TLB for virt=0xC1000000
-  Done!
-Allocated new page table for directory entry 0xC1000000
-Allocated new page table for directory entry 0xC1000000
-phys_addr is 0x1000000
-virt_addr is 0xC1000000
-pte is 0x13
-  Mapped 0xC1000000 (phys 0x1000000)
-  Mapped 0xC1100000 (phys 0x1100000)
-  Mapped 0xC1200000 (phys 0x1200000)
-  Mapped 0xC1300000 (phys 0x1300000)
-Allocating new page table for directory entry 773
-alloc_page_table: virt=0xC1400000, phys=0x1400000, pd_idx=773
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
-  Allocated PT at phys=0x201000
-  Writing PDE: pd[773] = 0x201003
-  pd[773] now = 0x201003
-  pt_virt = 0xC0201000 (from pd[773]=0x201003)
-  Clearing page table...
-  Filling PTEs: phys=0x1400000 -> virt=0xC1400000
-  Flushing TLB for virt=0xC1400000
-  Done!
-Allocated new page table for directory entry 0xC1400000
-Allocated new page table for directory entry 0xC1400000
-phys_addr is 0x1400000
-virt_addr is 0xC1400000
-pte is 0x0
-  Mapped 0xC1400000 (phys 0x1400000)
-  Mapped 0xC1500000 (phys 0x1500000)
-  Mapped 0xC1600000 (phys 0x1600000)
-  Mapped 0xC1700000 (phys 0x1700000)
-Allocating new page table for directory entry 774
-alloc_page_table: virt=0xC1800000, phys=0x1800000, pd_idx=774
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
-  Allocated PT at phys=0x202000
-  Writing PDE: pd[774] = 0x202003
-  pd[774] now = 0x202003
-  pt_virt = 0xC0202000 (from pd[774]=0x202003)
-  Clearing page table...
-  Filling PTEs: phys=0x1800000 -> virt=0xC1800000
-  Flushing TLB for virt=0xC1800000
-  Done!
-Allocated new page table for directory entry 0xC1800000
-Allocated new page table for directory entry 0xC1800000
-phys_addr is 0x1800000
-virt_addr is 0xC1800000
-pte is 0x0
-  Mapped 0xC1800000 (phys 0x1800000)
-  Mapped 0xC1900000 (phys 0x1900000)
-  Mapped 0xC1A00000 (phys 0x1A00000)
-  Mapped 0xC1B00000 (phys 0x1B00000)
-Allocating new page table for directory entry 775
-alloc_page_table: virt=0xC1C00000, phys=0x1C00000, pd_idx=775
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
-  Allocated PT at phys=0x203000
-  Writing PDE: pd[775] = 0x203003
-  pd[775] now = 0x203003
-  pt_virt = 0xC0203000 (from pd[775]=0x203003)
-  Clearing page table...
-  Filling PTEs: phys=0x1C00000 -> virt=0xC1C00000
-  Flushing TLB for virt=0xC1C00000
-  Done!
-Allocated new page table for directory entry 0xC1C00000
-Allocated new page table for directory entry 0xC1C00000
-phys_addr is 0x1C00000
-virt_addr is 0xC1C00000
-pte is 0x0
-  Mapped 0xC1C00000 (phys 0x1C00000)
-  Mapped 0xC1D00000 (phys 0x1D00000)
-  Mapped 0xC1E00000 (phys 0x1E00000)
-  Mapped 0xC1F00000 (phys 0x1F00000)
-Allocating new page table for directory entry 776
-alloc_page_table: virt=0xC2000000, phys=0x2000000, pd_idx=776
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
-  Allocated PT at phys=0x204000
-  Writing PDE: pd[776] = 0x204003
-  pd[776] now = 0x204003
-  pt_virt = 0xC0204000 (from pd[776]=0x204003)
-  Clearing page table...
-  Filling PTEs: phys=0x2000000 -> virt=0xC2000000
-  Flushing TLB for virt=0xC2000000
-  Done!
-Allocated new page table for directory entry 0xC2000000
-Allocated new page table for directory entry 0xC2000000
-phys_addr is 0x2000000
-virt_addr is 0xC2000000
-pte is 0x0
-  Mapped 0xC2000000 (phys 0x2000000)
-  Mapped 0xC2100000 (phys 0x2100000)
-  Mapped 0xC2200000 (phys 0x2200000)
-  Mapped 0xC2300000 (phys 0x2300000)
-Allocating new page table for directory entry 777
-alloc_page_table: virt=0xC2400000, phys=0x2400000, pd_idx=777
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
-  Allocated PT at phys=0x205000
-  Writing PDE: pd[777] = 0x205003
-  pd[777] now = 0x205003
-  pt_virt = 0xC0205000 (from pd[777]=0x205003)
-  Clearing page table...
-  Filling PTEs: phys=0x2400000 -> virt=0xC2400000
-  Flushing TLB for virt=0xC2400000
-  Done!
-Allocated new page table for directory entry 0xC2400000
-Allocated new page table for directory entry 0xC2400000
-phys_addr is 0x2400000
-virt_addr is 0xC2400000
-pte is 0x0
-  Mapped 0xC2400000 (phys 0x2400000)
-  Mapped 0xC2500000 (phys 0x2500000)
-  Mapped 0xC2600000 (phys 0x2600000)
-  Mapped 0xC2700000 (phys 0x2700000)
-Allocating new page table for directory entry 778
-alloc_page_table: virt=0xC2800000, phys=0x2800000, pd_idx=778
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
-  Allocated PT at phys=0x206000
-  Writing PDE: pd[778] = 0x206003
-  pd[778] now = 0x206003
-  pt_virt = 0xC0206000 (from pd[778]=0x206003)
-  Clearing page table...
-  Filling PTEs: phys=0x2800000 -> virt=0xC2800000
-  Flushing TLB for virt=0xC2800000
-  Done!
-Allocated new page table for directory entry 0xC2800000
-Allocated new page table for directory entry 0xC2800000
-phys_addr is 0x2800000
-virt_addr is 0xC2800000
-pte is 0x0
-  Mapped 0xC2800000 (phys 0x2800000)
-  Mapped 0xC2900000 (phys 0x2900000)
-  Mapped 0xC2A00000 (phys 0x2A00000)
-  Mapped 0xC2B00000 (phys 0x2B00000)
-Allocating new page table for directory entry 779
-alloc_page_table: virt=0xC2C00000, phys=0x2C00000, pd_idx=779
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x207000, virt=0xC0207000
-  Allocated PT at phys=0x207000
-  Writing PDE: pd[779] = 0x207003
-  pd[779] now = 0x207003
-  pt_virt = 0xC0207000 (from pd[779]=0x207003)
-  Clearing page table...
-  Filling PTEs: phys=0x2C00000 -> virt=0xC2C00000
-  Flushing TLB for virt=0xC2C00000
-  Done!
-Allocated new page table for directory entry 0xC2C00000
-Allocated new page table for directory entry 0xC2C00000
-phys_addr is 0x2C00000
-virt_addr is 0xC2C00000
-pte is 0x0
-  Mapped 0xC2C00000 (phys 0x2C00000)
-  Mapped 0xC2D00000 (phys 0x2D00000)
-  Mapped 0xC2E00000 (phys 0x2E00000)
-  Mapped 0xC2F00000 (phys 0x2F00000)
-Buddy system data area mapped successfully
-Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
-Virtual address layout:
-  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
-  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
-    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
-    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
-Multiboot info: mem_lower=639 KB, mem_upper=3144576 KB
-Initializing memory management...
-mm_init: starting memory management initialization
-mm_init: detected 3070 MB physical memory (mem_upper=3144576 KB)
-mm_init: initializing physical memory manager...
-pmm_init: kernel_end_phys=0x3A6000
-pmm_init: placing buddy system data at 16MB (0x1000000)
-pmm_init: page tables will be created on-demand when accessing 0xC1000000+
-pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
-pmm_init: buddy system data structures for 3035 MB:
-  max_blocks=777108, buddy_data_size=11 MB (12435456 bytes)
-pmm_init: buddy_data_virt=0xC1000000 (will be mapped on-demand)
-pmm_init: physical memory manager initialized
-  start: 0x2400000 (36 MB), end: 0xBFF7FFFF (3071 MB)
-  total pages: 777088 (3035 MB)
-pmm_init: initializing buddy system...
-  base_page=9216, managed_pages=777088, max_order=19
-pmm_init: reserving 128 MB for kernel (pages 9216-41983)
-buddy_init: base_page=9216, total_pages=777088, max_order=19
-buddy_init: kernel_reserved_pages=32768 (128 MB)
-buddy_init: using pre-allocated memory at 0xC1000000
-buddy_init: max_blocks=777107, sizeof(buddy_block_t)=12
-buddy_init: blocks_size=9325284, freelists_size=80, nextfree_size=3108428
-buddy_init: buddy_blocks_array=?
-buddy_init: free_lists_array=?
-buddy_init: next_free_array=?
-buddy_init: skipping write test, proceeding to memset...
-buddy_init: before memset free_lists
-buddy_init: before memset next_free
-buddy_init: after memset
-buddy_init: creating initial free blocks
-buddy_init: initialized 1 block (order 19 = 524288 pages)
-buddy_init: SUCCESS - buddy system ready
-pmm_init: buddy system enabled successfully
-mm_init: basic memory detection complete (buddy system disabled)
-mm_init: memory management initialization complete
-Memory management initialized
-c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+BEFCAF60+BEF0AF60 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk...
-Boot failed: could not read the boot disk
-
-Booting from Floppy...
-Boot failed: could not read the boot disk
-
-Booting from DVD/CD...
-[01;01H[2J[02;30HGNU GRUB  version 2.12[04;02H┌────────────────────────────────────────────────────────────────────────────┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└───────────────────────────[18;29H[18;30H─────────────────────────────────────────────────┘[20;02H     Use the ↑ and ↓ keys to select which entry is highlighted.          
-      Press enter to boot the selected O[21;40H[21;41HS, `e' to edit the commands       
-      before booting or `c' for a comm[22;38H[22;39Hand-line.                           [05;80H [05;03H[0;30;47m*My OS - Shell Demo                [05;37H[05;38H                                         [06;03H[0m My OS - Test Program                                                       [07;03H                        [07;26H[07;27H                                         [07;67H[07;68H           [08;03H                          [08;28H[08;29H                                                  [09;03H                                                                            [10;03H                                                                          [10;76H[10;77H  [11;03H                                                                            [12;03H                                                              [12;64H[12;65H              [13;03H                                                                            [14;03H                                                            [14;62H[14;63H                [15;03H    [15;06H[15;07H                                 [15;39H[15;40H                                       [16;03H                             [16;31H[16;32H                                               [17;03H                                         [17;43H[17;44H                                   [17;78H[17;80H 
-
-
-
-
-
-   The highlighted entry will be execute[23;40H[23;41Hd automatically in 5s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be execute[23;40H[23;41Hd automatically in 4s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The [23;07H[23;08Hhighlighted entry will be [23;33H[23;34Hexecuted automatically in 3s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 2s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry wil[23;28H[23;29Hl be executed automatically in 1s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 0s.         [23;71H[23;72H        [01;01H[2J[2J=== Serial initialized ===
-Kernel Booted!
-Physical: 0x100000
-Virtual:  0xC0000000
-cpuid is 0 
-lapicid is 0 
- ---IOAPIC ---
-ioapicid is 0 
-ioapic addr is is 0xFEC00000 
-Highmem mapping initialized
-Identity mapped: 0xC0000000-0xC03FFFFF
-Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...
-Allocating new page table for directory entry 772
-alloc_page_table: virt=0xC1000000, phys=0x1000000, pd_idx=772
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
-  Allocated PT at phys=0x200000
-  Writing PDE: pd[772] = 0x200003
-  pd[772] now = 0x200003
-  pt_virt = 0xC0200000 (from pd[772]=0x200003)
-  Clearing page table...
-  Filling PTEs: phys=0x1000000 -> virt=0xC1000000
-  Flushing TLB for virt=0xC1000000
-  Done!
-Allocated new page table for directory entry 0xC1000000
-Allocated new page table for directory entry 0xC1000000
-phys_addr is 0x1000000
-virt_addr is 0xC1000000
-pte is 0x13
-  Mapped 0xC1000000 (phys 0x1000000)
-  Mapped 0xC1100000 (phys 0x1100000)
-  Mapped 0xC1200000 (phys 0x1200000)
-  Mapped 0xC1300000 (phys 0x1300000)
-Allocating new page table for directory entry 773
-alloc_page_table: virt=0xC1400000, phys=0x1400000, pd_idx=773
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
-  Allocated PT at phys=0x201000
-  Writing PDE: pd[773] = 0x201003
-  pd[773] now = 0x201003
-  pt_virt = 0xC0201000 (from pd[773]=0x201003)
-  Clearing page table...
-  Filling PTEs: phys=0x1400000 -> virt=0xC1400000
-  Flushing TLB for virt=0xC1400000
-  Done!
-Allocated new page table for directory entry 0xC1400000
-Allocated new page table for directory entry 0xC1400000
-phys_addr is 0x1400000
-virt_addr is 0xC1400000
-pte is 0x0
-  Mapped 0xC1400000 (phys 0x1400000)
-  Mapped 0xC1500000 (phys 0x1500000)
-  Mapped 0xC1600000 (phys 0x1600000)
-  Mapped 0xC1700000 (phys 0x1700000)
-Allocating new page table for directory entry 774
-alloc_page_table: virt=0xC1800000, phys=0x1800000, pd_idx=774
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
-  Allocated PT at phys=0x202000
-  Writing PDE: pd[774] = 0x202003
-  pd[774] now = 0x202003
-  pt_virt = 0xC0202000 (from pd[774]=0x202003)
-  Clearing page table...
-  Filling PTEs: phys=0x1800000 -> virt=0xC1800000
-  Flushing TLB for virt=0xC1800000
-  Done!
-Allocated new page table for directory entry 0xC1800000
-Allocated new page table for directory entry 0xC1800000
-phys_addr is 0x1800000
-virt_addr is 0xC1800000
-pte is 0x0
-  Mapped 0xC1800000 (phys 0x1800000)
-  Mapped 0xC1900000 (phys 0x1900000)
-  Mapped 0xC1A00000 (phys 0x1A00000)
-  Mapped 0xC1B00000 (phys 0x1B00000)
-Allocating new page table for directory entry 775
-alloc_page_table: virt=0xC1C00000, phys=0x1C00000, pd_idx=775
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
-  Allocated PT at phys=0x203000
-  Writing PDE: pd[775] = 0x203003
-  pd[775] now = 0x203003
-  pt_virt = 0xC0203000 (from pd[775]=0x203003)
-  Clearing page table...
-  Filling PTEs: phys=0x1C00000 -> virt=0xC1C00000
-  Flushing TLB for virt=0xC1C00000
-  Done!
-Allocated new page table for directory entry 0xC1C00000
-Allocated new page table for directory entry 0xC1C00000
-phys_addr is 0x1C00000
-virt_addr is 0xC1C00000
-pte is 0x0
-  Mapped 0xC1C00000 (phys 0x1C00000)
-  Mapped 0xC1D00000 (phys 0x1D00000)
-  Mapped 0xC1E00000 (phys 0x1E00000)
-  Mapped 0xC1F00000 (phys 0x1F00000)
-Allocating new page table for directory entry 776
-alloc_page_table: virt=0xC2000000, phys=0x2000000, pd_idx=776
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
-  Allocated PT at phys=0x204000
-  Writing PDE: pd[776] = 0x204003
-  pd[776] now = 0x204003
-  pt_virt = 0xC0204000 (from pd[776]=0x204003)
-  Clearing page table...
-  Filling PTEs: phys=0x2000000 -> virt=0xC2000000
-  Flushing TLB for virt=0xC2000000
-  Done!
-Allocated new page table for directory entry 0xC2000000
-Allocated new page table for directory entry 0xC2000000
-phys_addr is 0x2000000
-virt_addr is 0xC2000000
-pte is 0x0
-  Mapped 0xC2000000 (phys 0x2000000)
-  Mapped 0xC2100000 (phys 0x2100000)
-  Mapped 0xC2200000 (phys 0x2200000)
-  Mapped 0xC2300000 (phys 0x2300000)
-Allocating new page table for directory entry 777
-alloc_page_table: virt=0xC2400000, phys=0x2400000, pd_idx=777
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
-  Allocated PT at phys=0x205000
-  Writing PDE: pd[777] = 0x205003
-  pd[777] now = 0x205003
-  pt_virt = 0xC0205000 (from pd[777]=0x205003)
-  Clearing page table...
-  Filling PTEs: phys=0x2400000 -> virt=0xC2400000
-  Flushing TLB for virt=0xC2400000
-  Done!
-Allocated new page table for directory entry 0xC2400000
-Allocated new page table for directory entry 0xC2400000
-phys_addr is 0x2400000
-virt_addr is 0xC2400000
-pte is 0x0
-  Mapped 0xC2400000 (phys 0x2400000)
-  Mapped 0xC2500000 (phys 0x2500000)
-  Mapped 0xC2600000 (phys 0x2600000)
-  Mapped 0xC2700000 (phys 0x2700000)
-Allocating new page table for directory entry 778
-alloc_page_table: virt=0xC2800000, phys=0x2800000, pd_idx=778
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
-  Allocated PT at phys=0x206000
-  Writing PDE: pd[778] = 0x206003
-  pd[778] now = 0x206003
-  pt_virt = 0xC0206000 (from pd[778]=0x206003)
-  Clearing page table...
-  Filling PTEs: phys=0x2800000 -> virt=0xC2800000
-  Flushing TLB for virt=0xC2800000
-  Done!
-Allocated new page table for directory entry 0xC2800000
-Allocated new page table for directory entry 0xC2800000
-phys_addr is 0x2800000
-virt_addr is 0xC2800000
-pte is 0x0
-  Mapped 0xC2800000 (phys 0x2800000)
-  Mapped 0xC2900000 (phys 0x2900000)
-  Mapped 0xC2A00000 (phys 0x2A00000)
-  Mapped 0xC2B00000 (phys 0x2B00000)
-Allocating new page table for directory entry 779
-alloc_page_table: virt=0xC2C00000, phys=0x2C00000, pd_idx=779
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x207000, virt=0xC0207000
-  Allocated PT at phys=0x207000
-  Writing PDE: pd[779] = 0x207003
-  pd[779] now = 0x207003
-  pt_virt = 0xC0207000 (from pd[779]=0x207003)
-  Clearing page table...
-  Filling PTEs: phys=0x2C00000 -> virt=0xC2C00000
-  Flushing TLB for virt=0xC2C00000
-  Done!
-Allocated new page table for directory entry 0xC2C00000
-Allocated new page table for directory entry 0xC2C00000
-phys_addr is 0x2C00000
-virt_addr is 0xC2C00000
-pte is 0x0
-  Mapped 0xC2C00000 (phys 0x2C00000)
-  Mapped 0xC2D00000 (phys 0x2D00000)
-  Mapped 0xC2E00000 (phys 0x2E00000)
-  Mapped 0xC2F00000 (phys 0x2F00000)
-Buddy system data area mapped successfully
-Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
-Virtual address layout:
-  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
-  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
-    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
-    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
-Multiboot info: mem_lower=639 KB, mem_upper=3144576 KB
-Initializing memory management...
-mm_init: starting memory management initialization
-mm_init: detected 3070 MB physical memory (mem_upper=3144576 KB)
-mm_init: initializing physical memory manager...
-pmm_init: kernel_end_phys=0x3A6000
-pmm_init: placing buddy system data at 16MB (0x1000000)
-pmm_init: page tables will be created on-demand when accessing 0xC1000000+
-pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
-pmm_init: buddy system data structures for 3035 MB:
-  max_blocks=777108, buddy_data_size=11 MB (12435456 bytes)
-pmm_init: buddy_data_virt=0xC1000000 (will be mapped on-demand)
-pmm_init: physical memory manager initialized
-  start: 0x2400000 (36 MB), end: 0xBFF7FFFF (3071 MB)
-  total pages: 777088 (3035 MB)
-pmm_init: initializing buddy system...
-  base_page=9216, managed_pages=777088, max_order=19
-pmm_init: reserving 128 MB for kernel (pages 9216-41983)
-buddy_init: base_page=9216, total_pages=777088, max_order=19
-buddy_init: kernel_reserved_pages=32768 (128 MB)
-buddy_init: using pre-allocated memory at 0xC1000000
-buddy_init: max_blocks=777107, sizeof(buddy_block_t)=12
-buddy_init: blocks_size=9325284, freelists_size=80, nextfree_size=3108428
-buddy_init: buddy_blocks_array=?
-buddy_init: free_lists_array=?
-buddy_init: next_free_array=?
-buddy_init: skipping write test, proceeding to memset...
-buddy_init: before memset free_lists
-buddy_init: before memset next_free
-buddy_init: after memset
-buddy_init: creating initial free blocks
-buddy_init: initialized 1 block (order 19 = 524288 pages)
-buddy_init: SUCCESS - buddy system ready
-pmm_init: buddy system enabled successfully
-mm_init: basic memory detection complete (buddy system disabled)
-mm_init: memory management initialization complete
-Memory management initialized
-c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+BEFCAF60+BEF0AF60 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk...
-Boot failed: could not read the boot disk
-
-Booting from Floppy...
-Boot failed: could not read the boot disk
-
-Booting from DVD/CD...
-[01;01H[2J[02;30HGNU GRUB  version 2.12[04;02H┌────────────────────────────────────────────────────────────────────────────┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└────────────────────────────────────────────────────────────────────────────┘[20;02H     Use the ↑ and ↓ keys to select which entry is highlighted.          
-      Press enter to boot the selected OS, `e[21;45H[21;46H' to edit the commands       
-      before booting or `c' for a command-line.                           [05;80H [05;03H[0;30;47m*My OS - Shell Demo                                                      [05;75H[05;76H   [06;03H[0m My OS - Test Program                                                  [06;73H[06;74H     [07;03H                                                                          [07;76H[07;77H  [08;03H                          [08;28H[08;29H                                      [08;66H[08;67H            [09;03H                                                                            [10;03H              [10;16H[10;17H                                                              [11;03H                                                       [11;57H[11;58H                     [12;03H                                                                            [13;03H [13;03H[13;04H                                                                        [13;75H[13;76H   [14;03H                                                                            [15;03H                                                                     [15;71H[15;72H       [16;03H           [16;13H[16;14H                         [16;38H[16;39H                                        [17;03H                                                                            [17;80H 
-
-
-
-
-
-  [23;02H[23;03H The highlighted entry will be executed automatical[23;53H[23;54Hly in 5s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically i[23;57H[23;58Hn 4s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 3s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 2s.                 [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 1s.     [23;67H[23;68H            [05;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be e[23;34H[23;35Hxecuted automatically in 0s.                 [01;01H[2J[2Jqemu-system-i386: terminating on signal 15 from pid 10419 (timeout)

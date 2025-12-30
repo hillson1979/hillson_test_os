@@ -77,7 +77,9 @@ void tss_init()
     */
     printf("TSS init: addr=0x%x, ESP0=0x%x\n", &tss, tss.esp0);
     printf("TSS init:selector=0x%x \n", SEG_TSS << 3);
-    //ltr(SEG_TSS << 3);
-    //uint16_t tss_selector = SEG_TSS << 3;
-    //asm volatile("ltr %0" : : "r"(tss_selector));
+
+    // 加载 TSS 到任务寄存器（重要！）
+    uint16_t tss_selector = SEG_TSS << 3;
+    asm volatile("ltr %0" : : "r"(tss_selector));
+    printf("TSS loaded into task register\n");
 }

@@ -28,6 +28,9 @@ SYSCALL sys_exit, 2
 SYSCALL sys_yield, 3
 SYSCALL sys_get_mem_stats, 4
 SYSCALL sys_read_mem, 5
+SYSCALL sys_getchar, 6          # 新增：读取单个字符
+SYSCALL sys_kbhit, 7            # 新增：检查是否有按键
+SYSCALL sys_putchar, 8          # 新增：输出单个字符
 
     .att_syntax prefix
 

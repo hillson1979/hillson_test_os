@@ -62,8 +62,7 @@ void alltraps2(void) {
         "movw %%ax, %%gs\n\t" //
 
         // --- 4. 调用 C 层处理函数 ---
-        //"movl %%esp, %%eax\n\t" // leal 4(%esp), %eax
-        "leal 4(%%esp), %%eax\n\t"
+        "movl %%esp, %%eax\n\t"       // 参数 tf = 当前 esp (指向 trapframe 的 trapno 字段)
         "pushl %%eax\n\t"             // 参数 tf = 当前 esp
         "call do_irq_handler\n\t"
         //"addl $4, %%esp\n\t"          // 弹出参数
@@ -74,10 +73,10 @@ void alltraps2(void) {
         "popl %%fs\n\t"
         "popl %%es\n\t"
         "popl %%ds\n\t"
-        
-        // --- 6. 丢弃 trapno + errcode ---
+
+        // --- 6. 弹出 trapno 和 errcode (总是 8 字节) ---
         "addl $8, %%esp\n\t"
-        
+
         // --- 7. 从中断返回 ---
         "iret\n\t"
         :
@@ -93,7 +92,11 @@ extern int need_resched;
 // 声明中断处理函数
 void handle_divide_error(struct trapframe *tf){};
 //void handle_page_fault(struct trapframe *tf){};
-void handle_timer_interrupt(struct trapframe *tf){};
+void handle_timer_interrupt(struct trapframe *tf){
+    // 简单的时钟中断处理 - 只增加计数器
+    extern uint32_t ticks;
+    ticks++;
+};
 void handle_keyboard_interrupt(struct trapframe *tf){
 printf("enter keyboard interrupt---\n");
 
@@ -195,15 +198,17 @@ void handle_page_fault_(struct trapframe *tf) {
 // 中断处理主函数
 void do_irq_handler(struct trapframe *tf) {
 
-    /*printf("DBG tf=%x rawstack:\n", tf);
-    for (int i = 0; i < 20; ++i) {
-       printf("  [%d] 0x%x\n", i, ((uint32_t*)tf)[i]);
-    }*/
+    // 调试:打印地址和值
+    // printf("[IRQ] tf=%p, &tf->eax=%p, tf->eax=%d\n", tf, &tf->eax, tf->eax);
+    // printf("  &tf->ecx=%p, tf->ecx=%d\n", &tf->ecx, tf->ecx);
+    // printf("  &tf->trapno=%p, tf->trapno=%d\n", &tf->trapno, tf->trapno);
 
     // 1. 调试信息：打印中断基本信息
-    //printf("Interrupt: trapno=%d, err=%d, eip=0x%x, cs=0x%x\n",tf->trapno, tf->err, tf->eip, tf->cs);
-    
+    // printf("[IRQ] trapno=%d (0x%x), err=%d, eip=0x%x, cs=0x%x\n",tf->trapno, tf->trapno, tf->err, tf->eip, tf->cs);
+
     if(tf->trapno == T_SYSCALL){
+        // 额外调试:直接打印EAX的值
+        // printf("[IRQ T_SYSCALL] eax=%d\n", tf->eax);
         syscall_dispatch(tf);
         return;
      }
@@ -232,10 +237,26 @@ void do_irq_handler(struct trapframe *tf) {
             lapiceoi();
             break;
         case 33: // 键盘中断（IRQ1）
-            handle_keyboard_interrupt(tf);
+            // 调用键盘驱动处理程序
+            extern void keyboard_handler(void);
+            keyboard_handler();
             send_eoi(1);  // 发送EOI
             break; 
         // ... 其他中断类型 ...
+        case 13: // GP Fault - 打印详细信息以便调试
+            printf("\n=== GP Fault ===\n");
+            printf("EIP=0x%x CS=0x%x\n", tf->eip, tf->cs);
+            printf("EAX=0x%x EBX=0x%x ECX=0x%x EDX=0x%x\n", tf->eax, tf->ebx, tf->ecx, tf->edx);
+            printf("ESI=0x%x EDI=0x%x EBP=0x%x ESP=0x%x\n", tf->esi, tf->edi, tf->ebp, tf->esp);
+            printf("DS=0x%x ES=0x%x FS=0x%x GS=0x%x\n", tf->ds, tf->es, tf->fs, tf->gs);
+            printf("EFLAGS=0x%x\n", tf->eflags);
+            printf("trapno=%d err=%d\n", tf->trapno, tf->err);
+            printf("==================\n");
+            // 停止系统,避免无限循环
+            while(1) {
+                __asm__ volatile("hlt");
+            }
+            break;
         default:
             printf("Unhandled interrupt: trapno=%d\n", tf->trapno);
             // 外部中断需要发送EOI，避免阻塞

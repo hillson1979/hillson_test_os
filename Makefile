@@ -17,6 +17,7 @@ INCLUDES = -I./include
 
 # 源文件
 C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c
+C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += mm/buddy.c  # 启用 Buddy System（减小了 MAX_BUDDY_BLOCKS）
 C_SOURCES += mm/test_memory.c  # 启用内存测试
 # C_SOURCES += mm/slab.c  # 暂时禁用 Slab 分配器

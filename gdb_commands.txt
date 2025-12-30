@@ -1,5 +1,0 @@
-target remote localhost:1234
-set architecture i8086
-break load_module_to_user
-break task_to_user_mode
-continue

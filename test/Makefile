@@ -14,8 +14,8 @@ LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ts.ld
 # 目标文件
 TARGET = shell_demo.elf
 
-# 源文件
-SOURCE = simple_shell.c
+# 源文件 - 使用简化的交互式 shell
+SOURCE = simple_interactive_shell.c
 ASM_SOURCE = syscall_entry.S
 OBJECT = $(SOURCE:.c=.o) $(ASM_SOURCE:.S=.o)
 
