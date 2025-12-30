@@ -1,5 +1,7 @@
 .text
 .global interrupt_exit
+.extern need_resched
+.extern schedule
 interrupt_exit:
 
     #; 对应 push eax，调用结束恢复栈
@@ -7,6 +9,15 @@ interrupt_exit:
 
     #; 调用信号处理函数
     #call default_signal_handler #task_signal
+
+    #; 检查是否需要调度
+    cmpl $0, need_resched
+    je 1f
+    #; 需要调度，调用调度器
+    call schedule
+    #; 清除调度标志
+    movl $0, need_resched
+1:
 
     #; 恢复下文寄存器信息
     popa
