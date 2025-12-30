@@ -152,10 +152,13 @@ void syscall_dispatch(struct trapframe *tf) {
             printf("[user] exit code=%d\n", arg1);
             tf->eax = 0;
             break;
-        case SYS_YIELD:
+        case SYS_YIELD: {
             // 让出CPU,调度其他任务
+            extern int need_resched;
+            need_resched = 1;
             tf->eax = 0;
             break;
+        }
         case SYS_GET_MEM_STATS: {
             // 获取内存统计
             extern uint32_t buddy_get_total_pages(void);

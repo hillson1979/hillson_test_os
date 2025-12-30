@@ -92,10 +92,26 @@ extern int need_resched;
 // 声明中断处理函数
 void handle_divide_error(struct trapframe *tf){};
 //void handle_page_fault(struct trapframe *tf){};
+// 时钟中断计数器
+static uint32_t timer_ticks = 0;
+#define TIME_SLICE 10  // 每10个时钟中断触发一次调度
+
 void handle_timer_interrupt(struct trapframe *tf){
-    // 简单的时钟中断处理 - 只增加计数器
     extern uint32_t ticks;
     ticks++;
+    timer_ticks++;
+
+    // 每个时间片检查是否需要调度
+    if (timer_ticks >= TIME_SLICE) {
+        timer_ticks = 0;
+
+        // 设置需要重新调度标志
+        extern int need_resched;
+        need_resched = 1;
+
+        // 注意：实际的调度会在中断返回后发生
+        // 这样可以避免在中断处理函数中直接调度
+    }
 };
 void handle_keyboard_interrupt(struct trapframe *tf){
 printf("enter keyboard interrupt---\n");

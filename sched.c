@@ -2,13 +2,16 @@
 //#include "llist.h"
 #include "task.h"
 #include "sched.h"
+#include "segment.h"  // 添加 segment.h 以获取 TSS 和段定义
+#include "x86/mmu.h"  // 添加段定义
+#include "lapic.h"    // 添加 logical_cpu_id
 
 #ifndef U64_MAX
 #define U64_MAX 0xFFFFFFFFFFFFFFFFULL
 #endif
 extern void
 llist_delete(struct llist_header* elem);
-extern task_t* current_task;
+extern task_t* current_task[];  // 修正为数组类型
 // 类似Linux的权重计算：nice值每变化1，权重变化约10%
  int prio_to_weight[40] = {
         /* -20 */ 88761, 71755, 56483, 46273, 36291,
@@ -157,53 +160,6 @@ check_sleepers()
 
 }
 
-static struct task_t *pick_next_task() 
-{
-    // 禁用抢占，保护调度过程
-    no_preemption();
-
-    // 如果当前任务仍然可运行，将其状态设置为就绪
-    if (current_task->state == PS_RUNNING) {
-        current_task->state = PS_READY;
-    }
-
-    // 检查是否有睡眠任务需要唤醒
-    check_sleepers();
-
-    // round-robin 调度算法
-    struct task_t* current = current_task;
-    struct task_t* to_check = current;
-    bool found = false;
-    
-    // 遍历任务列表寻找可调度任务
-    do {
-        to_check = list_next(to_check->sched_node, llist_header_t, next);
-
-        if (can_schedule(to_check)) {
-            found = true;
-            break;
-        }
-
-        // 如果遍历完所有任务都没有找到可调度的
-        if (to_check == current) {
-            break;
-        }
-
-    } while (1);
-
-    // 如果没有找到可调度任务，返回空闲任务或当前任务
-    if (!found) {
-        // 可以选择返回空闲任务而不是当前任务
-        // to_check = idle_task;
-        printf("Warning: No runnable threads found!\n");
-    }
-
-    // 恢复抢占
-    enable_preemption();
-    
-    return to_check;
-}
-
 // 简单的时间片分配，基于nice值
 unsigned int get_time_slice(struct task_t *task)
 {
@@ -258,81 +214,108 @@ static struct task_t* get_first_task(void)
 }
 
 
-static struct task_t *pick_next_task_cfs() 
+// 简化的轮转调度器 - 选择下一个就绪任务
+static struct task_t *pick_next_task_cfs()
 {
-    no_preemption();
+    uint8_t cpu_id = logical_cpu_id();
+    struct task_t *current = current_task[cpu_id];
+    struct task_t *next = NULL;
 
-    if (current_task->state == PS_RUNNING) {
-        current_task->state = PS_READY;
-        update_vruntime(current_task);
+    if (!current) {
+        return NULL;
     }
 
-    check_sleepers();
-
-    struct task_t* next_task = NULL;
-    struct task_t* best_task = NULL;
-    uint64_t min_vruntime = U64_MAX;
-    
-    // 遍历所有任务寻找最优候选
-    struct task_t* pos = get_first_task();
-    if (!pos) {
-        goto done;
+    // 如果当前任务正在运行，标记为就绪
+    if (current->state == PS_RUNNING) {
+        current->state = PS_READY;
     }
-    
-    struct task_t* start = pos;
-    
-    do {
-        // 检查任务是否可运行
-        if ((pos->state == PS_READY || pos->idle_flags == 1) && 
-            can_schedule(pos)) {
-            
-            // 更新最小虚拟运行时间任务
-            if (pos->vruntime < min_vruntime) {
-                min_vruntime = pos->vruntime;
-                best_task = pos;
-            }
+
+    // 简单的轮转：从任务链表中找下一个就绪任务
+    next = current->next;
+    while (next != NULL && next != current) {
+        if (next->state == PS_READY && can_schedule(next)) {
+            break;
         }
-        
-        pos = list_next(pos->sched_node, struct llist_header, next);
-    } while (pos && pos != start);
-
-done:
-    next_task = best_task ? best_task : current_task;
-    
-    if (!best_task) {
-        printf("No better task found, keeping current\n");
+        next = next->next;
     }
 
-    enable_preemption();
-    return next_task;
+    // 如果没找到其他就绪任务，保持当前任务
+    if (next == current || next == NULL) {
+        next = current;
+    }
+
+    return next;
 }
 
 //schedule() 调用一次 pick_next_task
 void schedule(void) {
     struct task_t *prev, *next;
-    uint32_t flags; 
-    
+    uint32_t flags;
+    uint8_t cpu_id = logical_cpu_id();
+
     /* 保护临界区 */
     __asm__ __volatile__("pushfl; popl %0; cli" : "=r"(flags));
-    prev =current_task ;
-    
-    //调用一次决策函数，选出下一个任务 
-    next = pick_next_task_cfs(); 
-    task_setrun(next);
-    
-   
-    if (prev == next) {
-        // ... 处理一些边界情况，然后可能直接解锁返回...
+
+    prev = current_task[cpu_id];
+    if (!prev) {
+        printf("[schedule] No current task!\n");
+        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
         return;
     }
+
+    //调用一次决策函数，选出下一个任务
+    next = pick_next_task_cfs();
+    if (!next) {
+        printf("[schedule] No next task available!\n");
+        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
+        return;
+    }
+
+    task_setrun(next);
+
+    if (prev == next) {
+        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
+        return;
+    }
+
+    printf("[schedule] CPU%d: switch from task_%d to task_%d\n",
+           cpu_id, prev->pid, next->pid);
+
     /* 恢复中断并执行上下文切换 */
     __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
     switch_to(prev, next);// 执行实际的上下文切换
 }
 
-static inline void  switch_to(struct task_t *prev,struct task_t *next) {
-    asm volatile("jmp switch_to\n");
-    //unreachable;
+// 外部汇编函数 - 实际的上下文切换
+extern void context_switch(struct task_t *prev, struct task_t *next);
+
+static inline void switch_to(struct task_t *prev, struct task_t *next) {
+    if (prev == next) {
+        return;  // 不需要切换
+    }
+
+    // 保存当前任务的内核栈指针
+    uint32_t saved_esp;
+    asm volatile("movl %%esp, %0" : "=r"(saved_esp));
+    prev->esp = saved_esp;
+
+    // 切换页表（如果需要）
+    if (prev->pde != next->pde) {
+        asm volatile("movl %0, %%cr3" : : "r"(next->pde) : "memory");
+    }
+
+    // 恢复下一个任务的内核栈指针
+    asm volatile("movl %0, %%esp" : : "r"(next->esp));
+
+    // 更新全局当前任务指针
+    current_task[next->cpu] = next;
+
+    // 更新 TSS.esp0
+    extern struct tss_t tss;
+    tss.ss0 = SEG_KDATA << 3;
+    tss.esp0 = (uint32_t)next->kstack;
+
+    // 注意：实际的寄存器恢复在 interrupt_exit 中完成
 }
 
 /**
