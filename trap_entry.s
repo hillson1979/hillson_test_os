@@ -17,16 +17,18 @@ alltraps:
     pusha                # edi, esi, ebp, esp(dummy), ebx, edx, ecx, eax
 
     # --- 3. 切换为内核数据段 ---
-    movl $0x10, %eax     # 0x10 = 内核数据段选择子 (GDT 第2项)
-    movw %ax, %ds
-    movw %ax, %es
-    movw %ax, %fs
-    movw %ax, %gs
+    movl $0x10, %ecx     # 0x10 = 内核数据段选择子 (GDT 第2项)
+    movw %cx, %ds
+    movw %cx, %es
+    movw %cx, %fs
+    movw %cx, %gs
 
     # --- 4. 调用 C 层的 do_irq_handler(struct trapframe *tf) ---
-    #leal 4(%esp), %eax    # 当前 esp+4 即 trapframe 起始地址
-    movl %esp,%eax
-    pushl %eax
+    # 栈布局从ESP往高地址:
+    #   [0] EAX, [4] ECX, [8] EDX, [12] EBX, [16] OESP, [20] EBP, [24] ESI, [28] EDI
+    #   [32] GS, [36] FS, [40] ES, [44] DS, [48] trapno, [52] err, [56+] 硬件压入的值
+    # struct trapframe从eax开始定义,传递ESP作为指针
+    pushl %esp           # 直接传递ESP指针
     call do_irq_handler
     addl $4, %esp         # 清理参数
 

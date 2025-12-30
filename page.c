@@ -119,7 +119,6 @@ static uint32_t alloc_early_page_table(void);
 
 // 在页目录 pde_phys 里，把 vaddr -> paddr 建立映射
 void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags) {
-    printf("[map_page] vaddr=0x%x paddr=0x%x \n",vaddr, paddr);
     uint32_t *pd_user = (uint32_t*)phys_to_virt(pde_phys);
 
     // 页目录索引和页表索引
@@ -130,20 +129,16 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
     if (!(pd_user[pd_index] & PAGE_PRESENT)) {
         // 页表不存在，分配一个物理页
         uint32_t pt_phys = pmm_alloc_page();
-        printf("[map_page] Allocated new page table at phys=0x%x\n", pt_phys);
+        printf("[map_page] vaddr=0x%x new PT at phys=0x%x\n", vaddr, pt_phys);
 
         // 确保这个物理页在内核页目录中有映射（按需映射）
         uint32_t pt_virt_addr = (uint32_t)phys_to_virt(pt_phys);
         uint32_t kernel_pd_index = pt_virt_addr >> 22;
         uint32_t kernel_pt_index = (pt_virt_addr >> 12) & 0x3FF;
 
-        printf("[map_page] pt_virt_addr=0x%x, kernel_pd_idx=%u, kernel_pt_idx=%u\n",
-               pt_virt_addr, kernel_pd_index, kernel_pt_index);
-
         // 检查内核页目录是否有对应的页表
         if (!(pd[kernel_pd_index] & PAGE_PRESENT)) {
             // 内核页目录也没有页表，使用早期页表分配器创建一个
-            printf("[map_page] Creating kernel page table for pd_idx=%u\n", kernel_pd_index);
             uint32_t kernel_pt_phys = alloc_early_page_table();
             if (kernel_pt_phys == 0) {
                 printf("[map_page] ERROR: Failed to allocate kernel page table!\n");
@@ -152,27 +147,21 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 
             // 填写内核页目录
             pd[kernel_pd_index] = kernel_pt_phys | 0x3;
-            printf("[map_page] Set pd[%u]=0x%x\n", kernel_pd_index, pd[kernel_pd_index]);
         }
 
         // 检查内核页表中是否有这个具体的页映射
         uint32_t *kernel_pt = (uint32_t*)phys_to_virt(pd[kernel_pd_index] & ~0xFFF);
-        printf("[map_page] kernel_pt=%p, kernel_pt[%u]=0x%x\n",
-               kernel_pt, kernel_pt_index, kernel_pt[kernel_pt_index]);
 
         if (!(kernel_pt[kernel_pt_index] & PAGE_PRESENT)) {
             // 为内核创建这个物理页的映射
-            printf("[map_page] Mapping pt_phys=0x%x to kernel space at 0x%x\n", pt_phys, pt_virt_addr);
             kernel_pt[kernel_pt_index] = pt_phys | 0x3;
             // 刷新 TLB
             __asm__ volatile ("invlpg (%0)" : : "r" (pt_virt_addr) : "memory");
         }
 
-        // 现在可以安全地访问 pt_virt
-        printf("[map_page] Accessing pt_virt=0x%x to memset...\n", pt_virt_addr);
+        // 清零页表
         uint32_t *pt_virt = (uint32_t*)pt_virt_addr;
         memset(pt_virt, 0, PAGE_SIZE);
-        printf("[map_page] memset done\n");
 
         // 填写用户页目录的 PDE
         pd_user[pd_index] = (pt_phys & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;
@@ -184,6 +173,7 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 
     // 填写 PTE
     pt[pt_index] =  (paddr & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;
+    printf("[map_page] Set pt[%u]=0x%x (vaddr=0x%x -> paddr=0x%x)\n", pt_index, pt[pt_index], vaddr, paddr);
 }
 
 

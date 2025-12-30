@@ -223,7 +223,9 @@ void task_to_user_mode()
     tf->ecx = 7;
     tf->eax = 8;
 
-    tf->gs = 0;
+    // 修复: gs 不能设置为 0 (null selector),会导致 GP Fault
+    // 应该设置为用户数据段选择子
+    tf->gs = (SEG_UDATA << 3) | DPL_USER;
     tf->ds = (SEG_UDATA << 3) | DPL_USER;
     tf->es = (SEG_UDATA << 3) | DPL_USER;
     tf->fs = (SEG_UDATA << 3) | DPL_USER;
@@ -238,31 +240,57 @@ void task_to_user_mode()
     // tf->eip = 0x80000000;  // 不要硬编码！使用 load_module_to_user() 设置的值
     tf->eflags = FL_IF; // 开中断
 
-    // 设置当前CPU的TSS
-    struct cpu *c = &cpus[logical_cpu_id()];
-    c->ts.ss0 = SEG_KDATA << 3;
-    c->ts.esp0 = (uint32_t)th_u->kstack;     // 指向栈顶 (uint32_t)task->kstack + sizeof(task->kstack);
-    ltr(SEG_TSS << 3);
+    // 设置当前CPU的TSS - 更新全局TSS的esp0
+    extern struct tss_t tss;  // 在segment.c中定义的全局TSS
+    tss.ss0 = SEG_KDATA << 3;
+    tss.esp0 = (uint32_t)th_u->kstack + KSTACKSIZE;  // 栈顶是基址+大小
 
-    // 关键修复：在切换 CR3 之前，将 trapframe 复制到当前栈上
-    // 这样切换页表后，栈上的 trapframe 仍然可访问
+    // 注意:不需要再次调用ltr(),TSS已经在tss_init()中加载过了
+
+    // 关键修复：在切换 CR3 之前,将 trapframe 复制到当前栈上
+    // 这样切换页表后,栈上的 trapframe 仍然可访问
+    printf("[task_to_user_mode] Before memcpy: tf->eip=0x%x\n", tf->eip);
+
     struct trapframe stack_tf;
     memcpy(&stack_tf, tf, sizeof(struct trapframe));
 
-    // 验证关键字段
-    printf("[task_to_user_mode] stack_tf.eip=0x%x, stack_tf.esp=0x%x\n", stack_tf.eip, stack_tf.esp);
-    printf("[task_to_user_mode] stack_tf.cs=0x%x, stack_tf.ss=0x%x\n", stack_tf.cs, stack_tf.ss);
+    printf("[task_to_user_mode] After memcpy: stack_tf.eip=0x%x\n", stack_tf.eip);
+    printf("[task_to_user_mode] tf->esp=0x%x, tf->cs=0x%x, tf->ss=0x%x\n", tf->esp, tf->cs, tf->ss);
 
     // 切换用户页表
     asm volatile ("movl %0, %%cr3" :: "r"(task->pde) : "memory");
-    //outb(inb(0x21) | 0x01, 0x21);  // 置位 bit0 屏蔽 IRQ0
-    // 切换堆栈到 trapframe，执行 iret 进入用户空间
-    asm volatile (
-        "cli\n\t"                // 禁中断
-        "movl %0, %%esp\n\t"     // 切换栈指针到 trapframe
-       "jmp interrupt_exit\n\t"
-       :: "r"(&stack_tf) : "memory"
 
+    // 从struct trapframe返回用户模式
+    // struct trapframe字段顺序:
+    //   [0] edi [4] esi [8] ebp [12] oesp [16] ebx [20] edx
+    //   [24] ecx [28] eax [32] gs  [36] fs   [40] es   [44] ds
+    //   [48] trapno [52] err [56] eip [60] cs [64] eflags
+    //   [68] esp [72] ss
+
+    asm volatile (
+        "cli\n\t"                                    // 禁中断
+        "movl %0, %%esp\n\t"                         // ESP = &stack_tf
+
+        // 恢复通用寄存器（使用 popa）
+        "popa\n\t"
+
+        // 现在ESP指向 gs，手动恢复段寄存器
+        "popl %%eax\n\t"                             // 弹出 gs
+        "movw %%ax, %%gs\n\t"
+        "popl %%eax\n\t"                             // 弹出 fs
+        "movw %%ax, %%fs\n\t"
+        "popl %%eax\n\t"                             // 弹出 es
+        "movw %%ax, %%es\n\t"
+        "popl %%eax\n\t"                             // 弹出 ds
+        "movw %%ax, %%ds\n\t"
+
+        // 跳过 trapno 和 err
+        "addl $8, %%esp\n\t"
+
+        // iret会弹出eip,cs,eflags,esp,ss并跳转到用户代码
+        "iret\n\t"
+        :: "r"(&stack_tf)
+        : "eax", "memory"
     );
 
     // 不会执行到这里

@@ -94,9 +94,19 @@ enum {
     SYS_YIELD,
     SYS_GET_MEM_STATS,
     SYS_READ_MEM,
+    SYS_GETCHAR,      // 新增：读取单个字符
+    SYS_KBHIT,        // 新增：检查是否有按键
+    SYS_PUTCHAR,      // 新增：输出单个字符(用于显示提示符)
 };
 
 void syscall_dispatch(struct trapframe *tf) {
+    // 调试:打印trapframe字段地址
+    // printf("[syscall] tf=%p\n", tf);
+    // printf("  &tf->eax=%p, &tf->ebx=%p, &tf->ecx=%p\n", &tf->eax, &tf->ebx, &tf->ecx);
+    // printf("  tf->eax=%d, tf->ebx=%x, tf->ecx=%x, tf->edx=%x\n",
+    //        tf->eax, tf->ebx, tf->ecx, tf->edx);
+    // printf("  tf->trapno=%d, tf->eip=%x\n", tf->trapno, tf->eip);
+
     uint32_t num = tf->eax;
     uint32_t arg1 = tf->ebx;
     uint32_t arg2 = tf->ecx;
@@ -104,12 +114,37 @@ void syscall_dispatch(struct trapframe *tf) {
 
     switch (num) {
         case SYS_PRINTF: {
-            // 直接输出用户空间的字符串 (逐字符读取)
-            const char *str = (const char*)arg1;
-            char c;
-            while ((c = *str++) != '\0') {
-                vga_putc(c);
+            // 兼容旧CPU的方法:使用pushf/popf设置EFLAGS.AC位
+            const char *user_fmt = (const char*)arg1;
+            char kbuf[512];
+            int i = 0;
+
+            // 直接用汇编拷贝,避免编译器优化和SMAP问题
+            for (i = 0; i < 511; i++) {
+                char c;
+                // 使用pushf/popf临时设置EFLAGS.AC位
+                __asm__ volatile (
+                    "pushfl\n"                    // 保存EFLAGS
+                    "orl $0x40000, (%%esp)\n"    // 设置AC位(bit 18)
+                    "popfl\n"                     // 恢复EFLAGS(现在AC=1)
+
+                    "movb (%1), %0\n"             // 读取用户空间字符
+
+                    "pushfl\n"
+                    "andl $~0x40000, (%%esp)\n"  // 清除AC位
+                    "popfl\n"                     // 恢复EFLAGS
+
+                    : "=&r"(c)
+                    : "r"(user_fmt + i)
+                    : "memory", "cc"
+                );
+                if (c == '\0') break;
+                kbuf[i] = c;
             }
+            kbuf[i] = '\0';
+
+            // 输出字符串
+            printf("%s", kbuf);
             tf->eax = 0;
             break;
         }
@@ -156,11 +191,37 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             break;
         }
+        case SYS_GETCHAR: {
+            // 从键盘读取一个字符
+            extern int keyboard_getchar(void);
+            int c = keyboard_getchar();
+            tf->eax = c;
+            break;
+        }
+        case SYS_KBHIT: {
+            // 检查是否有按键可用
+            extern int keyboard_kbhit(void);
+            int hit = keyboard_kbhit();
+            tf->eax = hit;
+            break;
+        }
+        case SYS_PUTCHAR: {
+            // 输出单个字符(字符在EBX中)
+            char c = (char)arg1;
+            extern void vga_putc(char);
+            vga_putc(c);
+            tf->eax = 0;
+            break;
+        }
         default:
             printf("[syscall] unknown num=%d\n", num);
             tf->eax = -1;
             break;
     }
+
+    // 不要在这里切换CR3!
+    // CR3应该只在任务切换时切换,不应该在每次系统调用时切换
+    // Linux 0.11也是在系统调用返回时不切换CR3的
 }
 
 /* syscall dispatcher: eax = syscall_num, args in ebx/ecx/edx */

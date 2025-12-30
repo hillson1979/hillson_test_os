@@ -13,6 +13,7 @@
 #include "kmalloc.h"
 //#include "task.h"
 #include "sched.h"
+#include "x86/io.h"
 
 extern void* _kernel_start_virtual;
 extern void* _kernel_end_virtual;
@@ -92,8 +93,45 @@ kernel_main(struct multiboot * mb)
         printf("segment idt init is ok\n");
         idtinit();
 
+        // 启用全局中断（重要！）
+        __asm__ volatile("sti");
+        printf("Global interrupts enabled\n");
+
+        // 在启用中断后初始化键盘驱动
+        extern void keyboard_init(void);
+        keyboard_init();
+        printf("Keyboard driver initialized\n");
+
+        // 启用键盘中断 (IRQ1)
+        // 传统PIC方法
+        unsigned char mask1 = inb(0x21);
+        printf("PIC initial mask: 0x%x\n", mask1);
+        mask1 &= ~0x02;  // 清除bit 1 (IRQ1)
+        outb(mask1, 0x21);
+
+        // 验证是否设置成功
+        unsigned char mask1_verify = inb(0x21);
+        printf("PIC new mask: 0x%x (verified)\n", mask1_verify);
+        printf("Keyboard IRQ1 enabled via PIC (mask & 0x02 = %d)\n", mask1_verify & 0x02);
+
+        // 不再使用IOAPIC，避免冲突
+        // extern void ioapicenable(int irq, int cpunum);
+        // ioapicenable(1, 0);
+
+        // 测试：读取键盘状态
+        unsigned char kbd_status = inb(0x64);
+        printf("Keyboard status port: 0x%x\n", kbd_status);
+
+        // 在VGA上显示测试消息，确认系统正常运行
+        volatile uint16_t* vga = (volatile uint16_t*)0xB8000;
+        vga[10] = (0x0E << 8) | 'T';
+        vga[11] = (0x0E << 8) | 'E';
+        vga[12] = (0x0E << 8) | 'S';
+        vga[13] = (0x0E << 8) | 'T';
+        printf("VGA test: wrote TEST to screen at position 10-13\n");
+
         task_t *th_k=init_task(0);
-        printf("start kernel task\n");  
+        printf("start kernel task\n");
         start_task_kernel(th_k,kernel_task_main);
         task_t *th_u=init_task(1);
 
@@ -154,6 +192,10 @@ kernel_main(struct multiboot * mb)
 
         // 启动用户进程
         printf("start user task \n");
+
+        // 调试：输出multiboot模块信息
+        dump_multiboot_modules(mb);
+
         start_task_user(th_u,user_task_main);
         printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
 
