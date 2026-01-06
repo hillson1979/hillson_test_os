@@ -1,0 +1,48 @@
+# 编译产物
+*.o
+*.obj
+*.exe
+*.bin
+*.raw
+*.iso
+*.map
+kernel.bin
+kernel.raw
+kernel.iso
+
+# 输出文件
+*_output.txt
+*.log
+output.txt
+
+# 测试文件
+test_*.c
+*_test.c
+
+# 调试文件
+debug.gdb
+*.debug
+*.sym
+
+# 临时文件
+*~
+*.swp
+*.swo
+.nfs*
+
+# IDE 文件
+.vscode/
+.idea/
+*.sublime-*
+
+# 文档草稿
+debug_notes.md
+NOTES.md
+
+# ISO 镜像内容
+iso/
+
+# 备份文件
+*.bak
+*.backup
+*.old
