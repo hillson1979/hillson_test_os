@@ -238,7 +238,7 @@ void do_irq_handler(struct trapframe *tf) {
             handle_timer_interrupt(tf);
             // 时钟中断中检查是否需要调度
             if (current && need_resched) {
-                //schedule();  // 调用进程调度器
+                schedule();  // 调用进程调度器
             }
             send_eoi(0);  // 发送EOI
             break;

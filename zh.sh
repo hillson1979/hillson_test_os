@@ -21,8 +21,8 @@ echo "[3/4] 更新ISO boot目录..."
 cp kernel.bin iso/boot/
 
 # 如果用户进程存在，也复制过去
-if [ -f ../test/shell_demo.elf ]; then
-    cp ../test/shell_demo.elf iso/boot/
+if [ -f test/shell_demo.elf ]; then
+    cp test/shell_demo.elf iso/boot/
     echo "  已复制 shell_demo.elf"
 fi
 
