@@ -8,7 +8,7 @@ echo "开始重新编译内核并更新ISO"
 echo "========================================="
 
 # 进入内核源码目录
-cd hillson_test_os
+cd zhwh_os
 
 echo "[1/4] 清理旧文件..."
 make clean

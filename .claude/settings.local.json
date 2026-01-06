@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell.exe:*)",
+      "Bash(wsl bash:*)",
+      "Bash(wsl:*)",
+      "Bash(timeout:*)",
+      "Bash(git checkout:*)",
+      "Bash(make:*)",
+      "Bash(objdump:*)",
+      "Bash(tee:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "Bash(bash:*)",
+      "Bash(where make)",
+      "Bash(where:*)",
+      "Bash(gdb:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(/usr/bin/make:*)",
+      "Bash(tasklist:*)",
+      "Bash(echo:*)",
+      "Bash(findstr:*)",
+      "Bash(git push:*)",
+      "Bash(git tag:*)",
+      "Bash(gh release create:*)",
+      "Bash(qemu-system-i386:*)",
+      "Bash(gcc:*)",
+      "Bash(git mv:*)",
+      "Bash(lsof:*)",
+      "Bash(git ls-tree:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
