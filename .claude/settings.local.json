@@ -33,7 +33,8 @@
       "Bash(gcc:*)",
       "Bash(git mv:*)",
       "Bash(lsof:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(git merge:*)"
     ],
     "deny": [],
     "ask": []
