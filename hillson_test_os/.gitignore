@@ -39,8 +39,11 @@ debug.gdb
 debug_notes.md
 NOTES.md
 
-# ISO 镜像内容
-iso/
+# ISO 镜像内容（但保留配置文件）
+iso/*.iso
+iso/boot/*.bin
+iso/boot/*.elf
+!iso/boot/grub/grub.cfg
 
 # 备份文件
 *.bak
