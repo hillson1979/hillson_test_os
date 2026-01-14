@@ -117,13 +117,16 @@ can_schedule(struct task_t* thread)
         thread->state = PS_STOPPED;
         return false;
     }
-    
+
     if (sigset_test(sh->sig_pending, _SIGCONT)) {
         thread->state = PS_READY;
     }*/
 
-    return (thread->state == PS_READY) \
-            && task_runnable(thread);
+    // 关键修复：支持 PS_READY 和 PS_CREATED 状态
+    // PS_READY: 已经初始化，等待运行的任务
+    // PS_CREATED: 首次运行的用户任务（刚完成初始化，需要跳转到用户态）
+    return ((thread->state == PS_READY || thread->state == PS_CREATED) \
+            && task_runnable(thread));
 }
 
 
@@ -225,6 +228,9 @@ static struct task_t *pick_next_task_cfs()
         return NULL;
     }
 
+    printf("[pick_next_task_cfs] current: pid=%d, state=%d, user_stack=0x%x\n",
+           current->pid, current->state, current->user_stack);
+
     // 如果当前任务正在运行，标记为就绪
     if (current->state == PS_RUNNING) {
         current->state = PS_READY;
@@ -232,8 +238,18 @@ static struct task_t *pick_next_task_cfs()
 
     // 简单的轮转：从任务链表中找下一个就绪任务
     next = current->next;
+    printf("[pick_next_task_cfs] current->next=0x%x\n", (uint32_t)next);
+
+    int loop_count = 0;
     while (next != NULL && next != current) {
-        if (next->state == PS_READY && can_schedule(next)) {
+        printf("[pick_next_task_cfs] [%d] checking next: pid=%d, state=%d, user_stack=0x%x, can_schedule=%d\n",
+               loop_count++, next->pid, next->state, next->user_stack, can_schedule(next));
+
+        // 支持 PS_READY 和 PS_CREATED 状态
+        // PS_CREATED: 首次运行的用户任务
+        // PS_READY: 已经初始化，等待运行的任务
+        if ((next->state == PS_READY || next->state == PS_CREATED) && can_schedule(next)) {
+            printf("[pick_next_task_cfs] selected next: pid=%d\n", next->pid);
             break;
         }
         next = next->next;
@@ -242,6 +258,7 @@ static struct task_t *pick_next_task_cfs()
     // 如果没找到其他就绪任务，保持当前任务
     if (next == current || next == NULL) {
         next = current;
+        printf("[pick_next_task_cfs] no other task, keeping current: pid=%d\n", current->pid);
     }
 
     return next;
@@ -249,12 +266,19 @@ static struct task_t *pick_next_task_cfs()
 
 //schedule() 调用一次 pick_next_task
 void schedule(void) {
+    printf("[schedule] ENTRY - schedule() called!\n");
+
     struct task_t *prev, *next;
     uint32_t flags;
     uint8_t cpu_id = logical_cpu_id();
 
+    printf("[schedule] cpu_id=%d\n", cpu_id);
+    printf("[schedule] Before inline asm\n");
+
     /* 保护临界区 */
     __asm__ __volatile__("pushfl; popl %0; cli" : "=r"(flags));
+
+    printf("[schedule] After inline asm, flags=0x%x\n", flags);
 
     prev = current_task[cpu_id];
     if (!prev) {
@@ -271,6 +295,20 @@ void schedule(void) {
         return;
     }
 
+    // ⚠️⚠️⚠️ 关键修复：区分三种情况
+    // 1. 第一次运行用户任务 (state == PS_CREATED)
+    //    → 使用 task_to_user_mode_with_task,不返回
+    // 2. 切换到用户任务 (user_stack != 0, state == PS_RUNNING)
+    //    → 使用专用路径恢复用户态,不返回
+    // 3. 切换到内核任务 (user_stack == 0)
+    //    → 使用 switch_to,正常返回
+
+    int first_time_user = (next->user_stack != 0 && next->state == PS_CREATED);
+    int switch_to_user = (next->user_stack != 0 && next->state == PS_RUNNING);
+
+    printf("[schedule] first_time_user=%d, switch_to_user=%d (user_stack=0x%x, state=%d)\n",
+           first_time_user, switch_to_user, next->user_stack, next->state);
+
     task_setrun(next);
 
     if (prev == next) {
@@ -281,44 +319,107 @@ void schedule(void) {
     printf("[schedule] CPU%d: switch from task_%d to task_%d\n",
            cpu_id, prev->pid, next->pid);
 
+    // ================================
+    // 情况 1: 第一次运行用户任务
+    // ================================
+    if (first_time_user) {
+        next->state = PS_RUNNING;
+
+        // ⚠️⚠️⚠️ 关键修复：在切换前更新 current_task 和全局 current
+        // 这样中断处理程序能读取到正确的当前任务
+        current_task[cpu_id] = next;
+        current = next;  // 同步更新全局 current（汇编代码需要）
+
+        // ⚠️ 关键：确保中断保持禁用！
+        // 前面的 cli 已经禁用了中断，不要恢复
+
+        printf("[schedule] About to call task_to_user_mode_with_task, next=0x%x\n", (uint32_t)next);
+
+        // ⚠️⚠️⚠️ 使用C包装函数调用汇编函数
+        extern void task_to_user_mode_with_task_wrapper(struct task_t *task);
+        task_to_user_mode_with_task_wrapper(next);
+
+        // 不会返回到这里
+        printf("[schedule] ERROR: Returned from task_to_user_mode!\n");
+        while(1) {
+            __asm__ volatile("hlt");
+        }
+    }
+
+    // ================================
+    // 情况 2: 切换到用户任务 (非首次)
+    // ================================
+    if (switch_to_user) {
+        // ⚠️⚠️⚠️ Linux 模型关键修复:
+        // 切换到用户任务时,switch_to 会:
+        //   1. 保存 prev 的内核上下文
+        //   2. 切换到 next 的内核栈(上面有 trapframe)
+        //   3. 恢复 next 的内核上下文
+        //   4. 返回到这里(schedule)
+        //
+        // 然后 schedule() 返回到 interrupt_exit
+        // interrupt_exit 会恢复 next 的 trapframe 并 iret
+        //
+        // 这是唯一的中断返回路径!
+
+        printf("[schedule] Switching to user task %d\n", next->pid);
+        printf("[schedule] next->esp=0x%x, next->esp0=0x%x\n", next->esp, next->esp0);
+
+        // ⚠️⚠️⚠️ 关键修复：在切换前更新 current_task 和全局 current
+        // 这样中断处理程序能读取到正确的当前任务
+        current_task[cpu_id] = next;
+        current = next;  // 同步更新全局 current（汇编代码需要）
+
+        /* 恢复中断并执行上下文切换 */
+        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
+        switch_to(prev, next);
+
+        // ⚠️⚠️⚠️ switch_to 返回后:
+        //   - 当前栈 = next 的内核栈
+        //   - 栈上有 next 的 trapframe
+        //   - 返回到 interrupt_exit,恢复 trapframe 并 iret
+        printf("[schedule] switch_to returned, continuing to interrupt_exit\n");
+        return;
+    }
+
+    // ================================
+    // 情况 3: 切换到内核任务
+    // ================================
+    // ⚠️⚠️⚠️ 关键修复：在切换前更新 current_task 和全局 current
+    current_task[cpu_id] = next;
+    current = next;  // 同步更新全局 current（汇编代码需要）
+
     /* 恢复中断并执行上下文切换 */
     __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
-    switch_to(prev, next);// 执行实际的上下文切换
+    switch_to(prev, next);
+
+    // ⚠️⚠️⚠️ switch_to 返回后：
+    //   - 当前栈 = next 的内核栈
+    //   - 栈上是恢复后的寄存器（ebx, esi, edi, ebp）
+    //   - ret 会返回到调用者（interrupt_exit 或 efficient_scheduler_loop）
+    //
+    // 对于内核任务：
+    //   - 调用者是 efficient_scheduler_loop
+    //   - 返回后会继续循环，调用 schedule()
+    //
+    // 对于用户任务：
+    //   - 调用者是 interrupt_exit
+    //   - 返回后会恢复 trapframe 并 iret
+    printf("[schedule] switch_to returned to caller\n");
+    return;
 }
 
-// 外部汇编函数 - 实际的上下文切换
-extern void context_switch(struct task_t *prev, struct task_t *next);
-
-static inline void switch_to(struct task_t *prev, struct task_t *next) {
-    if (prev == next) {
-        return;  // 不需要切换
-    }
-
-    // 保存当前任务的内核栈指针
-    uint32_t saved_esp;
-    asm volatile("movl %%esp, %0" : "=r"(saved_esp));
-    prev->esp = saved_esp;
-
-    // 切换页表（如果需要）
-    if (prev->pde != next->pde) {
-        asm volatile("movl %0, %%cr3" : : "r"(next->pde) : "memory");
-    }
-
-    // 恢复下一个任务的内核栈指针
-    asm volatile("movl %0, %%esp" : : "r"(next->esp));
-
-    // 更新全局当前任务指针
-    current_task[next->cpu] = next;
-
-    // 更新 TSS.esp0
-    extern struct tss_t tss;
-    tss.ss0 = SEG_KDATA << 3;
-    tss.esp0 = (uint32_t)next->kstack;
-
-    // 注意：实际的寄存器恢复在 interrupt_exit 中完成
-}
+// ⚠️⚠️⚠️ switch_to 现在完全由汇编实现 (task_impl.s)
+// 原因：
+//   1. 需要完整的寄存器保存/恢复 (EBP, EDI, ESI, EBX)
+//   2. 需要精确控制栈切换时机
+//   3. C 的 inline 版本无法正确处理
+//
+// 之前 sched.c 中的 static inline void switch_to() 已删除
+// 现在统一使用 task_impl.s 中的汇编版本
 
 /**
+
  * 推荐的高效抢占式调度器
  */
 void efficient_scheduler_loop() {

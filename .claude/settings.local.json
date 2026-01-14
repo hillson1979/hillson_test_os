@@ -34,7 +34,16 @@
       "Bash(git mv:*)",
       "Bash(lsof:*)",
       "Bash(git ls-tree:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(nm:*)",
+      "Bash(chmod:*)",
+      "Bash(./gdb_detailed.sh:*)",
+      "Bash(while read f)",
+      "Bash(do cat:*)",
+      "Bash(done:*)",
+      "Bash(python:*)",
+      "Bash(i586-elf-objdump:*)",
+      "Bash(llvm-objdump:*)"
     ],
     "deny": [],
     "ask": []

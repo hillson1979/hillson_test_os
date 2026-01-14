@@ -163,9 +163,12 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
         uint32_t *pt_virt = (uint32_t*)pt_virt_addr;
         memset(pt_virt, 0, PAGE_SIZE);
 
-        // 填写用户页目录的 PDE
-        pd_user[pd_index] = (pt_phys & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;
+        // 填写用户页目录的 PDE（只设置一次，后续不会覆盖）
+        pd_user[pd_index] = (pt_phys & ~0xFFF) | PAGE_PRESENT | PAGE_WRITE | PAGE_USER;
         printf("[map_page] Set pd_user[%u]=0x%x\n", pd_index, pd_user[pd_index]);
+    } else {
+        // 页表已存在，复用
+        printf("[map_page] vaddr=0x%x reusing existing pd_user[%u]=0x%x\n", vaddr, pd_index, pd_user[pd_index]);
     }
 
     // 得到页表虚拟地址
