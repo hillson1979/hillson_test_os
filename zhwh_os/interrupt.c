@@ -373,12 +373,13 @@ void do_irq_handler(struct trapframe *tf) {
             sys_block(tf);
             lapiceoi();
             break;
-        case 33: // 键盘中断（IRQ1）
+        case 33: { // 键盘中断（IRQ1）
             // 调用键盘驱动处理程序
             extern void keyboard_handler(void);
             keyboard_handler();
             send_eoi(1);  // 发送EOI
-            break; 
+            break;
+        } 
         // ... 其他中断类型 ...
         case 13: { // GP Fault - 暂时禁用所有 printf
             extern uint32_t readcr2(void);
