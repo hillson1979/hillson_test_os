@@ -1,54 +1,65 @@
-# 编译器设置
+# Makefile for scheduler test programs
+
 CC = gcc
 AS = gcc
 LD = gcc
 
-# 目标架构
 TARGET_ARCH = -m32
-
-# 编译选项
 CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector -fno-pic
 ASFLAGS = $(TARGET_ARCH) -fno-pic
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ts.ld
 
-# 目标文件
-TARGETS = shell_demo.elf multitask_test.elf fb_graphics_test.elf
+TARGETS = simple_printf_test.elf
 
-# 源文件
+
+SCHED5_SOURCE = sched_test5.c
 SHELL_SOURCE = simple_interactive_shell.c
-MULTITASK_SOURCE = multitask_test.c
-FB_GRAPHICS_SOURCE = fb_graphics_test.c
-ASM_SOURCE = syscall_entry.S
+SIMPLE_PRINTF_TEST_SOURCE = simple_printf_test.c
+MINIMAL_TEST_SOURCE = minimal_test.c
 
-# 对象文件
-SHELL_OBJ = $(SHELL_SOURCE:.c=.o) $(ASM_SOURCE:.S=.o)
-MULTITASK_OBJ = $(MULTITASK_SOURCE:.c=.o) $(ASM_SOURCE:.S=.o)
-FB_GRAPHICS_OBJ = $(FB_GRAPHICS_SOURCE:.c=.o) $(ASM_SOURCE:.S=.o)
 
-# 默认目标
+SCHED5_OBJ = $(SCHED5_SOURCE:.c=.o)
+SHELL_OBJ = shell_demo.o
+SIMPLE_PRINTF_TEST_OBJ = simple_printf_test.o
+MINIMAL_TEST_OBJ = minimal_test.o
+
+
+SHELL_DEP = $(SHELL_SOURCE)
+
 all: $(TARGETS)
 
-# 链接 Shell
-shell_demo.elf: $(SHELL_OBJ) ts.ld
-	$(LD) $(LDFLAGS) -o $@ $(SHELL_OBJ)
+sched_test5.elf: $(SCHED5_OBJ) ts.ld
+	$(LD) $(LDFLAGS) -o $@ $(SCHED5_OBJ) ../user/libuser.c
 	@echo "Built: $@"
 
-# 链接多任务测试
-multitask_test.elf: $(MULTITASK_OBJ) ts.ld
-	$(LD) $(LDFLAGS) -o $@ $(MULTITASK_OBJ)
+shell_demo.o: $(SHELL_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(SHELL_SOURCE) -o shell_demo.o
+	@echo "Compiled: $(SHELL_SOURCE)"
+
+shell_demo.elf: shell_demo.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ shell_demo.o ../user/libuser.c
 	@echo "Built: $@"
 
-# 链接 Framebuffer 图形测试
-fb_graphics_test.elf: $(FB_GRAPHICS_OBJ) ts.ld
-	$(LD) $(LDFLAGS) -o $@ $(FB_GRAPHICS_OBJ)
+simple_printf_test.o: $(SIMPLE_PRINTF_TEST_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(SIMPLE_PRINTF_TEST_SOURCE) -o simple_printf_test.o
+	@echo "Compiled: $(SIMPLE_PRINTF_TEST_SOURCE)"
+
+simple_printf_test.elf: simple_printf_test.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ simple_printf_test.o ../user/libuser.c
 	@echo "Built: $@"
 
-# 编译C文件
+minimal_test.o: $(MINIMAL_TEST_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(MINIMAL_TEST_SOURCE) -o minimal_test.o
+	@echo "Compiled: $(MINIMAL_TEST_SOURCE)"
+
+minimal_test.elf: minimal_test.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ minimal_test.o ../user/libuser.c
+	@echo "Built: $@"
+
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -I../user -c $< -o $@
 	@echo "Compiled: $<"
 
-# 编译汇编文件
 %.o: %.S
 	$(AS) $(ASFLAGS) -c $< -o $@
 	@echo "Assembled: $<"

@@ -6,6 +6,10 @@
 #include "multiboot2.h" // multiboot2_info_addr
 #include "highmem_mapping.h"
 #include "page.h"
+#include "lapic.h"     // logical_cpu_id()
+
+// 声明当前任务数组
+extern task_t *current_task[];
 
 /*
 typedef struct trapframe {
@@ -53,12 +57,38 @@ static int sys_write(uint32_t fd, const char *buf, uint32_t len) {
     return (int)len;
 }
 
+/* 进程退出实现 */
+void do_exit(int code) {
+    extern task_t *current_task[];
+    extern int need_resched;
+    task_t *task = current_task[logical_cpu_id()];
+
+    if (!task) {
+        printf("[do_exit] No current task!\n");
+        return;
+    }
+
+    printf("[do_exit] Task %d exiting with code %d\n", task->pid, code);
+
+    // 标记任务为终止状态
+    task->state = PS_TERMNAT;
+
+    // 触发重新调度，让其他任务运行
+    need_resched = 1;
+
+    // 注意：这里不应该直接返回到用户空间
+    // 调度器会选择下一个任务运行
+}
+
 /* sys_exit(code) */
 static void sys_exit(int code) {
-    // 简单实现：打印并标记任务退出。真实内核应释放资源并调度。
-    printf("sys_exit(%d)\n", code);
-    // 这里可以设置当前任务状态为 ZOMBIE 或直接 halt for demo:
-    //do_exit(code); // 如果你已有实现
+    do_exit(code);
+
+    // 永远不会到达这里，因为 do_exit 会触发调度
+    // 但为了安全起见，进入死循环
+    while (1) {
+        __asm__ volatile("hlt");
+    }
 }
 
 /*#define SYS_PRINTF 1
@@ -100,7 +130,9 @@ enum {
     SYS_GETCHAR,      // 新增：读取单个字符
     SYS_KBHIT,        // 新增：检查是否有按键
     SYS_PUTCHAR,      // 新增：输出单个字符(用于显示提示符)
-    SYS_GET_FRAMEBUFFER,  // 新增：获取 framebuffer 信息 (10)
+    SYS_GET_FRAMEBUFFER,  // 新增：获取 framebuffer 信息
+    SYS_WRITE,        // 占位符，使 SYS_FORK = 11
+    SYS_FORK,         // fork 系统调用 (11)
 };
 
 void syscall_dispatch(struct trapframe *tf) {
@@ -147,13 +179,19 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             kbuf[i] = '\0';
 
-            // 输出字符串
-            printf("%s", kbuf);
-            tf->eax = 0;
+            // ⚠️⚠️⚠️ 启用输出：直接使用 vga_putc 输出每个字符
+            for (int j = 0; j < i; j++) {
+                vga_putc(kbuf[j]);
+            }
+            tf->eax = i;  // 返回输出的字符数
             break;
         }
         case SYS_EXIT:
-            printf("[user] exit code=%d\n", arg1);
+            // ⚠️ 暂时禁用 printf，避免破坏 ES 寄存器
+            // printf("[user] exit code=%d\n", arg1);
+            do_exit(arg1);
+            // do_exit() 会触发调度，不会返回到这里
+            // 但为了安全，添加死循环
             tf->eax = 0;
             break;
         case SYS_YIELD: {
@@ -256,8 +294,45 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             break;
         }
+        case SYS_WRITE: {
+            // write(fd, buf, len) - arg1=fd, arg2=buf, arg3=len
+            int fd = (int)arg1;
+            const char *buf = (const char*)arg2;
+            uint32_t len = arg3;
+
+            // 调试输出
+            printf("[SYS_WRITE] fd=%d, buf=0x%x, len=%u\n", fd, (uint32_t)buf, len);
+
+            if (fd == 1) {  // stdout
+                // 直接输出到 VGA
+                for (uint32_t i = 0; i < len; i++) {
+                    vga_putc(buf[i]);
+                }
+                tf->eax = len;
+            } else {
+                tf->eax = -1;
+            }
+            break;
+        }
+        case SYS_FORK: {
+            // fork() 系统调用 - 创建子进程
+            // 返回值：父进程返回子进程PID，子进程返回0
+            extern task_t* do_fork(void);
+            task_t *child = do_fork();
+            if (child) {
+                // 父进程：返回子进程的 PID
+                tf->eax = child->pid;
+                // ⚠️ 暂时禁用 printf，避免破坏 ES 寄存器
+                // printf("[fork] Parent PID=%d, Child PID=%d\n", current_task[logical_cpu_id()]->pid, child->pid);
+            } else {
+                // 子进程或失败：返回 0
+                tf->eax = 0;
+            }
+            break;
+        }
         default:
-            printf("[syscall] unknown num=%d\n", num);
+            // ⚠️ 暂时禁用 printf，避免破坏 ES 寄存器
+            // printf("[syscall] unknown num=%d\n", num);
             tf->eax = -1;
             break;
     }

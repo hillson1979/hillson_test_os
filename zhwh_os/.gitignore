@@ -49,3 +49,4 @@ iso/boot/*.elf
 *.bak
 *.backup
 *.old
+docs/
