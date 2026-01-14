@@ -11,17 +11,19 @@ LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ts.ld
 
 TARGETS = simple_printf_test.elf
 
-
+# 测试程序源文件
 SCHED5_SOURCE = sched_test5.c
 SHELL_SOURCE = simple_interactive_shell.c
 SIMPLE_PRINTF_TEST_SOURCE = simple_printf_test.c
 MINIMAL_TEST_SOURCE = minimal_test.c
+PRINTF_TEST_SOURCE = printf_test.c
 
-
+# 目标文件
 SCHED5_OBJ = $(SCHED5_SOURCE:.c=.o)
 SHELL_OBJ = shell_demo.o
 SIMPLE_PRINTF_TEST_OBJ = simple_printf_test.o
 MINIMAL_TEST_OBJ = minimal_test.o
+PRINTF_TEST_OBJ = printf_test.o
 
 
 SHELL_DEP = $(SHELL_SOURCE)
@@ -54,6 +56,14 @@ minimal_test.o: $(MINIMAL_TEST_SOURCE) ts.ld
 
 minimal_test.elf: minimal_test.o ts.ld
 	$(LD) $(LDFLAGS) -o $@ minimal_test.o ../user/libuser.c
+	@echo "Built: $@"
+
+printf_test.o: $(PRINTF_TEST_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(PRINTF_TEST_SOURCE) -o printf_test.o
+	@echo "Compiled: $(PRINTF_TEST_SOURCE)"
+
+printf_test.elf: printf_test.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ printf_test.o ../user/libuser.c
 	@echo "Built: $@"
 
 %.o: %.c
