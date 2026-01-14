@@ -16,6 +16,14 @@
 #include "sched.h"
 #include "x86/io.h"
 
+// Forward declarations for task types
+typedef struct {
+    uint32_t *phys;
+    uint32_t *virt;
+} page_t;
+
+extern void copy_kernel_mappings_to_pd(uint32_t *pd_user);
+
 extern void* _kernel_start_virtual;
 extern void* _kernel_end_virtual;
 extern void* data;
@@ -268,10 +276,107 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // 调试：输出multiboot2模块信息
         dump_multiboot2_modules(mb_info_addr);
 
-        start_task_user(th_u,user_task_main);
+        // 重要：先手动调用 user_task_main 进行初始化（页表、模块加载等）
+        // 初始化完成后，user_task_main 会返回
+        user_task_main(th_u);
+
+        // 初始化完成后，将用户任务添加到调度器队列
+        // start_task 会将 th_u 添加到 sched_root 链表，这样调度器才能找到它
+        start_task(th_u, user_task_main);
+
+        // 设置任务状态为 PS_CREATED，让调度器知道需要跳转到用户态
+        th_u->state = PS_CREATED;
+        printf("[kernel_main] User task initialized, state=PS_CREATED\n");
+
         printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
 
+        // 注意：第二个用户进程现在通过 fork() 系统调用来创建
+        // 不再在这里手动创建
+        // 用户进程在运行时会调用 sys_fork() 来创建子进程
+
+        /*
+        // 创建第二个用户进程（测试调度）- 已弃用
+        // 现在使用 fork() 系统调用替代
+        printf("=== Creating second user task for scheduler testing ===\n");
+        printf("th_u = 0x%x, th_u->pde = 0x%x, th_u->cr3 = 0x%x\n",
+               th_u, th_u->pde, th_u->cr3);
+
+        task_t *th_u2 = init_task(true);  // 创建第二个任务
+        if (th_u2) {
+            printf("th_u2 created: 0x%x\n", th_u2);
+
+            // 实现简单的 fork 机制：为第二个进程创建独立的页目录
+            // 参考：
+            // - Brown University CS: "fork() clones user-space processes with full address space copies"
+            // - Reddit r/osdev: "fork() and copy-on-write in Linux"
+            //
+            // 关键点：
+            // 1. 每个进程需要独立的页目录（CR3）
+            // 2. 页目录项指向相同的物理页（共享内存）
+            // 3. 内核映射（0xC0000000+）需要复制到每个页目录
+
+            extern page_t alloc_page_table_();
+            extern void copy_kernel_mappings_to_pd(uint32_t *pd_user);
+            extern uint32_t pmm_alloc_page(void);
+
+            // 1. 分配新的页目录
+            page_t pde2 = alloc_page_table_();
+            th_u2->pde = (uint32_t*)pde2.phys;
+            th_u2->cr3 = (uint32_t*)pde2.phys;  // CR3 字段存储物理地址
+            uint32_t *pd_user2 = pde2.virt;
+
+            printf("[fork] Allocated new page dir: phys=0x%x, virt=0x%x\n",
+                   pde2.phys, pd_user2);
+
+            // 2. 复制内核高端映射（768-1023，即 0xC0000000-0xFFFFFFFF）
+            // 这样内核代码在所有进程中都可访问
+            copy_kernel_mappings_to_pd(pd_user2);
+            printf("[fork] Copied kernel mappings to new page dir\n");
+
+            // 3. 复制用户空间映射（0-767，即 0x00000000-0xBFFFFFFF）
+            // 这是简单的页表复制，不是 Copy-on-Write
+            // 两个进程会共享相同的物理页，但有独立的页表结构
+
+            // 获取第一个任务的页目录虚拟地址
+            extern uint32_t pd[];
+            uint32_t *pd_user1 = (uint32_t*)phys_to_virt((uint32_t)th_u->pde);
+
+            int copied_entries = 0;
+            for (int i = 0; i < 768; i++) {  // 用户空间：0-767
+                if (pd_user1[i] & PAGE_PRESENT) {
+                    pd_user2[i] = pd_user1[i];  // 复制页表项指针
+                    copied_entries++;
+                }
+            }
+            printf("[fork] Copied %d user space page table entries\n", copied_entries);
+
+            // 4. 分配新的内核栈
+            uint32_t kstack2 = pmm_alloc_page();
+            th_u2->kstack = (uint32_t*)kstack2;
+            th_u2->esp0 = (uint32_t)(kstack2 + PAGE_SIZE);
+
+            printf("[fork] Task2: pde=0x%x, cr3=0x%x, kstack=0x%x\n",
+                   th_u2->pde, th_u2->cr3, th_u2->kstack);
+
+            // 5. 复制 trapframe
+            if (!th_u2->tf) {
+                printf("[fork] ERROR: th_u2->tf is NULL!\n");
+            } else {
+                memcpy(th_u2->tf, th_u->tf, sizeof(struct trapframe));
+                printf("[fork] Copied trapframe: eip=0x%x, esp=0x%x\n",
+                       th_u2->tf->eip, th_u2->tf->esp);
+            }
+
+            start_task_user(th_u2, user_task_main);
+            printf("[fork] Second user task created: 0x%x\n", th_u2);
+        } else {
+            printf("Failed to create second user task!\n");
+        }
+        printf("=== Second user task creation completed ===\n");
+        */
+
         // 启动调度器
+        printf("Starting scheduler with multiple tasks...\n");
         efficient_scheduler_loop();
         printf("Kernel main completed successfully!\n");
 	return (42);

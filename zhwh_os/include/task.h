@@ -76,12 +76,13 @@ typedef bool (*activity_callback_t)(struct task_t* task, void* opaque);
 #define TASK_HAS_SIGNAL  OFFSETOF(struct task_t, has_signal)
 #define TASK_USP         OFFSETOF(struct task_t, usp)
 
-// 任务结构体偏移量  
+// 任务结构体偏移量
 #define TASK_CR3          OFFSETOF(struct task_t, cr3)
 #define TASK_THREAD       OFFSETOF(struct task_t, thread)
 #define TASK_STATE        OFFSETOF(struct task_t, state)
 #define TASK_SIG_HANDLER  OFFSETOF(struct task_t, signal_handler)
-#define TASK_INTR_DEPTH   OFFSETOF(struct task_t, intr_depth)
+// ⚠️ TASK_INTR_DEPTH 已删除（Linux 不使用 per-task 中断深度）
+//     中断嵌套由 CPU 自动处理（通过栈和中断门）
 
 #define TASK_IFRAME   OFFSETOF(struct task_t, tf)
 
@@ -99,7 +100,7 @@ typedef struct task_t {
         uint32_t                *user_stack;//user stack
         uint32_t                signal_handler;
         int                     idle_flags;
-        uint32_t                intr_depth;
+        // ⚠️ intr_depth 字段已删除（Linux 不使用 per-task 中断深度）
 	pid_t			pid;        /**< Unique taskess ID */
 	pid_t			ppid;       /**< Parent taskess ID */
 	uid_t			uid;        /**< User ID (future use) */
@@ -136,6 +137,11 @@ typedef struct task_t {
         uint32_t *pde;
 
         uint32_t *kstack;//kernel stack
+
+        // ⚠️⚠️⚠️ 专用：第一次进入用户态的 iret 帧（不用于普通中断返回）
+        // 这是预分配的内存区域，不是在栈上临时构建的
+        // 布局：[eip][cs][eflags][esp][ss]
+        uint32_t iret_frame[5];
 } task_t;
 
 
@@ -158,15 +164,24 @@ static struct {
 } tasklocks;
 */
 extern struct task_t *th_u;
+
+// ⚠️⚠️⚠️ 全局 current 指针（汇编代码使用）
+// 必须与 current_task[cpu_id] 保持同步！
+extern struct task_t *current;
+
 task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack);
 typedef void (*task_entry_callback_t)(void*);
 struct task_t* init_task(bool with_ustack);
+void task_prepare_pde(struct task_t *task);  // 添加函数声明
 void start_task_user(struct task_t* th, task_entry_callback_t  user_entry);
 void start_task_kernel(struct task_t* th, task_entry_callback_t  kernel_entry);
 void efficient_scheduler_loop();
 void user_task_main();
 void kernel_task_main();
 void handle_idle_state(uint8_t cpu);
+void task_to_user_mode_with_task(void);  // 参数通过eax传递
+void task_to_user_mode_with_task_wrapper(struct task_t *task);  // C包装函数
 
 void ok_here();
+void do_exit(int code);
 

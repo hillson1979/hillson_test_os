@@ -1,5 +1,6 @@
 // printf.c
 #include "vga.h"
+#include <stdarg.h>
 
 static void print_num(uint32_t num, uint32_t base) {
     const char* digits = "0123456789ABCDEF";
@@ -17,7 +18,8 @@ static void print_num(uint32_t num, uint32_t base) {
 }
 
 void printf(const char* fmt, ...) {
-    uint32_t* ap = (uint32_t*)&fmt + 1; // 手动实现可变参数
+    va_list ap;
+    va_start(ap, fmt);
 
     while (*fmt) {
         if (*fmt != '%') {
@@ -28,7 +30,7 @@ void printf(const char* fmt, ...) {
         fmt++; // 跳过 '%'
         switch (*fmt++) {
             case 'd': {
-                int32_t num = *(int32_t*)ap++;
+                int32_t num = va_arg(ap, int32_t);
                 if (num < 0) {
                     vga_putc('-');
                     num = -num;
@@ -37,27 +39,30 @@ void printf(const char* fmt, ...) {
                 break;
             }
             case 'u':
-                print_num(*(uint32_t*)ap++, 10);
+                print_num(va_arg(ap, uint32_t), 10);
                 break;
             case 'x':
-                print_num(*(uint32_t*)ap++, 16);
+                print_num(va_arg(ap, uint32_t), 16);
                 break;
             case 'c':
-                vga_putc((char)*(uint32_t*)ap++);
+                vga_putc((char)va_arg(ap, int));
                 break;
             case 's':
-                vga_puts(*(char**)ap++);
+                vga_puts(va_arg(ap, char*));
                 break;
             default:
                 vga_putc('?');
                 break;
         }
     }
+
+    va_end(ap);
 }
 
 // 与printf相同实现的cprintf函数
 void cprintf(const char* fmt, ...) {
-    uint32_t* ap = (uint32_t*)&fmt + 1; // 手动实现可变参数
+    va_list ap;
+    va_start(ap, fmt);
 
     while (*fmt) {
         if (*fmt != '%') {
@@ -68,7 +73,7 @@ void cprintf(const char* fmt, ...) {
         fmt++; // 跳过 '%'
         switch (*fmt++) {
             case 'd': {
-                int32_t num = *(int32_t*)ap++;
+                int32_t num = va_arg(ap, int32_t);
                 if (num < 0) {
                     vga_putc('-');
                     num = -num;
@@ -77,22 +82,24 @@ void cprintf(const char* fmt, ...) {
                 break;
             }
             case 'u':
-                print_num(*(uint32_t*)ap++, 10);
+                print_num(va_arg(ap, uint32_t), 10);
                 break;
             case 'x':
-                print_num(*(uint32_t*)ap++, 16);
+                print_num(va_arg(ap, uint32_t), 16);
                 break;
             case 'c':
-                vga_putc((char)*(uint32_t*)ap++);
+                vga_putc((char)va_arg(ap, int));
                 break;
             case 's':
-                vga_puts(*(char**)ap++);
+                vga_puts(va_arg(ap, char*));
                 break;
             default:
                 vga_putc('?');
                 break;
         }
     }
+
+    va_end(ap);
 }
 
 
