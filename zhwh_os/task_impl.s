@@ -270,20 +270,26 @@ task_to_user_mode_with_task:
     je 1f
 
     # 复制 trapframe 到栈上
-    pushl %ecx               # 保存 task 指针
-    pushl %ebx               # 保存 task->tf 指针
+    pushl %ecx               # 保存 task 指针 (+4)
+    pushl %ebx               # 保存 task->tf 指针 (+4)
     movl $76, %eax
-    subl %eax, %esp          # ESP -= 76
+    subl %eax, %esp          # ESP -= 76 (分配空间)
     movl %esp, %edi
-    movl 76(%esp), %esi      # ESI = task->tf
-    pushl %ecx               # 保存 task 指针（rep movsl 会破坏 ECX）
+    movl 76(%esp), %esi      # ESI = task->tf (从栈上获取)
+    pushl %ecx               # 保存 task 指针（rep movsl 会破坏 ECX）(+4)
     movl $19, %ecx
     cld
-    rep movsl
-    popl %ecx
+    rep movsl                # 复制 76 字节
+    popl %ecx                # 恢复 task 指针 (-4)
 
-    # 恢复 task 指针
-    movl 80(%esp), %ecx
+    # 栈布局现在是（从ESP往高地址）：
+    # [0-75: 76字节 trapframe 副本]
+    # [76-79: task->tf 指针]
+    # [80-83: task 指针]
+    # ESP指向 trapframe 副本的开始 (offset 0)
+
+    # 恢复 task 指针到 ECX
+    movl 80(%esp), %ecx      # 从偏移80获取 task 指针
 
     # 切换 CR3
     movl TASK_CR3(%ecx), %edx
@@ -291,24 +297,23 @@ task_to_user_mode_with_task:
     movl %eax, tss + TSS_ESP0_OFFSET
     movl %edx, %cr3
 
-    # 恢复寄存器
-    popa                       # ESP += 32
-    popl %eax; movw %ax, %gs  # ESP += 4
-    popl %eax; movw %ax, %fs  # ESP += 4
-    popl %eax; movw %ax, %es  # ESP += 4
-    popl %eax; movw %ax, %ds  # ESP += 4
-    addl $8, %esp              # ESP += 8, 跳过 trapno/err
+    # 恢复通用寄存器 (popa 从 ESP 恢复 32 字节)
+    popa                      # ESP += 32, 指向 gs
+    popl %eax; movw %ax, %gs  # ESP += 4, 指向 fs
+    popl %eax; movw %ax, %fs  # ESP += 4, 指向 es
+    popl %eax; movw %ax, %es  # ESP += 4, 指向 ds
+    popl %eax; movw %ax, %ds  # ESP += 4, 指向 trapno
 
-    # 栈平衡：
-    # 压栈：4+4+76+4 = 88 字节
-    # 弹栈：4(popl ecx)+32(popa)+16(4个popl)+8(addl) = 60 字节
-    # 剩余：28 字节
+    addl $8, %esp             # ESP += 8, 跳过 trapno/err, 指向 eip
+
+    # 栈平衡计算：
+    # 压栈：4(task) + 4(tf) + 76(分配) + 4(task) = 88 字节
+    # 弹栈：4(popl ecx) + 32(popa) + 16(4个popl) + 8(addl) = 60 字节
+    # 剩余栈空间：88 - 60 = 28 字节
     #
-    # 但栈布局是：
-    # [分配的 76 字节][task->tf][task]
-    # 弹出 60 字节后，ESP 指向分配空间 offset 56 的位置
-    # offset 56 正好是 iret frame 的开始！
-    # 所以不需要额外的 addl $8, %esp
+    # 当前ESP指向 trapframe 副本中 offset 56 (eip)
+    # iret 需要：eip, cs, eflags, esp, ss (20字节)
+    # 这些数据已经在正确的位置了！
 
     iret
 

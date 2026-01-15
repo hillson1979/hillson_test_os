@@ -4,6 +4,7 @@ cd "$(dirname "$0")" || exit 1
 cp kernel.bin iso/boot/
 
 # 只复制存在的 .elf 文件
+[ -f test/direct_write_test.elf ] && cp test/direct_write_test.elf iso/boot/
 [ -f test/sched_test5.elf ] && cp test/sched_test5.elf iso/boot/
 [ -f test/shell_demo.elf ] && cp test/shell_demo.elf iso/boot/
 [ -f test/simple_printf_test.elf ] && cp test/simple_printf_test.elf iso/boot/
@@ -11,6 +12,12 @@ cp kernel.bin iso/boot/
 cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
 set default=0
+
+menuentry "My OS - Direct Write Test" {
+  multiboot2 /boot/kernel.bin
+  module2 /boot/direct_write_test.elf
+  boot
+}
 
 menuentry "My OS - Simple printf Test" {
   multiboot2 /boot/kernel.bin

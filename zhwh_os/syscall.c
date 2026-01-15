@@ -91,36 +91,6 @@ static void sys_exit(int code) {
     }
 }
 
-/*#define SYS_PRINTF 1
-#define MAX_PRINTF_BUF 512
-
-void syscall_dispatch_1(struct trapframe *tf) {
-    uint32_t num = tf->ebx;         // syscall number来自用户态保存的tf
-    switch (num) {
-    case SYS_PRINTF: {
-        const char *user_fmt = (const char *)tf->ecx; // 用户传来的指针
-        char kbuf[MAX_PRINTF_BUF];
-        // 为简单：拷贝最多 MAX_PRINTF_BUF-1 字节
-        if (copy_from_user(kbuf, user_fmt, MAX_PRINTF_BUF - 1) != 0) {
-            tf->eax = -1; // 返回错误
-            break;
-        }
-        kbuf[MAX_PRINTF_BUF - 1] = '\0';
-        // 现在用内核的 printf（或 vprintf）输出
-        printf("%s", kbuf);
-        tf->eax = 0; // 返回成功
-        break;
-    }
-    default:
-        printf("unknown syscall %u\n", num);
-        tf->eax = (uint32_t)-1;
-        break;
-    }
-
-    // syscall_dispatch 结束后通常会 return 到通用中断退栈路径，
-    // 中断返回代码会用 tf 的值恢复用户态寄存器并 iret。
-}*/
-
 enum {
     SYS_PRINTF = 1,
     SYS_EXIT,
@@ -297,18 +267,41 @@ void syscall_dispatch(struct trapframe *tf) {
         case SYS_WRITE: {
             // write(fd, buf, len) - arg1=fd, arg2=buf, arg3=len
             int fd = (int)arg1;
-            const char *buf = (const char*)arg2;
+            const char *user_buf = (const char*)arg2;
             uint32_t len = arg3;
 
-            // 调试输出
-            printf("[SYS_WRITE] fd=%d, buf=0x%x, len=%u\n", fd, (uint32_t)buf, len);
+            if (fd == 1 && len < 512) {  // stdout，限制长度
+                // 先从用户空间拷贝到内核缓冲区
+                char kbuf[512];
+                int copied = 0;
 
-            if (fd == 1) {  // stdout
-                // 直接输出到 VGA
+                // 使用汇编拷贝，避免SMAP问题
                 for (uint32_t i = 0; i < len; i++) {
-                    vga_putc(buf[i]);
+                    char c;
+                    __asm__ volatile (
+                        "pushfl\n"                    // 保存EFLAGS
+                        "orl $0x40000, (%%esp)\n"    // 设置AC位
+                        "popfl\n"
+
+                        "movb (%1), %0\n"             // 读取用户空间字符
+
+                        "pushfl\n"
+                        "andl $~0x40000, (%%esp)\n"  // 清除AC位
+                        "popfl\n"
+
+                        : "=&r"(c)
+                        : "r"(user_buf + i)
+                        : "memory", "cc"
+                    );
+                    kbuf[i] = c;
+                    copied++;
                 }
-                tf->eax = len;
+
+                // 输出到 VGA
+                for (int i = 0; i < copied; i++) {
+                    vga_putc(kbuf[i]);
+                }
+                tf->eax = copied;
             } else {
                 tf->eax = -1;
             }
@@ -341,34 +334,3 @@ void syscall_dispatch(struct trapframe *tf) {
     // CR3应该只在任务切换时切换,不应该在每次系统调用时切换
     // Linux 0.11也是在系统调用返回时不切换CR3的
 }
-
-/* syscall dispatcher: eax = syscall_num, args in ebx/ecx/edx */
-void syscall_dispatch_(struct trapframe *tf) {
-    uint32_t nr = tf->eax;
-    uint32_t a1 = tf->ebx;
-    uint32_t a2 = tf->ecx;
-    uint32_t a3 = tf->edx;
-
-    switch (nr) {
-    case 1: { // write(fd, buf, len)
-        // 为安全，先把用户缓冲区拷到内核缓冲（此处为示例，直接读取用户地址也可）
-        // 注意：a2 是用户虚拟地址
-        char tmp[256];
-        uint32_t tocopy = (a3 > sizeof(tmp)) ? sizeof(tmp) : a3;
-        copy_from_user(tmp, (const char *)a2, tocopy);
-        int wrote = sys_write(a1, tmp, tocopy);
-        tf->eax = (uint32_t)wrote;
-        break;
-    }
-    case 2: { // exit(code)
-        sys_exit((int)a1);
-        // not return
-        tf->eax = 0;
-        break;
-    }
-    default:
-        tf->eax = (uint32_t)-1;
-        break;
-    }
-}
-
