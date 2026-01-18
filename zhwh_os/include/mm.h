@@ -35,3 +35,5 @@ void umem_free_pages(uint32_t phys_addr, uint32_t count);  // 释放用户空间
 void test_memory_management(void);
 void test_kernel_user_memory_isolation(void);
 
+// Page Table Query Function
+uint32_t get_physical_address(uint32_t *pde, uint32_t vaddr);

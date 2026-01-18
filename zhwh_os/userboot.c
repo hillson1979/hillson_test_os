@@ -105,28 +105,48 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
 
             printf("[load_module_to_user] Loop: off=%u, dst_va=0x%x\n", off, dst_va);
 
+            // ========== 关键修复：分配新的物理页，而不是直接使用ELF文件所在的物理内存 ==========
+            // 原因：multiboot模块的物理内存是内核临时使用的，可能被覆盖
+            // 必须复制到新分配的物理页中
+
+            // 1. 分配新的物理页
+            dst_pa = pmm_alloc_page();
+            if (!dst_pa) {
+                printf("[load_module_to_user] FATAL: failed to allocate physical page!\n");
+                return -6;
+            }
+
+            // 2. 清零整个页
+            uint8_t *dst_virt = (uint8_t*)phys_to_virt(dst_pa);
+            for (int j = 0; j < PAGE_SIZE; j++) {
+                dst_virt[j] = 0;
+            }
+
+            // 3. 如果这是文件数据部分，从ELF复制
             if (off < filesz) {
-                // 文件中的数据：使用 ELF 中的物理页
-                dst_pa = file_pa + off;
-                printf("[load_module_to_user] Using file data: dst_pa=0x%x\n", dst_pa);
-            } else {
-                // .bss 部分：分配新的零页
-                dst_pa = pmm_alloc_page();
-                printf("[load_module_to_user] BSS: allocated phys=0x%x\n", dst_pa);
-                // 清零
-                uint8_t *zero_page = (uint8_t*)phys_to_virt(dst_pa);
-                for (int j = 0; j < PAGE_SIZE; j++) {
-                    zero_page[j] = 0;
+                uint32_t copy_size = PAGE_SIZE;
+                if (off + copy_size > filesz) {
+                    copy_size = filesz - off;
                 }
+
+                uint8_t *src_virt = (uint8_t*)phys_to_virt(file_pa + off);
+                for (uint32_t j = 0; j < copy_size; j++) {
+                    dst_virt[j] = src_virt[j];
+                }
+                printf("[load_module_to_user] Copied 0x%x bytes from ELF to new page\n", copy_size);
+            } else {
+                printf("[load_module_to_user] BSS: allocated and zeroed new page\n");
             }
 
             printf("[load_module_to_user] Calling map_page: dst_va=0x%x dst_pa=0x%x\n", dst_va, dst_pa);
             map_page(pd_user, dst_va, dst_pa, USER_PTE_FLAGS);
 
-            // ⚠️ 不要同时映射到内核页表！
-            // 原因：这会修改 pd[0]，导致用户页表映射通过 phys_to_virt 访问时出错
-            // extern uint32_t pd[];
-            // map_page(pd, dst_va, dst_pa, USER_PTE_FLAGS);
+            // ⚠️⚠️⚠️ 关键修复：同时映射到内核页目录！
+            // 原因：现在使用共享 CR3（kernel CR3），所有进程都使用同一个内核页目录
+            //       用户代码段必须在内核页目录中也能访问
+            //extern uint32_t pd[];
+            //map_page(pd, dst_va, dst_pa, USER_PTE_FLAGS);
+           // printf("[load_module_to_user] Also mapped to kernel page table\n");
         }
         printf("[load_module_to_user] Page mapping loop done.\n");
     }
@@ -139,8 +159,10 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
 
     struct trapframe *tf = task->tf;
 
-    // 清零整个trapframe,确保所有字段初始化
-    memset(tf, 0, sizeof(struct trapframe));
+    // ⚠️ 不要清零整个trapframe!
+    // 原因:这会把所有寄存器(eax,ebx,ecx,edx等)清零
+    // 用户程序可能期望某些寄存器有非零值
+    // 只显式设置我们需要的字段
 
     // 设置入口地址
     tf->eip = eh->e_entry;
@@ -164,6 +186,8 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     #define USER_STACK_PAGES 4  // 4页 = 16KB
 
     printf("[load_module_to_user] Mapping user stack (%u pages)...\n", USER_STACK_PAGES);
+
+    uint32_t last_stack_pa = 0;  // 保存最后一页(最高地址)的物理地址
     for (int i = 0; i < USER_STACK_PAGES; i++) {
         uint32_t stack_pa = pmm_alloc_page();
         printf("[load_module_to_user] Allocated stack page %u: phys=0x%x\n", i, stack_pa);
@@ -175,19 +199,68 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
 
         map_page(pd_user, stack_va, stack_pa, USER_PTE_FLAGS);
 
-        // ⚠️ 不要同时映射到内核页表！
-        // 原因：这会修改 pd[0]，导致用户页表映射通过 phys_to_virt 访问时出错
-        // extern uint32_t pd[];
-        // map_page(pd, stack_va, stack_pa, USER_PTE_FLAGS);
+        // 保存最后一页的物理地址(最高地址)
+        if (i == 0) {
+            last_stack_pa = stack_pa;
+        }
+
+        // ⚠️⚠️⚠️ 关键修复：同时映射到内核页目录！
+        // 原因：现在使用共享 CR3（kernel CR3），所有进程都使用同一个内核页目录
+        //       用户栈必须在内核页目录中也能访问
+        //extern uint32_t pd[];
+       // map_page(pd, stack_va, stack_pa, USER_PTE_FLAGS);
+       // printf("[load_module_to_user] Also mapped stack page to kernel page table\n");
     }
     printf("[load_module_to_user] User stack mapping complete.\n");
+
+    // ⚠️⚠️⚠️ 关键修复：保存用户栈的物理地址到 task->user_stack
+    // 原因：task_to_user_mode_with_task 会检查 task->user_stack 是否为 0
+    //      如果为 0，会跳转到 hlt 死循环（认为是内核任务）
+    //      必须设置为非零值，才能正确进入用户态
+    task->user_stack = last_stack_pa;
+    printf("[load_module_to_user] Set task->user_stack = 0x%x (physical address of stack top)\n", task->user_stack);
 
     // ⚠️ 删除 BRUTE FORCE 映射代码！
     // 原因：它会覆盖 ELF 加载时正确设置的映射，导致用户代码无法执行
     // ELF 的 PT_LOAD 段已经正确映射了所有需要的页面
 
-    // ESP 指向栈顶（最高地址）
-    tf->esp = VIRT_USER_STACK_TOP;
+    // ========== 设置用户栈ABI布局 ==========
+    // Linux ELF ABI标准的用户栈布局（从高地址到低地址）:
+    //
+    //   [高地址]
+    //   NULL                (auxv数组结束标记，如果有的话)
+    //   auxv entries        (辅助向量，可选)
+    //   NULL                (envp数组结束标记)
+    //   envp[]              (环境变量字符串指针数组)
+    //   NULL                (argv数组结束标记)
+    //   argv[0]             (程序名，如果没有则为NULL)
+    //   argv[1...n]         (其他参数)
+    //   argc                (参数个数，ESP指向这里)
+    //   [低地址]
+    //
+    // ⚠️⚠️⚠️ 关键修复：必须确保栈上有足够的数据，防止C运行时代码访问越界
+    // 原因：fault_addr=0xFFFFFFE8说明代码在访问NULL-0x18，很可能是
+    //       C运行时代码试图访问argv/envp指针数组时越界
+
+    // 获取用户栈最高页的虚拟地址,并映射到内核空间访问
+    uint32_t stack_top_va = VIRT_USER_STACK_TOP;
+    uint32_t *stack_top_virt = (uint32_t *)phys_to_virt(last_stack_pa);
+
+    // ⚠️⚠️⚠️ 关键修复：在栈顶填充大量NULL，防止越界访问
+    // 原因：C运行时代码可能会访问argv[argc]、envp[0]等
+    // 如果这些位置是未初始化的垃圾数据，会导致崩溃
+    for (int i = 1; i <= 32; i++) {
+        stack_top_virt[-i] = 0;  // 填充32个NULL（128字节）
+    }
+
+    // ESP指向argc（按照Linux标准，argc在栈顶最低位置）
+    // 布局：[ESP]=argc, [ESP+4]=argv[0], [ESP+8]=argv[1], ...
+    tf->esp = stack_top_va - 1 * sizeof(uint32_t);
+
+    printf("[load_module_to_user] Set up user stack ABI (Linux standard):\n");
+    printf("  argc=0 at [ESP]=0x%x\n", tf->esp);
+    printf("  argv[0]=NULL at [ESP+4]=0x%x\n", tf->esp + 4);
+    printf("  Stack protected with 32 NULL dwords (128 bytes) below stack_top\n");
 
     // 调试输出:验证trapframe设置
     printf("[load_module_to_user] Trapframe setup:\n");

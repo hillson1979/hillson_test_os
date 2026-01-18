@@ -130,38 +130,25 @@ int printf(const char *fmt, ...) {
     return buf_idx;
 }
 
+// ⚠️ 声明汇编包装函数，避免内联汇编的寄存器冲突问题
+extern int syscall_write(int fd, const char *buf, int len);
+extern int syscall_fork(void);
+extern void syscall_exit(int code) __attribute__((noreturn));
+extern void syscall_yield(void);
+
 // write 系统调用
 int write(int fd, const char *buf, int len) {
-    int ret;
-    __asm__ volatile(
-        "int $0x80"
-        : "=a"(ret)
-        : "a"(10), "b"(fd), "c"(buf), "d"(len)
-        : "memory"
-    );
-    return ret;
+    return syscall_write(fd, buf, len);
 }
 
 // fork 系统调用
 int fork(void) {
-    int ret;
-    __asm__ volatile(
-        "int $0x80"
-        : "=a"(ret)
-        : "a"(11)
-        : "memory"
-    );
-    return ret;
+    return syscall_fork();
 }
 
 // exit 系统调用
 void exit(int code) {
-    __asm__ volatile(
-        "int $0x80"
-        :
-        : "a"(2), "b"(code)
-        : "memory"
-    );
+    syscall_exit(code);
     // 永远不会到达这里
     while (1) {
         __asm__ volatile("hlt");
@@ -170,10 +157,5 @@ void exit(int code) {
 
 // yield - 让出CPU
 void yield(void) {
-    __asm__ volatile(
-        "int $0x80"
-        :
-        : "a"(3)
-        : "memory"
-    );
+    syscall_yield();
 }

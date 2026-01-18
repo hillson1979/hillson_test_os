@@ -71,6 +71,13 @@ void dump_multiboot2_modules(uint32_t mb_info_addr) {
 int
 kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 {
+        // ⚠️ 保存内核页目录物理地址（在切换到用户进程之前）
+        extern uint32_t kernel_page_directory_phys;
+        uint32_t cr3_value;
+        __asm__ volatile("movl %%cr3, %0" : "=r"(cr3_value));
+        kernel_page_directory_phys = cr3_value & ~0xFFF;
+        printf("[kernel_main] Saved kernel CR3 phys=0x%x\n", kernel_page_directory_phys);
+
         vga_init();
         //disable_cursor();
         vga_setcolor(COLOR_GREEN, COLOR_BLACK);
@@ -210,9 +217,14 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         printf("=============================================\n\n");
 
-        task_t *th_k=init_task(0);
-        printf("start kernel task\n");
-        start_task_kernel(th_k,kernel_task_main);
+        // ⚠️⚠️⚠️ 临时修复：注释掉 PID=1 内核任务，避免切换回它时崩溃
+        // 原因：PID=1 内核任务的栈空间不足，切换回它时会触发 triple fault
+        // 详见：PID1_CRASH_FIX.md
+        // task_t *th_k=init_task(0);
+        // printf("start kernel task\n");
+        // start_task_kernel(th_k,kernel_task_main);
+
+        // 直接创建用户任务作为第一个任务
         task_t *th_u=init_task(1);
 
         // 注释掉kmalloc测试,避免影响用户进程加载

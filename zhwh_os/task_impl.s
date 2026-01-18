@@ -12,9 +12,11 @@
 .set TASK_UID,         40
 .set TASK_GID,         44
 .set TASK_STATE,       48
-.set TASK_NICE,        52
+.set TASK_HAS_RUN_USER, 52  # has_run_user 标志
+.set TASK_NICE,        56
 .set TASK_VRUNTIME,    96
-#.set TASK_IFRAME,      108     
+.set TASK_IFRAME,      152     # tf 字段偏移量（根据 GDB 内存 dump 验证：offset 0x98 = 0xC02A3114）
+
 # 用户态段选择子定义
 .set USER_CS, 0x1B       # 用户代码段选择子 (RPL=3, TI=0, index=3)
 .set USER_DS, 0x23       # 用户数据段选择子 (RPL=3, TI=0, index=4)
@@ -35,6 +37,12 @@ switch_to:
     #   4(%esp) = prev (当前进程的 task_t 指针)
     #   8(%esp) = next (下一个进程的 task_t 指针)
 
+    # ⚠️⚠️⚠️ 关键修复：在 push 任何寄存器之前，先从栈上读取参数！
+    # 原因：某些 GCC 编译器可能使用寄存器传递参数（fastcall）
+    # 所以我们必须从栈上读取，而不是依赖寄存器
+    movl 4(%esp), %eax      # eax = prev (从栈上读取)
+    movl 8(%esp), %esi      # esi = next (从栈上读取) ⚠️ 用 esi 保存 next！
+
     # ⚠️⚠️⚠️ 关键设计原则：switch_to 只能使用 ret，不能使用 iret！
     # 原因：switch_to 被schedule()调用，不是从中断处理调用
     # 栈上没有 CPU 自动压入的中断帧，iret 会读取错误的栈数据
@@ -42,21 +50,23 @@ switch_to:
     # 1. 保存当前进程上下文
     pushl %ebp
     pushl %edi
-    pushl %esi
+    pushl %esi              # ⚠️ 保存 esi（next 指针）
     pushl %ebx
 
-    # 从栈上读取参数
-    movl 20(%esp), %eax      # eax = prev
-    movl 24(%esp), %edx      # edx = next
+    # ⚠️⚠️⚠️ 现在 next 指针在栈上，需要时恢复到 esi
+    # (由于 push 了 4 个寄存器，栈偏移变成了 +16)
+
+    # ⚠️⚠️⚠️ 恢复 next 指针到 esi（从栈上）
+    movl 12(%esp), %esi     # esi = next（从保存的位置恢复）
 
     # ⚠️⚠️⚠️ 更新全局 current 指针（汇编代码需要）
-    movl %edx, current
+    movl %esi, current
 
     # 保存当前栈指针到当前进程的 thread_struct
     movl %esp, TASK_ESP(%eax)
 
     # 2. 切换地址空间 - 这是关键！
-    movl TASK_CR3(%edx), %ebx    # 获取新进程的页目录物理地址
+    movl TASK_CR3(%esi), %ebx    # 获取新进程的页目录物理地址 ⚠️ 用 esi
     movl %cr3, %ecx              # 获取当前CR3
     cmpl %ecx, %ebx              # 比较是否相同
     je .Lsame_address_space      # 如果相同，跳过CR3设置
@@ -67,11 +77,11 @@ switch_to:
 .Lsame_address_space:
 
     # 3. 切换到下一个进程的栈
-    movl TASK_ESP(%edx), %esp
+    movl TASK_ESP(%esi), %esp       # ⚠️ 用 esi
 
     # 3.5 关键修复:更新TSS.esp0为当前任务的内核栈顶
     # 这样从中断/syscall从用户态进入内核时,CPU会自动切换到正确的内核栈
-    movl TASK_ESP0(%edx), %eax      # 获取新任务的esp0
+    movl TASK_ESP0(%esi), %eax      # 获取新任务的esp0 ⚠️ 用 esi
     movl %eax, tss + TSS_ESP0_OFFSET # 更新TSS.esp0
 
     # ================================
@@ -191,7 +201,7 @@ setup_signal_handler:
 .set TF_SS,          72    # 用户SS
 
 # task_t 偏移量（根据 include/task.h 的结构体定义计算）
-# ⚠️ 关键修复：重新计算偏移量
+# ⚠️ 关键修复：添加 has_run_user 后重新计算偏移量
 # 从task.h的结构体定义手动计算：
 #   - esp (0-3)
 #   - esp0 (4-7)
@@ -200,124 +210,127 @@ setup_signal_handler:
 #   - user_stack (16-19)
 #   - signal_handler (20-23)
 #   - idle_flags (24-27)
-#   - intr_depth (28-31)
+#   - intr_depth (28-31) ⚠️ 已删除
 #   - pid (32-35)
 #   - ppid (36-39)
 #   - uid (40-43)
 #   - gid (44-47)
 #   - state (48-51)
-#   - nice (52-55)
-#   - start_time (56-59)
-#   - waitpid (60-63)
-#   - cpu (64-67)
-#   - directory (68-71)
-#   - name (72-75)
-#   - size (76-79)
-#   - csd (80-83)
-#   - load_weight (84-87)
-#   - entry (88-91)
-#   - time_slice (92-95)
-#   - vruntime (96-103) ⚠️ 8 bytes!
-#   - sched_node (104-107)
-#   - sleep (104-115) ⚠️ sizeof(struct haybed) = 12 bytes
-#   - mm (116-119)
-#   - prev (120-123)
-#   - next (124-127)
-#   - check_idle (128-131)
-#   - idle_context (132-135)
-#   - sig_handler (136-139)
-#   - signal_mask (140-143)
-#   - pending_signals (144-147)
-#   - tf (148-151) ⚠️ 修正：删除 intr_depth 后，偏移量变为 148
-#   - task_total_count (152-155)
-#   - pde (156-159)
-#   - kstack (160-163)
-#   - iret_frame (164-183) ⚠️ 新增：uint32_t iret_frame[5] = 20字节
-.set TASK_TF,        148   # ⚠️ 修正：删除 intr_depth 后，tf = offset 148
-.set TASK_PDE,       156   # ⚠️ 修正：删除 intr_depth 后，pde = offset 156
-.set TASK_KSTACK,    160   # ⚠️ 修正：删除 intr_depth 后，kstack = offset 160
-.set TASK_IRET_FRAME, 164  # ⚠️ 新增：删除 intr_depth 后，iret_frame = offset 164
+#   - has_run_user (52-55) ⚠️ 新增！
+#   - nice (56-59) ⚠️ +4
+#   - start_time (60-63) ⚠️ +4
+#   - waitpid (64-67) ⚠️ +4
+#   - cpu (68-71) ⚠️ +4
+#   - directory (72-75) ⚠️ +4
+#   - name (76-79) ⚠️ +4
+#   - size (80-83) ⚠️ +4
+#   - csd (84-87) ⚠️ +4
+#   - load_weight (88-91) ⚠️ +4
+#   - entry (92-95) ⚠️ +4
+#   - time_slice (96-99) ⚠️ +4
+#   - vruntime (100-107) ⚠️ +4, 8 bytes!
+#   - sched_node (108-111) ⚠️ +4
+#   - sleep (108-119) ⚠️ +4, sizeof(struct haybed) = 12 bytes
+#   - mm (120-123) ⚠️ +4
+#   - prev (124-127) ⚠️ +4
+#   - next (128-131) ⚠️ +4
+#   - check_idle (132-135) ⚠️ +4
+#   - idle_context (136-139) ⚠️ +4
+#   - sig_handler (140-143) ⚠️ +4
+#   - signal_mask (144-147) ⚠️ +4
+#   - pending_signals (148-151) ⚠️ +4
+#   - tf (152-155) ⚠️ +4
+#   - task_total_count (156-159) ⚠️ +4
+#   - pde (160-163) ⚠️ +4
+#   - kstack (164-167) ⚠️ +4
+#   - iret_frame (168-183) ⚠️ +4, uint32_t iret_frame[5] = 20字节
+.set TASK_PDE,       160   # ⚠️ 添加 has_run_user 后，pde = offset 160
+.set TASK_KSTACK,    164   # ⚠️ 添加 has_run_user 后，kstack = offset 164
+.set TASK_IRET_FRAME, 168  # ⚠️ 添加 has_run_user 后，iret_frame = offset 168
 
 # 外部符号声明
 .extern th_u
 .extern debug_print_enter
 .extern debug_print_tf_ptr
 .extern debug_print_tf_values
+.extern current_task           # Linux/xv6 风格：全局 current_task 数组
 
 # task_to_user_mode_with_task - 第一次进入用户态的专用函数
-# 参数: eax = task指针 (用户任务的task_t*)
-#
 # ⚠️⚠️⚠️ 设计原则（必须遵守）：
 # 1. 这个函数只用于"第一次进入用户态"
 # 2. 绝不能使用 interrupt_exit（interrupt_exit 只用于 CPU 自动中断路径）
 # 3. 必须使用预分配的 task->tf (trapframe) 来恢复上下文
-# 4. 简化栈操作，避免复杂的多层压栈
+# 4. 简化逻辑：直接通过 EBX 传递 task 指针，避免依赖 current_task[]
 #
 # 参考：Linux 的 ret_from_fork, xv6 的 trapret, BSD 的 userret
+#
+# ⚠️⚠️⚠️ 调用约定：
+#   输入：栈上传递参数 [ESP+4] = task 指针
+#   输出：无（执行 iret 进入用户态，永不返回）
 .type task_to_user_mode_with_task, @function
 .global task_to_user_mode_with_task
 task_to_user_mode_with_task:
     cli                         # 关中断
-    movl %eax, %ecx              # ecx = task 指针
-    movw $0x10, %ax             # 内核数据段
-    movw %ax, %ds
-    movw %ax, %es
-    movw %ax, %fs
-    movw %ax, %gs
 
-    movl TASK_TF(%ecx), %ebx     # ebx = task->tf
-    cmpl $0, %ebx
+    # ⚠️ 从栈上读取 task 指针参数（C 调用约定）
+    movl 4(%esp), %ebx          # EBX = task 指针
+
+    # 验证 EBX 的值
+    pushl %ebx
+    pushl $task_to_user_mode_ebx_msg
+    call printf
+    addl $8, %esp
+
+    # 获取 task->tf 指针
+    movl TASK_IFRAME(%ebx), %ecx     # ecx = task->tf
+    cmpl $0, %ecx
     je 1f
 
-    # 复制 trapframe 到栈上
-    pushl %ecx               # 保存 task 指针 (+4)
-    pushl %ebx               # 保存 task->tf 指针 (+4)
-    movl $76, %eax
-    subl %eax, %esp          # ESP -= 76 (分配空间)
-    movl %esp, %edi
-    movl 76(%esp), %esi      # ESI = task->tf (从栈上获取)
-    pushl %ecx               # 保存 task 指针（rep movsl 会破坏 ECX）(+4)
-    movl $19, %ecx
-    cld
-    rep movsl                # 复制 76 字节
-    popl %ecx                # 恢复 task 指针 (-4)
-
-    # 栈布局现在是（从ESP往高地址）：
-    # [0-75: 76字节 trapframe 副本]
-    # [76-79: task->tf 指针]
-    # [80-83: task 指针]
-    # ESP指向 trapframe 副本的开始 (offset 0)
-
-    # 恢复 task 指针到 ECX
-    movl 80(%esp), %ecx      # 从偏移80获取 task 指针
+    # 切换到 task->tf 所指的栈
+    movl %ecx, %esp             # ESP = task->tf
 
     # 切换 CR3
-    movl TASK_CR3(%ecx), %edx
-    movl TASK_ESP0(%ecx), %eax
+    movl TASK_CR3(%ebx), %edx
+    movl TASK_ESP0(%ebx), %eax
     movl %eax, tss + TSS_ESP0_OFFSET
     movl %edx, %cr3
 
-    # 恢复通用寄存器 (popa 从 ESP 恢复 32 字节)
-    popa                      # ESP += 32, 指向 gs
-    popl %eax; movw %ax, %gs  # ESP += 4, 指向 fs
-    popl %eax; movw %ax, %fs  # ESP += 4, 指向 es
-    popl %eax; movw %ax, %es  # ESP += 4, 指向 ds
-    popl %eax; movw %ax, %ds  # ESP += 4, 指向 trapno
+    # ⚠️⚠️⚠️ 现在 ESP 指向 trapframe，按照 struct trapframe 布局恢复寄存器
+    # struct trapframe 布局（include/interrupt.h:121-159）：
+    #   offset 0-28: pusha 压入的通用寄存器
+    #     [0:edi, 4:esi, 8:ebp, 12:oesp, 16:ebx, 20:edx, 24:ecx, 28:eax]
+    #   offset 32-44: 段寄存器
+    #     [32:ds, 36:es, 40:fs, 44:gs]
+    #   offset 48-52: 中断信息
+    #     [48:trapno, 52:err]
+    #   offset 56-72: CPU 硬件压入的值
+    #     [56:eip, 60:cs, 64:eflags, 68:esp, 72:ss]
 
-    addl $8, %esp             # ESP += 8, 跳过 trapno/err, 指向 eip
+    # 恢复通用寄存器（pusha 的逆序）
+    popl %edi                 # offset 0
+    popl %esi                 # offset 4
+    popl %ebp                 # offset 8
+    addl $4, %esp             # 跳过 oesp (offset 12)
+    popl %ebx                 # offset 16（用户态 EBX）
+    popl %edx                 # offset 20
+    popl %ecx                 # offset 24
+    popl %eax                 # offset 28
 
-    # 栈平衡计算：
-    # 压栈：4(task) + 4(tf) + 76(分配) + 4(task) = 88 字节
-    # 弹栈：4(popl ecx) + 32(popa) + 16(4个popl) + 8(addl) = 60 字节
-    # 剩余栈空间：88 - 60 = 28 字节
-    #
-    # 当前ESP指向 trapframe 副本中 offset 56 (eip)
-    # iret 需要：eip, cs, eflags, esp, ss (20字节)
-    # 这些数据已经在正确的位置了！
+    # 恢复段寄存器
+    popl %ds                  # offset 32
+    popl %es                  # offset 36
+    popl %fs                  # offset 40
+    popl %gs                  # offset 44
 
+    # 跳过 trapno 和 err（offset 48-52）
+    addl $8, %esp
+
+    # ⚠️⚠️⚠️ 执行 iret，恢复用户态
+    # iret 会从栈上弹出：EIP, CS, EFLAGS, ESP, SS
     iret
 
 1:
+    # task->tf 为 NULL 的错误处理
     cli
     hlt
     jmp 1b
@@ -337,4 +350,15 @@ need_resched:   .long 0    # 需要重新调度标志
 .global tss
 tss:
     .fill TSS_SIZE, 1, 0   # 初始化TSS结构为0
+
+# 调试消息字符串
+.section .rodata
+task_to_user_mode_debug_msg:
+    .string "[task_to_user_mode_with_task] ENTRY: EAX=0x%x (should be 0xC02A2160)\n"
+task_tf_debug_msg:
+    .string "[task_to_user_mode_with_task] task->tf (EBX) = 0x%x\n"
+task_to_user_mode_ebx_addr_msg:
+    .string "[task_to_user_mode_with_task] &current_task = 0x%x\n"
+task_to_user_mode_ebx_msg:
+    .string "[task_to_user_mode_with_task] EBX (current_task[0]) = 0x%x\n"
 

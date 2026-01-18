@@ -192,9 +192,13 @@ static void update_vruntime(struct task_t *task)
         
         task->time_slice = get_time_slice(task);
     }
-} 
+}
 // kernel/sched.c
 uint32_t preempt_count = 0;
+
+// ⚠️⚠️⚠️ 全局变量：保存 schedule() 中 switch_to 返回后的地址
+// 供 fork() 创建的子进程设置其 switch_to 帧的返回地址
+uint32_t schedule_switch_to_return_addr = 0;
 
 void enable_preemption(void)
 {
@@ -236,27 +240,72 @@ static struct task_t *pick_next_task_cfs()
         current->state = PS_READY;
     }
 
-    // 简单的轮转：从任务链表中找下一个就绪任务
+    // ⚠️⚠️⚠️ 关键修复：遍历整个循环链表，而不是只从 current->next 开始
+    // 原因：fork() 创建的子进程被插入到链表头部（combined_task_list），
+    //      在父进程之前（current->prev），所以必须从 current->next 开始遍历一圈
+
+    // 从 current->next 开始查找
     next = current->next;
     printf("[pick_next_task_cfs] current->next=0x%x\n", (uint32_t)next);
 
     int loop_count = 0;
+    int found = 0;
+
+    // 遍历整个链表（包括 current->prev 方向的任务）
     while (next != NULL && next != current) {
         printf("[pick_next_task_cfs] [%d] checking next: pid=%d, state=%d, user_stack=0x%x, can_schedule=%d\n",
                loop_count++, next->pid, next->state, next->user_stack, can_schedule(next));
+
+        // ⚠️⚠️⚠️ 关键修复：跳过内核任务（user_stack == 0）！
+        // 原因：内核任务没有合法的返回路径（trapframe 或 task_to_user_mode_with_task）
+        //      如果调度到内核任务，switch_to 会尝试 ret 到非法地址，导致 triple fault
+        if (next->user_stack == 0) {
+            printf("[pick_next_task_cfs] skipping kernel task pid=%d (no user_stack)\n", next->pid);
+            next = next->next;
+            continue;
+        }
 
         // 支持 PS_READY 和 PS_CREATED 状态
         // PS_CREATED: 首次运行的用户任务
         // PS_READY: 已经初始化，等待运行的任务
         if ((next->state == PS_READY || next->state == PS_CREATED) && can_schedule(next)) {
             printf("[pick_next_task_cfs] selected next: pid=%d\n", next->pid);
+            found = 1;
             break;
         }
         next = next->next;
     }
 
+    // ⚠️⚠️⚠️ 如果 next 为 NULL，说明链表是单向的
+    // 需要从 combined_task_list 开始遍历
+    if (!found && next == NULL) {
+        printf("[pick_next_task_cfs] reached end of list, checking from combined_task_list\n");
+
+        extern struct task_t *combined_task_list;
+        next = combined_task_list;
+
+        while (next != NULL && next != current) {
+            printf("[pick_next_task_cfs] [%d] checking from head: pid=%d, state=%d, user_stack=0x%x, can_schedule=%d\n",
+                   loop_count++, next->pid, next->state, next->user_stack, can_schedule(next));
+
+            // ⚠️⚠️⚠️ 关键修复：跳过内核任务（user_stack == 0）！
+            if (next->user_stack == 0) {
+                printf("[pick_next_task_cfs] skipping kernel task pid=%d (no user_stack)\n", next->pid);
+                next = next->next;
+                continue;
+            }
+
+            if ((next->state == PS_READY || next->state == PS_CREATED) && can_schedule(next)) {
+                printf("[pick_next_task_cfs] selected next from head: pid=%d\n", next->pid);
+                found = 1;
+                break;
+            }
+            next = next->next;
+        }
+    }
+
     // 如果没找到其他就绪任务，保持当前任务
-    if (next == current || next == NULL) {
+    if (!found) {
         next = current;
         printf("[pick_next_task_cfs] no other task, keeping current: pid=%d\n", current->pid);
     }
@@ -267,6 +316,16 @@ static struct task_t *pick_next_task_cfs()
 //schedule() 调用一次 pick_next_task
 void schedule(void) {
     printf("[schedule] ENTRY - schedule() called!\n");
+
+    // ⚠️⚠️⚠️ 初始化返回地址（只执行一次）
+    extern uint32_t schedule_switch_to_return_addr;
+    if (schedule_switch_to_return_addr == 0) {
+        __asm__ __volatile__("call 1f; 1: popl %0; addl $(after_switch_to-1b), %0"
+                             : "=m" (schedule_switch_to_return_addr)
+                             : : "eax", "memory");
+        printf("[schedule] Initialized schedule_switch_to_return_addr=0x%x\n",
+               schedule_switch_to_return_addr);
+    }
 
     struct task_t *prev, *next;
     uint32_t flags;
@@ -298,31 +357,42 @@ void schedule(void) {
     // ⚠️⚠️⚠️ 关键修复：区分三种情况
     // 1. 第一次运行用户任务 (state == PS_CREATED)
     //    → 使用 task_to_user_mode_with_task,不返回
-    // 2. 切换到用户任务 (user_stack != 0, state == PS_RUNNING)
-    //    → 使用专用路径恢复用户态,不返回
+    //    包括:
+    //      - user_task_main() 初始化的任务
+    //      - fork() 创建的子进程 (第一次被调度时)
+    //
+    // 2. 切换到用户任务 (user_stack != 0, state == PS_READY 或 PS_RUNNING)
+    //    → 使用 switch_to,然后通过 interrupt_exit 恢复 trapframe
+    //    这些任务之前运行过,被中断打断,内核栈上有合法的 trapframe
+    //
     // 3. 切换到内核任务 (user_stack == 0)
     //    → 使用 switch_to,正常返回
 
-    int first_time_user = (next->user_stack != 0 && next->state == PS_CREATED);
-    int switch_to_user = (next->user_stack != 0 && next->state == PS_RUNNING);
+    // ⚠️⚠️⚠️ 铁律1：NEVER call task_to_user_mode_with_task for EXITED tasks!
+    // 原因：已退出任务的trapframe/esp0/cr3已失效，调用会导致内核崩溃
+    if (next->state == PS_TERMNAT || next->state == PS_DESTROY) {
+        printf("[schedule] ERROR: next task pid=%d is EXITED (state=%d), skipping!\n",
+               next->pid, next->state);
+        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
+        return;
+    }
+
+    // ⚠️⚠️⚠️ 铁律2：first_time_user只对PS_CREATED有意义
+    // 判断标准：state == PS_CREATED（不是has_run_user == 0）
+    int first_time_user = (next->state == PS_CREATED && next->user_stack != 0);
+    int switch_to_user = (next->user_stack != 0 && next->has_run_user == 1);
 
     printf("[schedule] first_time_user=%d, switch_to_user=%d (user_stack=0x%x, state=%d)\n",
            first_time_user, switch_to_user, next->user_stack, next->state);
 
     task_setrun(next);
 
-    if (prev == next) {
-        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
-        return;
-    }
-
-    printf("[schedule] CPU%d: switch from task_%d to task_%d\n",
-           cpu_id, prev->pid, next->pid);
-
-    // ================================
-    // 情况 1: 第一次运行用户任务
-    // ================================
+    // ⚠️⚠️⚠️ 关键修复：PS_CREATED任务必须在prev==next检查之前处理！
+    // 原因：首次进入用户态的任务即使是prev==next，也必须调用task_to_user_mode_with_task
+    //      否则会陷入无限循环（state=PS_CREATED → prev==next返回 → 永远无法进入用户态）
     if (first_time_user) {
+        printf("[schedule] First time entering user mode for pid=%d\n", next->pid);
+
         next->state = PS_RUNNING;
 
         // ⚠️⚠️⚠️ 关键修复：在切换前更新 current_task 和全局 current
@@ -335,16 +405,30 @@ void schedule(void) {
 
         printf("[schedule] About to call task_to_user_mode_with_task, next=0x%x\n", (uint32_t)next);
 
-        // ⚠️⚠️⚠️ 使用C包装函数调用汇编函数
+        // ⚠️⚠️⚠️ 调用 task_to_user_mode_with_task（汇编实现）
+        // 这个函数会恢复 trapframe 并 iret 到用户态，不会返回！
         extern void task_to_user_mode_with_task_wrapper(struct task_t *task);
         task_to_user_mode_with_task_wrapper(next);
 
-        // 不会返回到这里
-        printf("[schedule] ERROR: Returned from task_to_user_mode!\n");
-        while(1) {
-            __asm__ volatile("hlt");
-        }
+        // ⚠️⚠️⚠️ 永远不会执行到这里（如果执行到这里说明出错了）
+        // 使用 __builtin_unreachable() 告诉编译器这是不可达路径
+        __builtin_unreachable();
     }
+
+    // ⚠️⚠️⚠️ 铁律3：prev == next时，绝不能调用task_to_user_mode_with_task
+    // 原因：已经在当前任务的内核上下文中，没有发生切换
+    //      如果调用task_to_user_mode_with_task，会使用无效的trapframe导致崩溃
+    //
+    // 注意：这个检查必须在first_time_user检查之后！
+    //       因为PS_CREATED任务需要特殊处理（即使prev==next）
+    if (prev == next) {
+        printf("[schedule] prev==next (pid=%d), no switch needed\n", next->pid);
+        __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
+        return;
+    }
+
+    printf("[schedule] CPU%d: switch from task_%d to task_%d\n",
+           cpu_id, prev->pid, next->pid);
 
     // ================================
     // 情况 2: 切换到用户任务 (非首次)
@@ -372,7 +456,17 @@ void schedule(void) {
 
         /* 恢复中断并执行上下文切换 */
         __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
+
+        // ⚠️⚠️⚠️ 调试：打印传递给 switch_to 的参数
+        printf("[schedule] Calling switch_to(prev=0x%x, next=0x%x)\n",
+               (uint32_t)prev, (uint32_t)next);
+
         switch_to(prev, next);
+
+        // ⇪️⚠️⚠️ switch_to 返回后的标签
+        // fork() 创建的子进程的 switch_to 帧[4] 保存这个地址
+        // 标签: after_switch_to
+        __asm__ __volatile__("after_switch_to:");
 
         // ⚠️⚠️⚠️ switch_to 返回后:
         //   - 当前栈 = next 的内核栈

@@ -9,71 +9,52 @@ CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-bui
 ASFLAGS = $(TARGET_ARCH) -fno-pic
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ts.ld
 
-TARGETS = direct_write_test.elf
+TARGETS = sched_test5.elf
 
 # 测试程序源文件
 SCHED5_SOURCE = sched_test5.c
 SHELL_SOURCE = simple_interactive_shell.c
-SIMPLE_PRINTF_TEST_SOURCE = simple_printf_test.c
-MINIMAL_TEST_SOURCE = minimal_test.c
-PRINTF_TEST_SOURCE = printf_test.c
-DIRECT_WRITE_TEST_SOURCE = direct_write_test.c
+SYSCALL_TEST_SOURCE = simple_syscall_test.c
 
 # 目标文件
 SCHED5_OBJ = $(SCHED5_SOURCE:.c=.o)
 SHELL_OBJ = shell_demo.o
-SIMPLE_PRINTF_TEST_OBJ = simple_printf_test.o
-MINIMAL_TEST_OBJ = minimal_test.o
-PRINTF_TEST_OBJ = printf_test.o
-DIRECT_WRITE_TEST_OBJ = direct_write_test.o
+
+SYSCALL_TEST_OBJ = simple_syscall_test.o
 
 
 SHELL_DEP = $(SHELL_SOURCE)
 
 all: $(TARGETS)
 
-sched_test5.elf: $(SCHED5_OBJ) ts.ld
-	$(LD) $(LDFLAGS) -o $@ $(SCHED5_OBJ) ../user/libuser.c
+libuser.o: ../user/libuser.c
+	$(CC) $(CFLAGS) -I../user -c ../user/libuser.c -o libuser.o
+	@echo "Compiled: libuser.c"
+
+sched_test5.elf: $(SCHED5_OBJ) syscalls.o libuser.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ $(SCHED5_OBJ) syscalls.o libuser.o
 	@echo "Built: $@"
 
 shell_demo.o: $(SHELL_SOURCE) ts.ld
 	$(CC) $(CFLAGS) -I../user -c $(SHELL_SOURCE) -o shell_demo.o
 	@echo "Compiled: $(SHELL_SOURCE)"
 
-shell_demo.elf: shell_demo.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ shell_demo.o ../user/libuser.c
+shell_demo.elf: shell_demo.o libuser.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ shell_demo.o libuser.o
 	@echo "Built: $@"
 
-simple_printf_test.o: $(SIMPLE_PRINTF_TEST_SOURCE) ts.ld
-	$(CC) $(CFLAGS) -I../user -c $(SIMPLE_PRINTF_TEST_SOURCE) -o simple_printf_test.o
-	@echo "Compiled: $(SIMPLE_PRINTF_TEST_SOURCE)"
 
-simple_printf_test.elf: simple_printf_test.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ simple_printf_test.o ../user/libuser.c
-	@echo "Built: $@"
 
-minimal_test.o: $(MINIMAL_TEST_SOURCE) ts.ld
-	$(CC) $(CFLAGS) -I../user -c $(MINIMAL_TEST_SOURCE) -o minimal_test.o
-	@echo "Compiled: $(MINIMAL_TEST_SOURCE)"
+simple_syscall_test.o: $(SYSCALL_TEST_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(SYSCALL_TEST_SOURCE) -o simple_syscall_test.o
+	@echo "Compiled: $(SYSCALL_TEST_SOURCE)"
 
-minimal_test.elf: minimal_test.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ minimal_test.o ../user/libuser.c
-	@echo "Built: $@"
+syscalls.o: syscalls.S
+	$(AS) $(ASFLAGS) -c syscalls.S -o syscalls.o
+	@echo "Assembled: syscalls.S"
 
-printf_test.o: $(PRINTF_TEST_SOURCE) ts.ld
-	$(CC) $(CFLAGS) -I../user -c $(PRINTF_TEST_SOURCE) -o printf_test.o
-	@echo "Compiled: $(PRINTF_TEST_SOURCE)"
-
-printf_test.elf: printf_test.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ printf_test.o ../user/libuser.c
-	@echo "Built: $@"
-
-direct_write_test.o: $(DIRECT_WRITE_TEST_SOURCE) ts.ld
-	$(CC) $(CFLAGS) -I../user -c $(DIRECT_WRITE_TEST_SOURCE) -o direct_write_test.o
-	@echo "Compiled: $(DIRECT_WRITE_TEST_SOURCE)"
-
-direct_write_test.elf: direct_write_test.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ direct_write_test.o
+simple_syscall_test.elf: simple_syscall_test.o syscalls.o
+	$(LD) $(LDFLAGS) -o $@ simple_syscall_test.o syscalls.o
 	@echo "Built: $@"
 
 %.o: %.c
@@ -85,7 +66,7 @@ direct_write_test.elf: direct_write_test.o ts.ld
 	@echo "Assembled: $<"
 
 clean:
-	rm -f *.o $(TARGETS) *~
+	rm -f *.o $(TARGETS) libuser.o *~
 	@echo "Cleaned"
 
 .PHONY: all clean
