@@ -237,3 +237,47 @@ int inituvm(pde_t *pgdir, char *init, uint32_t sz) {
 void freevm(pde_t *pgdir) {
     // 什么都不做
 }
+
+// ⚠️⚠️⚠️ 从页表中查询虚拟地址对应的物理地址
+// 参数：
+//   pde - 页目录物理地址
+//   vaddr - 虚拟地址
+// 返回值：
+//   物理地址，如果未映射则返回 0
+uint32_t get_physical_address(uint32_t *pde, uint32_t vaddr) {
+    // x86 页表查询：
+    //   vaddr [31:22] = 页目录索引 (0-1023)
+    //   vaddr [21:12] = 页表索引 (0-1023)
+    //   vaddr [11:0]  = 页内偏移 (0-4095)
+
+    uint32_t pd_idx = (vaddr >> 22) & 0x3FF;  // 提取页目录索引
+    uint32_t pt_idx = (vaddr >> 12) & 0x3FF;  // 提取页表索引
+    uint32_t offset = vaddr & 0xFFF;          // 提取页内偏移
+
+    // 获取页目录项（需要将物理地址转换为虚拟地址）
+    uint32_t *pd_virt = (uint32_t*)phys_to_virt((uint32_t)pde);
+    uint32_t pde_entry = pd_virt[pd_idx];  // ⚠️ 重命名：pde -> pde_entry，避免与参数pde冲突
+
+    // 检查页目录项是否存在
+    if (!(pde_entry & 0x1)) {
+        return 0;  // PDE 不存在
+    }
+
+    // 获取页表的物理地址
+    uint32_t pt_phys = pde_entry & ~0xFFF;  // 清除低12位标志位，得到页表物理地址
+
+    // 获取页表项（需要将物理地址转换为虚拟地址）
+    uint32_t *pt_virt = (uint32_t*)phys_to_virt(pt_phys);
+    uint32_t pte = pt_virt[pt_idx];
+
+    // 检查页表项是否存在
+    if (!(pte & 0x1)) {
+        return 0;  // PTE 不存在
+    }
+
+    // 获取物理页地址
+    uint32_t page_phys = pte & ~0xFFF;  // 清除低12位标志位
+
+    // 返回完整的物理地址
+    return page_phys | offset;
+}

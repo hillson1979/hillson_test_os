@@ -1,23 +1,21 @@
 // x86 trap and interrupt constants.
 // ⚠️ 这些偏移必须与 struct trapframe 的布局完全匹配！
 // ⚠️ 关键修复：压栈顺序是 DS→ES→FS→GS→pusha→trapno→err→eip→cs→eflags→esp→ss
-// ⚠️ ESP指向pusha的起始位置(edi)，不是DS！
-// ⚠️ vectors.S 的压栈顺序：先 push $0 (err)，后 push $0 (trapno)
-// ⚠️ 由于栈向下生长，err 在高地址(offset 52)，trapno 在低地址(offset 48)
-#define TRAPFRAME_EDI 0      // edi 偏移 (pusha起始位置)
-#define TRAPFRAME_ESI 4      // esi 偏移
-#define TRAPFRAME_EBP 8      // ebp 偏移
-#define TRAPFRAME_OESP 12    // oesp 偏移 (pusha压入的dummy ESP)
-#define TRAPFRAME_EBX 16     // ebx 偏移
-#define TRAPFRAME_EDX 20     // edx 偏移
-#define TRAPFRAME_ECX 24     // ecx 偏移
-#define TRAPFRAME_EAX 28     // eax 偏移
-#define TRAPFRAME_DS 32      // ds 偏移 (alltraps先压入)
-#define TRAPFRAME_ES 36      // es 偏移
-#define TRAPFRAME_FS 40      // fs 偏移
-#define TRAPFRAME_GS 44      // gs 偏移 (alltraps后压入，栈顶)
-#define TRAPFRAME_TRAPNO 48  // trapno 偏移 (vectors.S 后 push，在低地址)
-#define TRAPFRAME_ERR 52     // err 偏移 (vectors.S 先 push，在高地址)
+// ⚠️ ESP指向trapframe的起始位置(DS)，不是pusha的起始位置！
+#define TRAPFRAME_DS 0       // ds 偏移 (alltraps先压入，低地址)
+#define TRAPFRAME_ES 4       // es 偏移
+#define TRAPFRAME_FS 8       // fs 偏移
+#define TRAPFRAME_GS 12      // gs 偏移 (alltraps后压入)
+#define TRAPFRAME_EAX 16     // eax 偏移 (pusha先压)
+#define TRAPFRAME_ECX 20     // ecx 偏移
+#define TRAPFRAME_EDX 24     // edx 偏移
+#define TRAPFRAME_EBX 28     // ebx 偏移
+#define TRAPFRAME_OESP 32    // oesp 偏移 (pusha压入的dummy ESP)
+#define TRAPFRAME_EBP 36     // ebp 偏移
+#define TRAPFRAME_ESI 40     // esi 偏移
+#define TRAPFRAME_EDI 44     // edi 偏移 (pusha后压)
+#define TRAPFRAME_TRAPNO 48  // trapno 偏移
+#define TRAPFRAME_ERR 52     // err 偏移
 #define TRAPFRAME_EIP 56     // eip 偏移
 #define TRAPFRAME_CS 60      // cs 偏移
 #define TRAPFRAME_EFLAGS 64  // eflags 偏移
@@ -63,45 +61,8 @@
 #define IRQ_SYS_BLOCK   123 // SYS_block=20
 #define IRQ_SPURIOUS    31
 
-// trapframe结构体定义 - 匹配xv6的布局
-// ⚠️ xv6标准: 先压段寄存器(DS->ES->FS->GS)，后压通用寄存器(pusha)
-struct trapframe_s
- {
-  // pusha压入的通用寄存器 (8个寄存器, 32字节)
-  uint32_t edi;
-  uint32_t esi;
-  uint32_t ebp;
-  uint32_t oesp;    // pusha压入的原始ESP值
-  uint32_t ebx;
-  uint32_t edx;
-  uint32_t ecx;
-  uint32_t eax;
 
-  // alltraps压入的段寄存器 (4个寄存器, 16字节)
-  // ⚠️ 压栈顺序（trap_entry.S）: DS → ES → FS → GS
-  // 栈向下生长，先压入的在低地址，后压入的在高地址
-  uint32_t ds;      // offset 32 (alltraps先压)
-  uint32_t es;      // offset 36
-  uint32_t fs;      // offset 40
-  uint32_t gs;      // offset 44 (alltraps后压，栈顶)
-
-  // vectors.S压入的值 (8字节)
-  // ⚠️ vectors.S 的压栈顺序：先 push $0 (err)，后 push $0 (trapno)
-  //    由于栈向下生长，trapno 在低地址(offset 48)，err 在高地址(offset 52)
-  uint32_t trapno;   // trap number (vectors.S 后 push, offset 48, 低地址)
-  uint32_t err;      // error code (vectors.S 先 push, offset 52, 高地址)
-
-  // CPU硬件压入的值
-  uint32_t eip;
-  uint32_t cs;
-  uint32_t eflags;
-
-  // 仅在特权级改变时压入
-  uint32_t esp;      // 用户态ESP
-  uint32_t ss;
-} ;
-
-// 与 trapframe_s 完全一致的 trapframe 定义
+//  trapframe 定义
 // ⚠️ 关键修复：必须与 xv6 的 trapframe 布局完全匹配！
 //    trap_entry.S 的 alltraps 压栈顺序：DS→ES→FS→GS → pusha
 //    在栈上：DS/ES/FS/GS 在低地址，pusha(EDI..EAX) 在高地址
@@ -155,38 +116,6 @@ struct trapframe {
   uint32_t esp;      // 用户态 ESP (offset 68)
   uint32_t ss;       // 用户态 SS (offset 72)
 } __attribute__((packed));
-
-/* // 中断帧
-typedef struct intr_frame_t
-{
-    u32 vector;
-
-    u32 edi;
-    u32 esi;
-    u32 ebp;
-    // 虽然 pushad 把 esp 也压入，但 esp 是不断变化的，所以会被 popad 忽略
-    u32 esp_dummy;
-
-    u32 ebx;
-    u32 edx;
-    u32 ecx;
-    u32 eax;
-
-    u32 gs;
-    u32 fs;
-    u32 es;
-    u32 ds;
-
-    u32 vector0;
-
-    u32 error;
-
-    u32 eip;
-    u32 cs;
-    u32 eflags;
-    u32 esp;
-    u32 ss;
-} intr_frame_t;*/
 
 void
 tvinit(void);

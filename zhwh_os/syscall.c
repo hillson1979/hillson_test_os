@@ -2,10 +2,10 @@
 #include "vga.h"
 #include "interrupt.h"
 #include "printf.h"   // 需要一个 console_write(buf,len) 或 putchar
-#include "task.h"      // do_exit(), current task, etc
+#include "task.h"      // do_exit(), current task, etc (task.h 已经包含了 mm.h)
 #include "multiboot2.h" // multiboot2_info_addr
 #include "highmem_mapping.h"
-#include "page.h"
+#include "page.h"      // phys_to_virt 宏
 #include "lapic.h"     // logical_cpu_id()
 
 // 声明当前任务数组
@@ -70,11 +70,58 @@ void do_exit(int code) {
 
     printf("[do_exit] Task %d exiting with code %d\n", task->pid, code);
 
-    // 标记任务为终止状态
+    // 1. 标记任务为终止状态
     task->state = PS_TERMNAT;
 
-    // 触发重新调度，让其他任务运行
+    // 2. 回收用户栈内存（如果有）
+    // 注意：task->user_stack 是虚拟地址，需要转换为物理地址
+    if (task->user_stack != 0) {
+        printf("[do_exit] Freeing user stack at 0x%x (virt)\n", (uint32_t)task->user_stack);
+        // 假设 user_stack 存储的是物理地址（根据 do_fork 的实现）
+        pmm_free_page((uint32_t)task->user_stack);
+        task->user_stack = 0;
+    }
+
+    // 3. 回收页表和用户空间内存（除了内核映射）
+    // 注意：task->pde 也是虚拟地址，需要转换为物理地址
+    if (task->pde != 0 && task->pde != (uint32_t*)0x101000) {
+        printf("[do_exit] Freeing user page directory at 0x%x (virt)\n", (uint32_t)task->pde);
+        // TODO: 遍历并释放用户空间的页表和页面
+        // 这里暂时只释放页目录本身
+        // pmm_free_page 需要物理地址，但我们这里只有虚拟地址
+        // 暂时跳过，需要实现 virt_to_phys 转换
+        printf("[do_exit] TODO: Need virt_to_phys conversion for PDE\n");
+        task->pde = 0;
+    }
+
+    // 4. 回收 trapframe（如果在内核栈中）
+    if (task->tf != 0) {
+        printf("[do_exit] Trapframe was at 0x%x (will be freed with kstack)\n", (uint32_t)task->tf);
+        task->tf = 0;
+    }
+
+    // 5. 注意：内核栈 (kstack) 暂时不释放
+    // 原因：我们还在内核栈上运行！
+    // 这个内存会在进程被完全清理时回收
+    printf("[do_exit] Kernel stack at 0x%x (keeping for now)\n", task->kstack);
+
+    // 6. 从调度链表中移除任务
+    // TODO: 实现双向链表的删除操作
+    printf("[do_exit] Task %d marked as terminated\n", task->pid);
+
+    // 7. 触发重新调度，让其他任务运行
     need_resched = 1;
+
+    // 8. 如果这是唯一的活动任务，进入空闲循环
+    // 检查是否还有其他可运行的任务
+    task_t *next = task->next;
+    if (next == task || next->state == PS_TERMNAT || next->state == PS_DESTROY) {
+        printf("[do_exit] No more runnable tasks, halting...\n");
+        __asm__ volatile("cli");
+        while (1) {
+            __asm__ volatile("hlt");
+        }
+    }
 
     // 注意：这里不应该直接返回到用户空间
     // 调度器会选择下一个任务运行
@@ -106,12 +153,11 @@ enum {
 };
 
 void syscall_dispatch(struct trapframe *tf) {
-    // 调试:打印trapframe字段地址
-    // printf("[syscall] tf=%p\n", tf);
-    // printf("  &tf->eax=%p, &tf->ebx=%p, &tf->ecx=%p\n", &tf->eax, &tf->ebx, &tf->ecx);
-    // printf("  tf->eax=%d, tf->ebx=%x, tf->ecx=%x, tf->edx=%x\n",
+    // ⚠️ 临时禁用调试输出，减少串口输出量
+    // printf("[syscall_dispatch] ENTER: tf=%p\n", tf);
+    // printf("  eax=%d (syscall num), ebx=0x%x (arg1), ecx=0x%x (arg2), edx=0x%x (arg3)\n",
     //        tf->eax, tf->ebx, tf->ecx, tf->edx);
-    // printf("  tf->trapno=%d, tf->eip=%x\n", tf->trapno, tf->eip);
+    // printf("  trapno=%d, eip=0x%x, cs=0x%x, ds=0x%x\n", tf->trapno, tf->eip, tf->cs, tf->ds);
 
     uint32_t num = tf->eax;
     uint32_t arg1 = tf->ebx;
@@ -222,10 +268,12 @@ void syscall_dispatch(struct trapframe *tf) {
         }
         case SYS_PUTCHAR: {
             // 输出单个字符(字符在EBX中)
+            printf("[syscall] SYS_PUTCHAR: char=0x%x ('%c')\n", arg1, (char)arg1);
             char c = (char)arg1;
             extern void vga_putc(char);
             vga_putc(c);
             tf->eax = 0;
+            printf("[syscall] SYS_PUTCHAR: done, eax=0\n");
             break;
         }
         case SYS_GET_FRAMEBUFFER: {

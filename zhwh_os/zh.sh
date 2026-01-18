@@ -8,10 +8,11 @@ cp kernel.bin iso/boot/
 [ -f test/sched_test5.elf ] && cp test/sched_test5.elf iso/boot/
 [ -f test/shell_demo.elf ] && cp test/shell_demo.elf iso/boot/
 [ -f test/simple_printf_test.elf ] && cp test/simple_printf_test.elf iso/boot/
+[ -f test/simple_syscall_test.elf ] && cp test/simple_syscall_test.elf iso/boot/
 
 cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
-set default=0
+set default=2
 
 menuentry "My OS - Direct Write Test" {
   multiboot2 /boot/kernel.bin
@@ -34,6 +35,12 @@ menuentry "My OS - 5 Process Test" {
 menuentry "My OS - shell_demo Test" {
   multiboot2 /boot/kernel.bin
   module2 /boot/shell_demo.elf
+  boot
+}
+
+menuentry "My OS - Simple Syscall Test" {
+  multiboot2 /boot/kernel.bin
+  module2 /boot/simple_syscall_test.elf
   boot
 }
 

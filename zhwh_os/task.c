@@ -5,7 +5,7 @@
 #include "interrupt.h"
 //#include "x86/mmu.h"
 #include "x86/io.h"
-//#include "page.h"
+//#include "page.h"  // mm.h 已经包含了 page.h
 #include "multiboot.h"
 #include "memlayout.h"
 #include "highmem_mapping.h"
@@ -22,6 +22,10 @@
 
 #define MAX_CPUS 8
 
+// ⚠️ 全局变量：保存内核页目录的物理地址
+// 在内核初始化时设置，do_fork() 需要使用它来映射子进程内存
+uint32_t kernel_page_directory_phys = 0;
+
 // ⚠️ 调试函数：打印进入task_to_user_mode_with_task
 void debug_print_enter(void) {
     printf("[DEBUG] ===== Entering task_to_user_mode_with_task =====\n");
@@ -31,6 +35,16 @@ void debug_print_enter(void) {
 void debug_print_tf_ptr(uint32_t tf_ptr) {
     printf("[DEBUG] task->tf = 0x%x\n", tf_ptr);
 }
+
+// ⚠️ 调试全局变量：用于从汇编代码传递调试信息
+volatile uint32_t debug_esp_before_iret = 0;
+volatile uint32_t debug_eip_on_stack = 0;
+volatile uint32_t debug_cs_on_stack = 0;
+volatile uint32_t debug_eflags_on_stack = 0;
+volatile uint32_t debug_user_esp_on_stack = 0;  // 用户栈 ESP
+volatile uint32_t debug_ss_on_stack = 0;        // 用户栈 SS
+volatile uint32_t debug_cr3_before_iret = 0;
+volatile uint32_t debug_iret_executed = 0;  // 标记 iret 之后是否立即执行
 
 // ⚠️ 调试函数：打印从tf读取的值
 void debug_print_tf_values(uint32_t eip, uint32_t esp, uint32_t eflags) {
@@ -147,23 +161,42 @@ page_t alloc_page_table_() {
 }
 void copy_kernel_mappings_to_pd(uint32_t *pd_user) {
     printf("[copy_kernel_mappings_to_pd] START: pd_user=0x%x\n", (uint32_t)pd_user);
+
+    // ⚠️⚠️⚠️ 关键修复：使用固定的内核页目录，而不是从当前 CR3 读取
+    // 原因：fork() 中当前 CR3 可能是父进程的 CR3，不是内核 CR3
+    extern uint32_t kernel_page_directory_phys;
+    uint32_t *pd_kernel = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
+
+    printf("[copy_kernel_mappings_to_pd] kernel PD phys=0x%x, pd_kernel=0x%x\n",
+           kernel_page_directory_phys, (uint32_t)pd_kernel);
+
     // kernel occupies PDE indexes 768..1023 (0xC0000000 >> 22 == 768)
     int mapped_count = 0;
     for (int i = 768; i < 1024; ++i) {
-        uint32_t entry = pd[i];
+        uint32_t entry = pd_kernel[i];
+
+        // ⚠️⚠️⚠️ 关键修复：如果 pd_user[i] 已经存在，不要覆盖！
+        // fork() 中可能已经为子进程设置了特殊的内核映射（如 PD[777]）
+        if (pd_user[i] & PAGE_PRESENT) {
+            printf("[copy_kernel_mappings_to_pd] Skipping pd[%u] (already present: 0x%x)\n",
+                   i, pd_user[i]);
+            continue;
+        }
+
         // 如果原来 pd_kernel[i] 为 0，就跳过
-        if ((entry & PTE_P) == 0) {
+        if ((entry & PAGE_PRESENT) == 0) {
             pd_user[i] = 0;
             continue;
         }
-        // ⚠️ 关键修复：复制内核PDE并强制设置U位=1
-        // 允许用户态访问内核地址空间(用于中断处理)
-        pd_user[i] = entry | PDE_USER;
+
+        // ⚠️⚠️⚠️ 关键修复：原样复制内核 PDE，不要修改权限位！
+        // 不要设置 PDE_USER，内核页必须保持 U=0（内核态专用）
+        pd_user[i] = entry;
 
         mapped_count++;
         if (mapped_count <= 5) {
-            printf("[copy_kernel_mappings_to_pd] Copied pd[%u]=0x%x -> pd_user[%u]=0x%x (cleared PTE.U bits)\n",
-                   i, pd[i], i, pd_user[i]);
+            printf("[copy_kernel_mappings_to_pd] Copied pd[%u]=0x%x -> pd_user[%u]=0x%x\n",
+                   i, entry, i, pd_user[i]);
         }
     }
     printf("[copy_kernel_mappings_to_pd] DONE: copied %u kernel mappings\n", mapped_count);
@@ -174,21 +207,18 @@ void copy_kernel_mappings_to_pd(uint32_t *pd_user) {
 
 void task_prepare_pde(struct task_t *task){
        printf("[task_prepare_pde] START for task=0x%x\n", task);
-       page_t pde = alloc_page_table_();
-       printf("[task_prepare_pde] alloc_page_table_ returned: phys=0x%x, virt=0x%x\n", (uint32_t)pde.phys, (uint32_t)pde.virt);
-       task->pde = (uint32_t*)pde.phys;   // CR3 必须用物理地址
-       uint32_t *pd_user = pde.virt;      // 内核里可以直接访问 PDE 内容
 
-       printf("[task_prepare_pde] task->pde=0x%x, pd_user=0x%x\n", (uint32_t)task->pde, (uint32_t)pd_user);
+       // ⚠️⚠️⚠️ Linux 方案：用户任务直接使用内核 CR3，共享内核页表
+       // 这样所有进程的 CR3 都相同，switch_to 时不需要切换 CR3
+       extern uint32_t kernel_page_directory_phys;
 
-       task->cr3 = (uint32_t*)pde.phys;   // CR3 字段存储物理地址，用于汇编 switch_to()
+       task->pde = (uint32_t*)kernel_page_directory_phys;
+       task->cr3 = (uint32_t*)kernel_page_directory_phys;
+       task->directory = task->cr3;
 
-       printf("[task_prepare_pde] task->cr3=0x%x (CR3 initialized!)\n", (uint32_t)task->cr3);
-
-       // ⚠️ 关键修复：先复制内核高端映射，再调用 load_module_to_user
-       // 这样 load_module_to_user 中分配的新页表才能被内核访问
-       copy_kernel_mappings_to_pd(pd_user);
-       printf("[task_prepare_pde] Kernel mappings copied\n");
+       printf("[task_prepare_pde] User task using kernel CR3: 0x%x (shared with all)\n",
+              (uint32_t)task->cr3);
+       printf("[task_prepare_pde] task->pde=0x%x (kernel page directory)\n", (uint32_t)task->pde);
 
        printf("[task_prepare_pde] Calling load_module_to_user...\n");
        load_module_to_user(task, task->pde);
@@ -210,20 +240,33 @@ void task_prepare_pde(struct task_t *task){
        printf("[task_prepare_pde] User stack VA range: 0x%x - 0x%x\n",
               VIRT_USER_STACK_TOP - 4*PAGE_SIZE, VIRT_USER_STACK_TOP);
 
-       // 用户栈顶虚拟地址（用户程序开始时 esp 指向这里）
-       th_u->tf->esp = VIRT_USER_STACK_TOP;
+       // ⚠️⚠️⚠️ 关键修复：不要覆盖 tf->esp！
+       // 原因：load_module_to_user 已经按照Linux ABI标准设置了正确的ESP
+       //      ESP应该指向argc（栈顶下方4字节），而不是栈顶
+       // 如果覆盖为VIRT_USER_STACK_TOP，会导致：
+       //   1. 用户程序访问[ESP]时得到未初始化的垃圾数据
+       //   2. C运行时代码解引用这个垃圾指针 -> NULL-0x18崩溃
+       //
+       // 正确的ABI布局（由load_module_to_user设置）：
+       //   [ESP] = argc (0)
+       //   [ESP+4] = argv[0] (NULL)
+       //   [ESP+8] = argv[1] (NULL)
+       //   ...
+       printf("[task_prepare_pde] Keeping tf->esp=0x%x (set by load_module_to_user)\n",
+              task->tf->esp);
+       printf("[task_prepare_pde] This ESP points to argc, following Linux ABI standard\n");
 
-       //printf("[task_load] user stack mapped at 0x%x (PA=0x%x)\n",VIRT_USER_STACK_TOP - PAGE_SIZE, th_u->user_stack);
-       //iframe=(struct trapframe *)(th_u->tf);
+       //printf("[task_load] user stack mapped at 0x%x (PA=0x%x)\n",VIRT_USER_STACK_TOP - PAGE_SIZE, task->user_stack);
+       //iframe=(struct trapframe *)(task->tf);
        // 不要在这里切换 CR3，否则后续的 printf 和其他内核操作会失败
        // CR3 将在 task_to_user_mode 中切换
-       //asm volatile("movl %%eax, %%cr3\n" ::"a"(th_u->pde));
+       //asm volatile("movl %%eax, %%cr3\n" ::"a"(task->pde));
 
        // ⚠️ 不要在这里映射 VGA！原因：
-       // 1. th_u->pde 是物理地址，需要先切换 CR3 才能访问
+       // 1. task->pde 是物理地址，需要先切换 CR3 才能访问
        // 2. 用户页目录的物理地址还没有被映射到内核虚拟地址空间
        // 3. VGA 映射应该在 load_module_to_user 中完成（如果需要的话）
-       // map_page(th_u->pde, VIRT_USER_VIDEO, PHYS_VIDEO, PTE_P | PTE_W | PTE_U);
+       // map_page(task->pde, VIRT_USER_VIDEO, PHYS_VIDEO, PTE_P | PTE_W | PTE_U);
 
 }
 
@@ -423,11 +466,22 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
         // 注意: kmalloc_early 返回的是内核虚拟地址
         newtask->kstack = (uint32_t*)((uint8_t*)page + PAGE_SIZE);
 
-        // 关键修复：初始化 esp0 为内核栈顶（Ring 0→Ring 3 时 CPU 使用）
+        // ⚠️ kstack 已经指向页末尾（栈顶），所以 esp0 = kstack
+        // 在用户态→内核态切换时，CPU会使用这个地址作为内核栈指针
         newtask->esp0 = (uint32_t)newtask->kstack;
 
-        // 关键修复：初始化 esp 为内核栈顶（调度器使用它来切换栈）
-        newtask->esp = (uint32_t)newtask->kstack;
+        // ⚠️⚠️⚠️ 关键修复：esp 应该指向栈顶下方，为 trapframe 预留空间
+        // 原因：当用户任务被中断时，CPU 会从 esp0 开始压栈（创建 trapframe）
+        //      如果 esp == esp0，调度器切换时会破坏 trapframe
+        //
+        // 正确的布局（从高地址到低地址）：
+        //   [栈顶/esp0] <-- CPU 从这里开始压栈（中断时）
+        //   [trapframe (76 字节)] <-- CPU 压入
+        //   [esp 指向这里] <-- 调度器使用
+        newtask->esp = (uint32_t)newtask->kstack - sizeof(struct trapframe);
+
+        // ⚠️⚠️⚠️ 初始化 has_run_user = 0，表示还未进入过用户态
+        newtask->has_run_user = 0;
 
         // 调试: 输出kstack的虚拟地址
         printf("[init_task] kstack virt=0x%x\n", (uint32_t)newtask->kstack);
@@ -572,6 +626,18 @@ task_t* do_fork(void) {
     }
 
     printf("[do_fork] Parent PID=%d forking...\n", parent->pid);
+    printf("[do_fork] parent=0x%x, parent->tf=0x%x, parent->kstack=0x%x\n",
+           (uint32_t)parent, (uint32_t)parent->tf, (uint32_t)parent->kstack);
+
+    // ⚠️ 安全检查：确保 parent->tf 有效
+    if (parent->tf == NULL) {
+        printf("[do_fork] ERROR: parent->tf is NULL!\n");
+        return NULL;
+    }
+
+    // ⚠️ 获取内核的 CR3（需要用来映射子进程的内存到内核页表）
+    extern void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags);
+    extern uint32_t kernel_page_directory_phys;  // ⚠️ 使用全局变量，不是当前CR3
 
     // 1. 分配新任务结构
     uint32_t child_phys = pmm_alloc_page();
@@ -579,7 +645,24 @@ task_t* do_fork(void) {
         printf("[do_fork] ERROR: Failed to allocate task structure!\n");
         return NULL;
     }
-    task_t *child = (task_t*)phys_to_virt(child_phys);
+    uint32_t child_virt = phys_to_virt(child_phys);
+
+    // ⚠️⚠️⚠️ 关键修复：临时切换到内核 CR3 来执行映射操作
+    // 原因：当前在系统调用中，CR3 是父进程的 CR3，需要切换到内核 CR3 才能修改内核页目录
+    uint32_t current_cr3;
+    __asm__ volatile("movl %%cr3, %0" : "=r"(current_cr3));
+    uint32_t kernel_cr3_value = kernel_page_directory_phys | 0x3;  // 添加标志位
+    __asm__ volatile("movl %0, %%cr3" : : "r"(kernel_cr3_value));
+    printf("[do_fork] Temporarily switched CR3: 0x%x -> 0x%x\n", current_cr3, kernel_cr3_value);
+
+    // ⚠️⚠️⚠️ 关键修复：将子进程任务结构映射到内核的页表中
+    // 原因：child_phys 可能在 16MB 之前，不在内核的直接映射区域
+    printf("[do_fork] Mapping child task struct to kernel page table: phys=0x%x, virt=0x%x\n",
+           child_phys, child_virt);
+    map_page(kernel_page_directory_phys, child_virt, child_phys, PAGE_PRESENT | PAGE_WRITABLE);
+    printf("[do_fork] Child task struct mapped\n");
+
+    task_t *child = (task_t*)child_virt;
     memset(child, 0, PAGE_SIZE);
 
     // 2. 复制任务结构的基本字段
@@ -590,6 +673,7 @@ task_t* do_fork(void) {
     child->state = PS_CREATED;
     child->cpu = parent->cpu;
     child->nice = parent->nice;
+    child->has_run_user = 0;  // ⚠️⚠️⚠️ 子进程还未进入过用户态
     child->start_time = 0;  // 将在调度时设置
     child->time_slice = parent->time_slice;
     child->vruntime = 0;
@@ -605,6 +689,10 @@ task_t* do_fork(void) {
     child->has_signal = false;
     child->idle_flags = 0;
 
+    // ⚠️⚠️⚠️ 关键修复：复制 user_stack 字段!
+    // 子进程和父进程共享同一个用户虚拟地址空间(COW),所以 user_stack 值相同
+    child->user_stack = parent->user_stack;
+
     // 3. 分配独立的内核栈
     uint32_t kstack_phys = pmm_alloc_page();
     if (!kstack_phys) {
@@ -618,66 +706,122 @@ task_t* do_fork(void) {
     child->esp0 = kstack_virt + PAGE_SIZE;
     child->esp = kstack_virt + PAGE_SIZE;  // 关键修复：初始化 esp，调度器使用它来切换栈
 
-    printf("[do_fork] Child task struct virt=0x%x, kstack_virt=0x%x, esp=0x%x\n",
-           (uint32_t)child, kstack_virt, child->esp);
+    printf("[do_fork] Child task struct virt=0x%x, kstack_phys=0x%x, kstack_virt=0x%x, esp=0x%x\n",
+           (uint32_t)child, kstack_phys, kstack_virt, child->esp);
 
-    // 4. 创建独立的页目录 (CR3)
-    page_t pde_child = alloc_page_table_();
-    child->pde = (uint32_t*)pde_child.phys;
-    child->cr3 = (uint32_t*)pde_child.phys;
-    child->directory = child->cr3;  // 关键修复：directory 指向子进程自己的页目录
-    uint32_t *pd_child_virt = pde_child.virt;
+    // ⚠️⚠️⚠️ 关键修复：将子进程的内核栈映射到内核的页表中
+    // 原因：内核执行时使用内核的 CR3，需要能访问子进程的内核栈
+    // kstack_phys 可能在 16MB 之前（不在内核的直接映射区域）
+    printf("[do_fork] Mapping child kstack to kernel page table: phys=0x%x, virt=0x%x\n",
+           kstack_phys, kstack_virt);
+    map_page(kernel_page_directory_phys, kstack_virt, kstack_phys, PAGE_PRESENT | PAGE_WRITABLE);
+    printf("[do_fork] Child kernel stack mapped to kernel page table\n");
 
-    printf("[do_fork] Child page dir: phys=0x%x, virt=0x%x\n",
-           pde_child.phys, pd_child_virt);
+    // ⚠️⚠️⚠️ 标准 fork 实现：每个子进程有独立的 CR3（页目录）
+    //
+    // 设计原则：
+    //   1. 子进程有独立的页目录（自己的 CR3）
+    //   2. 内核空间映射（768-1023）直接复制（所有进程共享）
+    //   3. 用户空间映射（0-767）需要复制页表和物理页（COW）
+    //
+    // 为什么要独立 CR3？
+    //   - 避免多个子进程互相覆盖用户栈映射
+    //   - 符合标准 fork 语义：父子进程有独立的地址空间
+    //
+    printf("[do_fork] Creating independent page directory for child...\n");
 
-    // 5. 复制内核高端映射 (0xC0000000+)
-    copy_kernel_mappings_to_pd(pd_child_virt);
-    printf("[do_fork] Kernel mappings copied\n");
+    // 1. 分配新的页目录
+    uint32_t child_pd_phys = pmm_alloc_page();
+    if (!child_pd_phys) {
+        printf("[do_fork] ERROR: Failed to allocate page directory for child!\n");
+        pmm_free_page(child_phys);
+        pmm_free_page(kstack_phys);
+        return NULL;
+    }
+    uint32_t child_pd_virt = phys_to_virt(child_pd_phys);
+    uint32_t *child_pd = (uint32_t*)child_pd_virt;
 
-    // 6. 复制用户空间页表 (实现 Copy-on-Write)
-    // 获取父进程的页目录虚拟地址
-    uint32_t *pd_parent = (uint32_t*)phys_to_virt((uint32_t)parent->cr3);
+    printf("[do_fork] Allocated child PD: phys=0x%x, virt=0x%x\n",
+           child_pd_phys, child_pd_virt);
 
-    int copied_ptes = 0;
-    int copied_pts = 0;
+    // 2. 清空子进程页目录（避免垃圾数据）
+    memset(child_pd, 0, PAGE_SIZE);
 
-    for (int i = 0; i < 768; i++) {  // 用户空间：0-767
-        if (pd_parent[i] & PAGE_PRESENT) {
-            // 获取父进程的页表物理地址
-            uint32_t parent_pt_phys = pd_parent[i] & ~0xFFF;
+    // 3. 复制内核映射（768-1023 项）
+    //    使用内核全局 CR3 来访问父进程的页目录
+    extern uint32_t kernel_page_directory_phys;
+    uint32_t *parent_pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
 
-            // 分配新的页表
-            page_t pt_child = alloc_page_table_();
-            uint32_t *pt_parent_virt = (uint32_t*)phys_to_virt(parent_pt_phys);
-            uint32_t *pt_child_virt = pt_child.virt;
+    for (int i = 768; i < 1024; i++) {
+        child_pd[i] = parent_pd[i];
+    }
 
-            // 复制页表项，父子进程都标记为只读 (Copy-on-Write)
-            for (int j = 0; j < 1024; j++) {
-                if (pt_parent_virt[j] & PAGE_PRESENT) {
-                    uint32_t pte = pt_parent_virt[j];
+    printf("[do_fork] Copied kernel mappings (768-1023)\n");
 
-                    // Copy-on-Write: 父子进程都清除写位
-                    pte &= ~PAGE_WRITABLE;  // 清除写位
+    // 4. 复制用户空间页表（0-767 项）
+    //    ⚠️ 关键：需要复制页表结构，但暂时共享物理页（COW 的第一步）
+    //
+    // ⚠️⚠️⚠️ 关键修复：确保在 kernel CR3 下复制页表
+    // 原因：memcpy 需要访问内核虚拟地址，必须在 kernel CR3 下进行
+    uint32_t current_cr3_check;
+    __asm__ volatile("movl %%cr3, %0" : "=r"(current_cr3_check));
+    if ((current_cr3_check & ~0xFFF) != kernel_page_directory_phys) {
+        printf("[do_fork] WARNING: CR3 changed! Restoring kernel CR3...\n");
+        printf("[do_fork] Current CR3=0x%x, Expected=0x%x\n",
+               current_cr3_check, kernel_page_directory_phys);
+        uint32_t kernel_cr3_value = kernel_page_directory_phys | 0x3;
+        __asm__ volatile("movl %0, %%cr3" : : "r"(kernel_cr3_value));
+    }
 
-                    // 关键修复：父进程页表也要标记为只读
-                    pt_parent_virt[j] = pte;
-                    pt_child_virt[j] = pte;
-                    copied_ptes++;
-                }
+    // ⚠️⚠️⚠️ 简化策略：只复制已知的用户空间页表
+    // 根据 load_module_to_user 的输出，我们知道：
+    //   - PD[32] = 0x2402007 (用户代码页表 @ 0x8000000)
+    //   - PD[767] = 0x2404007 (用户栈页表 @ 0xBFFFF000)
+    //
+    // 其他用户空间的 PDE 项可能是未初始化的垃圾数据，不应该复制！
+    // 这样可以避免访问无效的物理地址（如 0xD0200000）
+    //
+    int user_pd_indices[] = {32, 767};  // 用户代码和用户栈
+    int num_user_pds = 2;
+
+    for (int idx = 0; idx < num_user_pds; idx++) {
+        int i = user_pd_indices[idx];
+
+        if (parent_pd[i] & PAGE_PRESENT) {
+            uint32_t parent_pt_phys = parent_pd[i] & ~0xFFF;
+
+            // ⚠️⚠️⚠️ 分配新的页表物理页
+            uint32_t child_pt_phys = pmm_alloc_page();
+            if (!child_pt_phys) {
+                printf("[do_fork] ERROR: Failed to allocate page table for PD[%d]!\n", i);
+                continue;
             }
 
-            // 设置子进程页目录项
-            pd_child_virt[i] = (uint32_t)pt_child.phys | (pd_parent[i] & 0xFFF);
-            copied_pts++;
+            // 复制页表内容（共享物理页映射）
+            void *parent_pt_virt = phys_to_virt(parent_pt_phys);
+            void *child_pt_virt = phys_to_virt(child_pt_phys);
+
+            printf("[do_fork] memcpy: parent_pt_virt=0x%x, child_pt_virt=0x%x\n",
+                   (uint32_t)parent_pt_virt, (uint32_t)child_pt_virt);
+
+            memcpy(child_pt_virt, parent_pt_virt, PAGE_SIZE);
+
+            // 设置子进程的 PDE（保持相同的标志位）
+            child_pd[i] = child_pt_phys | (parent_pd[i] & 0xFFF);
+
+            printf("[do_fork] Copied PD[%d]: parent_pt=0x%x -> child_pt=0x%x\n",
+                   i, parent_pt_phys, child_pt_phys);
         }
     }
 
-    // 刷新 TLB，确保页表修改生效
-    asm volatile("movl %%cr3, %%eax; movl %%eax, %%cr3" ::: "%eax");
+    printf("[do_fork] Copied user space page tables (0-767)\n");
 
-    printf("[do_fork] Copied %d page tables, %d page entries (COW)\n",
-           copied_pts, copied_ptes);
+    // 5. 设置子进程的 CR3 和 pde
+    child->pde = (uint32_t*)child_pd_phys;  // 存储物理地址
+    child->cr3 = (uint32_t*)child_pd_phys;   // CR3 需要物理地址
+    child->directory = child->cr3;
+
+    printf("[do_fork] Child using independent CR3: 0x%x\n", (uint32_t)child->cr3);
 
     // 7. 复制 trapframe 并构建正确的内核栈布局
     // ⚠️⚠️⚠️ 关键修复：子进程的内核栈布局必须匹配 switch_to + interrupt_exit 的期望
@@ -706,50 +850,124 @@ task_t* do_fork(void) {
 
     // 计算 trapframe 位置（在栈顶，76字节）
     child->tf = (struct trapframe*)(kstack_virt + PAGE_SIZE - sizeof(struct trapframe));
+
+    // ⚠️ 调试：打印 tf 字段的偏移量
+    printf("[do_fork] DEBUG: child task struct addr=0x%x\n", (uint32_t)child);
+    printf("[do_fork] DEBUG: &child->tf=0x%x, offset=%d\n",
+           (uint32_t)&child->tf, (uint32_t)&child->tf - (uint32_t)child);
+    printf("[do_fork] DEBUG: child->tf=0x%x (value stored)\n", (uint32_t)child->tf);
+    printf("[do_fork] Before memcpy: child->tf=0x%x, parent->tf=0x%x, size=%d\n",
+           (uint32_t)child->tf, (uint32_t)parent->tf, sizeof(struct trapframe));
+
+    // 复制 trapframe（现在应该可以正常工作了，因为子进程内核栈已映射到内核页表）
     memcpy(child->tf, parent->tf, sizeof(struct trapframe));
+
+    printf("[do_fork] Trapframe copied successfully\n");
 
     // 子进程返回 0
     child->tf->eax = 0;
 
     printf("[do_fork] Trapframe copied: eip=0x%x, esp=0x%x\n",
            child->tf->eip, child->tf->esp);
-    printf("[do_fork] tf at 0x%x, sizeof(tf)=%d\n",
-           (uint32_t)child->tf, sizeof(struct trapframe));
+    printf("[do_fork] Parent tf at 0x%x, Child tf at 0x%x, sizeof(tf)=%d\n",
+           (uint32_t)parent->tf, (uint32_t)child->tf, sizeof(struct trapframe));
 
-    // ⚠️⚠️⚠️ 在 trapframe 下方构建 switch_to 帧（4个寄存器 + 1个返回地址）
-    uint32_t *frame_bottom = (uint32_t*)child->tf - 5;  // 向下移动 5 个 dword
+    // ⚠️⚠️⚠️ 关键调试：验证 child->tf 的内容是否正确
+    printf("[do_fork] Child trapfield DUMP:\n");
+    printf("  eip=0x%x, cs=0x%x, eflags=0x%x\n", child->tf->eip, child->tf->cs, child->tf->eflags);
+    printf("  esp=0x%x, ss=0x%x\n", child->tf->esp, child->tf->ss);
+    printf("  eax=0x%x, ebx=0x%x, ecx=0x%x, edx=0x%x\n", child->tf->eax, child->tf->ebx, child->tf->ecx, child->tf->edx);
+    printf("  esi=0x%x, edi=0x%x, ebp=0x%x\n", child->tf->esi, child->tf->edi, child->tf->ebp);
 
-    // 栈布局（从低地址到高地址）：
-    //   frame_bottom[0] = ebp
-    //   frame_bottom[1] = edi
-    //   frame_bottom[2] = esi
-    //   frame_bottom[3] = ebx
-    //   frame_bottom[4] = ret_addr (指向 schedule 中 switch_to 之后的代码)
+    // ⚠️⚠️⚠️ 简化方案：父子进程共享用户栈映射
+    // 原因：共享 CR3，所有映射都相同
+    // 问题：多个子进程会互相覆盖用户栈内容
+    // 解决：后续需要实现 COW（写时复制）
+    //
+    printf("[do_fork] Child sharing parent's address space (including user stack)\n");
+    printf("[do_fork] ⚠️ WARNING: Multiple children will overwrite each other's user stack!\n");
+    printf("[do_fork] ⚠️ TODO: Implement COW (Copy-On-Write) mechanism\n");
 
-    frame_bottom[0] = 0;  // ebp (初始值都是 0)
-    frame_bottom[1] = 0;  // edi
-    frame_bottom[2] = 0;  // esi
-    frame_bottom[3] = 0;  // ebx
-    // frame_bottom[4] 是返回地址，会被 switch_to 的 ret 使用
-    // 但我们不需要精确的地址，因为 schedule() 会直接 return 到 interrupt_exit
-
-    // 设置子进程的 ESP 指向 switch_to 帧的底部（ebp 的位置）
-    child->esp = (uint32_t)&frame_bottom[0];
-
-    printf("[do_fork] Child ESP=0x%x (switch_to frame bottom)\n", child->esp);
-    printf("[do_fork] Stack: [switch_to frame: 20 bytes][trapframe: %d bytes][stack top]\n",
-           20 + (int)sizeof(struct trapframe));
+    // ⚠️⚠️⚠️ 关键修复：fork的子进程不需要构建switch_to帧！
+    // 原因：
+    //   1. 子进程状态是PS_CREATED
+    //   2. 调度器会直接调用task_to_user_mode_with_task（不走switch_to路径）
+    //   3. task_to_user_mode_with_task直接恢复trapframe并iret，不需要switch_to帧
+    //
+    // 错误的代码（已删除）：
+    //   uint32_t *frame_bottom = (uint32_t*)child->tf - 5;
+    //   child->esp = (uint32_t)&frame_bottom[0];
+    //
+    // 正确的逻辑：
+    //   child->tf 已经正确复制父进程的trapframe
+    //   child->esp 应该指向内核栈顶（不需要修改）
+    //   task_to_user_mode_with_task会使用child->tf来恢复用户态
+    //
+    printf("[do_fork] Child trapframe ready: tf=0x%x, eip=0x%x, esp=0x%x\n",
+           (uint32_t)child->tf, child->tf->eip, child->tf->esp);
+    printf("[do_fork] Child will enter user mode via task_to_user_mode_with_task\n");
 
     // 8. 将子进程加入调度队列
-    // 添加到任务链表
-    if (combined_task_list == NULL) {
-        combined_task_list = child;
+    // ⚠️⚠️⚠️ 关键修复：添加到循环链表中，这样调度器才能找到子进程
+    extern struct task_t *combined_task_list;
+    extern task_t *current_task[];
+
+    // ⚠️⚠️⚠️ 关键修复：需要找到循环链表的真正头部(PID=1,内核任务)
+    // 不能使用 current_task[0],因为它是当前运行的任务(可能是 PID=2)
+    // 方法:从 current_task[0] 开始遍历,找到 PID=1 的任务
+    struct task_t *first_task = current_task[0];
+    struct task_t *temp = first_task;
+
+    // 遍历循环链表,找到 PID=1 (内核任务)
+    while (temp != NULL && temp->pid != 1) {
+        temp = temp->next;
+        if (temp == first_task) {
+            // 回到起点了,没找到 PID=1
+            printf("[do_fork] ERROR: Cannot find PID=1 in task list!\n");
+            break;
+        }
+    }
+
+    if (temp != NULL && temp->pid == 1) {
+        first_task = temp;
+    }
+
+    printf("[do_fork] Found first_task: pid=%d\n", first_task ? first_task->pid : -1);
+
+    if (first_task == NULL) {
+        // 不应该发生：至少应该有内核任务和父进程
+        printf("[do_fork] ERROR: No tasks in system!\n");
         child->next = NULL;
         child->prev = NULL;
     } else {
-        child->next = combined_task_list;
-        child->prev = NULL;
-        combined_task_list->prev = child;
+        // ⚠️⚠️⚠️ 关键修复：找到 first_task 的前驱节点(真正的链表末尾)
+        // 在循环链表中: last->next = first_task
+        struct task_t *last = first_task->prev;
+
+        if (last == NULL) {
+            // 不应该发生：循环链表应该有 prev 指针
+            printf("[do_fork] ERROR: first_task->prev is NULL!\n");
+            last = first_task;
+            while (last->next != NULL && last->next != first_task) {
+                last = last->next;
+            }
+        }
+
+        // 将 child 添加到循环链表的末尾(在 first_task 之前)
+        // 原来的链表: ... -> last -> first_task -> ...
+        // 新的链表: ... -> last -> child -> first_task -> ...
+        last->next = child;
+        child->prev = last;
+        child->next = first_task;
+        first_task->prev = child;
+
+        printf("[do_fork] Added child to circular list: prev->pid=%d, next->pid=%d\n",
+               child->prev ? child->prev->pid : -1,
+               child->next ? child->next->pid : -1);
+    }
+
+    // 同时更新 combined_task_list (用于其他用途，不需要循环)
+    if (combined_task_list == NULL) {
         combined_task_list = child;
     }
 
@@ -780,12 +998,27 @@ task_t* do_fork(void) {
         child->sched_node->next = &sched_root;
     }
 
-    // 设置子进程状态
-    // 注意：fork 创建的子进程不需要 PS_CREATED 状态
-    // 因为它直接从 fork 系统调用返回，不需要初始化
-    child->state = PS_READY;
+    // ⚠️⚠️⚠️ 关键修复：fork 创建的子进程保持 PS_CREATED 状态！
+    // 原因：子进程第一次被调度时，必须走 task_to_user_mode_with_task 路径，
+    //       而不是 switch_to 路径！
+    //
+    // 如果使用 PS_READY，schedule() 会调用 switch_to，
+    // 但子进程的栈上没有合法的 C 调用返回地址，会导致 ret 跳飞并 triple fault！
+    //
+    // 正确流程：
+    //   1. fork() 创建子进程，state = PS_CREATED
+    //   2. schedule() 检测到 PS_CREATED，调用 task_to_user_mode_with_task
+    //   3. task_to_user_mode_with_task 恢复 trapframe 并 iret 到用户态
+    //   4. 用户态执行，后续调度时 state = PS_READY/PS_RUNNING，走 switch_to 路径
+    //
+    // 保持第 650 行设置的 PS_CREATED 状态，不要覆盖！
+    // child->state 已经是 PS_CREATED（第 650 行）
 
-    printf("[do_fork] Child PID=%d created successfully, state=PS_READY\n", child->pid);
+    printf("[do_fork] Child PID=%d created successfully, state=%d (PS_CREATED)\n", child->pid, child->state);
+
+    // ⚠️⚠️⚠️ 恢复父进程的 CR3
+    __asm__ volatile("movl %0, %%cr3" : : "r"(current_cr3));
+    printf("[do_fork] Restored CR3: 0x%x -> 0x%x\n", kernel_cr3_value, current_cr3);
 
     // 返回子进程指针（父进程中会使用）
     return child;
@@ -836,47 +1069,37 @@ const char debug_msg_before_iret[] = "[task_to_user_mode] *** ABOUT TO EXECUTE I
 // ================================
 
 void task_to_user_mode_with_task_wrapper(struct task_t *task) {
-    printf("[wrapper] Calling task_to_user_mode_with_task with task=0x%x\n", (uint32_t)task);
-    printf("[wrapper] Before inline asm, EAX will be set to 0x%x\n", (uint32_t)task);
+    // ⚠️⚠️⚠️ 关键调试：检查 task 参数
+    printf("[task_to_user_mode_wrapper] ENTRY: task=0x%x\n", (uint32_t)task);
 
-    // ⚠️⚠️⚠️ 调试：检查 trapframe 的值
-    if (task->tf) {
-        printf("[wrapper] trapframe BEFORE task_to_user_mode_with_task:\n");
-        printf("  eip=0x%x, esp=0x%x\n", task->tf->eip, task->tf->esp);
-        printf("  cs=0x%x, ss=0x%x, eflags=0x%x\n", task->tf->cs, task->tf->ss, task->tf->eflags);
+    // ⚠️ 移除所有printf调试,避免printf中的除法导致异常
+
+    // ⚠️⚠️⚠️ 关键调试:检查task指针是否为NULL
+    if (task == 0) {
+        printf("[task_to_user_mode_wrapper] ERROR: task is NULL!\n");
+        __asm__ volatile("hlt");
+    }
+    if (task->tf == 0) {
+        printf("[task_to_user_mode_wrapper] ERROR: task->tf is NULL!\n");
+        __asm__ volatile("hlt");
     }
 
-    // ⚠️⚠️⚠️ 关键修复：使用 volatile 变量防止编译器优化
-    // 编译器可能会优化掉 task 参数，导致 EAX = 0
-    volatile uint32_t task_volatile = (uint32_t)task;
+    // ⚠️⚠️⚠️ 关键调试：打印 trapframe 内容
+    printf("[task_to_user_mode_wrapper] task=0x%x, pid=%d\n", (uint32_t)task, task->pid);
+    printf("[task_to_user_mode_wrapper] task->tf=0x%x\n", (uint32_t)task->tf);
+    printf("[task_to_user_mode_wrapper] trapframe content:\n");
+    printf("  eip=0x%x, cs=0x%x, eflags=0x%x\n", task->tf->eip, task->tf->cs, task->tf->eflags);
+    printf("  esp=0x%x, ss=0x%x\n", task->tf->esp, task->tf->ss);
+    printf("  eax=0x%x (should be 0 for child)\n", task->tf->eax);
 
-    // ⚠️⚠️⚠️ 关键修复：在调用之前确保段寄存器指向内核数据段！
-    // 因为调用者可能在用户态，DS/ES可能指向用户数据段
-    // 如果不修复，jmp指令读取目标地址时会崩溃
-    __asm__ volatile(
-        "movw $0x10, %%ax\n\t"
-        "movw %%ax, %%ds\n\t"
-        "movw %%ax, %%es\n\t"
-        "movw %%ax, %%fs\n\t"
-        "movw %%ax, %%gs\n\t"
-        : : : "ax", "memory"
-    );
+    // ⚠️⚠️⚠️ 直接调用 task_to_user_mode_with_task
+    //    参数通过 C 调用约定传递（栈）
+    printf("[task_to_user_mode_wrapper] task_volatile = 0x%x (about to call task_to_user_mode_with_task)\n", (uint32_t)task);
 
-    // ⚠️⚠️⚠️ 关键修复：使用 jmp 而不是 call！
-    // 原因：
-    //   1. task_to_user_mode_with_task 最终执行 iret，永不返回
-    //   2. call 会压入返回地址，破坏栈布局
-    //   3. jmp 是尾跳转，不会压栈，保持栈干净
-    __asm__ volatile(
-        "movl %0, %%eax\n\t"
-        "jmp task_to_user_mode_with_task\n\t"
-        :
-        : "r"(task_volatile)  // ⚠️ 使用 volatile 变量
-        : "eax", "ecx", "edx", "memory"
-    );
+    task_to_user_mode_with_task(task);
 
     // 不会返回到这里
-    printf("[wrapper] ERROR: Returned from task_to_user_mode_with_task!\n");
+    __asm__ volatile("hlt");  // 如果返回了,说明有错误
     while(1) {
         __asm__ volatile("hlt");
     }

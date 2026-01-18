@@ -33,8 +33,23 @@ OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS)
 TARGET = kernel.bin
 RAW_TARGET = kernel.raw
 
+# Offset 计算工具
+OFFSETcalc = calc_task_offset
+
 # 默认目标
 all: $(TARGET) $(RAW_TARGET)
+
+# 计算 task_t 结构体偏移量
+calc-offset: calc_task_offset.c
+	@echo "Compiling offset calculator..."
+	$(CC) $(TARGET_ARCH) -o $(OFFSETcalc) calc_task_offset.c
+	@echo ""
+	./$(OFFSETcalc)
+	@echo ""
+	@echo "====================="
+	@echo "Copy the TASK_IFRAME value above to task_impl.s line 18:"
+	@echo "  .set TASK_IFRAME, <value>"
+	@echo "====================="
 
 # 使用gcc链接（推荐）
 $(TARGET): $(OBJECTS) linker/os.ld
@@ -57,16 +72,17 @@ $(RAW_TARGET): $(TARGET)
 	@echo "Assembled: $<"
 
 clean:
-	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso
+	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso $(OFFSETcalc)
 	@echo "Cleaned object files and binaries"
 
 help:
 	@echo "可用目标:"
-	@echo "  all       - 编译所有目标 (默认)"
-	@echo "  kernel.bin - 编译ELF内核文件"
-	@echo "  kernel.raw - 生成原始二进制文件"
-	@echo "  clean     - 清理对象文件"
-	@echo "  help      - 显示此帮助信息"
+	@echo "  all         - 编译所有目标 (默认)"
+	@echo "  kernel.bin  - 编译ELF内核文件"
+	@echo "  kernel.raw  - 生成原始二进制文件"
+	@echo "  calc-offset - 计算 task_t 结构体偏移量"
+	@echo "  clean       - 清理对象文件"
+	@echo "  help        - 显示此帮助信息"
 
-.PHONY: all clean help
+.PHONY: all clean help calc-offset
 

@@ -119,7 +119,40 @@ static uint32_t alloc_early_page_table(void);
 
 // 在页目录 pde_phys 里，把 vaddr -> paddr 建立映射
 void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags) {
-    uint32_t *pd_user = (uint32_t*)phys_to_virt(pde_phys);
+    // ⚠️⚠️⚠️ 关键修复：确保 pde_phys 在内核 CR3 中可访问
+    uint32_t pd_virt_addr = (uint32_t)phys_to_virt(pde_phys);
+    uint32_t kernel_pd_index = pd_virt_addr >> 22;
+    uint32_t kernel_pt_index = (pd_virt_addr >> 12) & 0x3FF;
+
+    // ⚠️⚠️⚠️ 关键修复：使用全局变量 kernel_page_directory_phys，不读取当前 CR3
+    // 原因：当从系统调用（如 do_fork）调用 map_page 时，当前 CR3 是用户进程的 CR3
+    // 必须使用内核初始化时保存的内核页目录物理地址
+    extern uint32_t kernel_page_directory_phys;
+    uint32_t *kernel_pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
+
+    // 检查内核页目录是否有对应的页表
+    if (!(kernel_pd[kernel_pd_index] & PAGE_PRESENT)) {
+        // 内核页目录也没有页表，使用早期页表分配器创建一个
+        uint32_t kernel_pt_phys = alloc_early_page_table();
+        if (kernel_pt_phys == 0) {
+            printf("[map_page] ERROR: Failed to allocate kernel page table for pde_phys!\n");
+            return;
+        }
+        // 填写内核页目录
+        kernel_pd[kernel_pd_index] = kernel_pt_phys | 0x3;
+    }
+
+    // 检查内核页表中是否有 pde_phys 的映射
+    uint32_t *kernel_pt = (uint32_t*)phys_to_virt(kernel_pd[kernel_pd_index] & ~0xFFF);
+    if (!(kernel_pt[kernel_pt_index] & PAGE_PRESENT)) {
+        // 为内核创建 pde_phys 的映射
+        kernel_pt[kernel_pt_index] = pde_phys | 0x3;
+        // 刷新 TLB
+        __asm__ volatile ("invlpg (%0)" : : "r" (pd_virt_addr) : "memory");
+    }
+
+    // 现在可以安全地访问 pd_user 了
+    uint32_t *pd_user = (uint32_t*)pd_virt_addr;
 
     // 页目录索引和页表索引
     uint32_t pd_index = vaddr >> 22;
@@ -133,11 +166,11 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 
         // 确保这个物理页在内核页目录中有映射（按需映射）
         uint32_t pt_virt_addr = (uint32_t)phys_to_virt(pt_phys);
-        uint32_t kernel_pd_index = pt_virt_addr >> 22;
-        uint32_t kernel_pt_index = (pt_virt_addr >> 12) & 0x3FF;
+        uint32_t pt_kernel_pd_index = pt_virt_addr >> 22;
+        uint32_t pt_kernel_pt_index = (pt_virt_addr >> 12) & 0x3FF;
 
-        // 检查内核页目录是否有对应的页表
-        if (!(pd[kernel_pd_index] & PAGE_PRESENT)) {
+        // 检查内核页目录是否有对应的页表（使用前面获取的 kernel_pd）
+        if (!(kernel_pd[pt_kernel_pd_index] & PAGE_PRESENT)) {
             // 内核页目录也没有页表，使用早期页表分配器创建一个
             uint32_t kernel_pt_phys = alloc_early_page_table();
             if (kernel_pt_phys == 0) {
@@ -146,15 +179,15 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
             }
 
             // 填写内核页目录
-            pd[kernel_pd_index] = kernel_pt_phys | 0x3;
+            kernel_pd[pt_kernel_pd_index] = kernel_pt_phys | 0x3;
         }
 
         // 检查内核页表中是否有这个具体的页映射
-        uint32_t *kernel_pt = (uint32_t*)phys_to_virt(pd[kernel_pd_index] & ~0xFFF);
+        uint32_t *pt_kernel_pt = (uint32_t*)phys_to_virt(kernel_pd[pt_kernel_pd_index] & ~0xFFF);
 
-        if (!(kernel_pt[kernel_pt_index] & PAGE_PRESENT)) {
+        if (!(pt_kernel_pt[pt_kernel_pt_index] & PAGE_PRESENT)) {
             // 为内核创建这个物理页的映射
-            kernel_pt[kernel_pt_index] = pt_phys | 0x3;
+            pt_kernel_pt[pt_kernel_pt_index] = pt_phys | 0x3;
             // 刷新 TLB
             __asm__ volatile ("invlpg (%0)" : : "r" (pt_virt_addr) : "memory");
         }

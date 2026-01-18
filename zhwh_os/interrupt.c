@@ -31,6 +31,13 @@ tvinit(void)
     SETGATE(idt[i], 0, SEG_KCODE<<3, vectors[i], 0);
   SETGATE(idt[T_SYSCALL], 1, SEG_KCODE<<3, vectors[T_SYSCALL], DPL_USER);
 
+  // 调试：打印系统调用门的设置
+  printf("[tvinit] System call gate (IDT[%d]):\n", T_SYSCALL);
+  printf("  offset=0x%x, seg=0x%x, type=%d, dpl=%d, present=%d\n",
+         (uint32_t)vectors[T_SYSCALL], SEG_KCODE<<3,
+         idt[T_SYSCALL].type, idt[T_SYSCALL].dpl, idt[T_SYSCALL].p);
+  printf("  vector128 address=0x%p\n", vectors[T_SYSCALL]);
+
   //initlock(&tickslock, "time");
 }
 
@@ -176,6 +183,26 @@ static int sys_block(struct trapframe *tf) {
 
     return 0;
 }
+
+// ⚠️⚠️⚠️ 关键修复：在中断返回前检查 need_resched 标志
+//      用于实现 syscall_yield() 的调度功能
+void check_and_schedule(struct trapframe *tf) {
+    extern int need_resched;
+
+    // 检查是否需要调度
+    if (need_resched) {
+        // 清除标志
+        need_resched = 0;
+
+        // 只在用户态中断时调度（检查段选择子的 RPL 位）
+        if ((tf->cs & 3) == 3) {
+            // 用户态中断：调用调度器
+            extern void schedule(void);
+            schedule();
+        }
+    }
+}
+
 // 读 CR2: Page Fault 时 CPU 会把出错的虚拟地址放在 CR2
 static inline uint32_t readcr2(void) {
     uint32_t val;
@@ -202,7 +229,8 @@ static int handle_cow_fault(uint32_t fault_va, uint32_t err) {
         return 0;
 
     // 获取当前页目录
-    uint32_t *pd = (uint32_t *)phys_to_virt((uint32_t)cur->cr3);
+    // ⚠️ CR3 的低 12 位是标志位，需要清除才能得到物理地址
+    uint32_t *pd = (uint32_t *)phys_to_virt((uint32_t)cur->cr3 & ~0xFFF);
 
     uint32_t pdi = fault_va >> 22;
     uint32_t pti = (fault_va >> 12) & 0x3FF;
@@ -254,6 +282,11 @@ void handle_page_fault(struct trapframe *tf) {
     uint32_t fault_va = readcr2();
     uint32_t err = tf->err;
 
+    // 🔍 诊断输出：打印页面错误地址
+    extern void printf(const char* fmt, ...);
+    printf("[PF] fault_addr=0x%x err=0x%x eip=0x%x\n",
+           fault_va, err, tf->eip);
+
     // 尝试 COW 处理
     if (handle_cow_fault(fault_va, err)) {
         // COW 处理成功，直接返回用户态继续执行
@@ -261,13 +294,26 @@ void handle_page_fault(struct trapframe *tf) {
     }
 
     // 不是 COW，按普通页错误处理
-    // ⚠️⚠️⚠️ 暂时禁用所有 printf！
-    // printf("\n[Page Fault] cr2 = 0x%x\n", fault_va);
-    // printf("  err = 0x%x  eip = 0x%x  esp = 0x%x\n",
-    //       err, tf->eip, tf->esp);
-    // ... (所有其他 printf)
+    // 🔧 修复：未处理的页面错误应该终止任务
+    extern void do_exit(int);
 
-    //panic("Page Fault!\n");
+    // ⚠️ 关键修复：正确判断是用户态还是内核态页错误
+    // 不能使用 user_stack 判断，应该检查 CS 的 RPL 位
+    bool is_user_mode = (tf->cs & 3) == 3;
+
+    if (is_user_mode) {
+        // 用户任务触发页面错误，可能是程序错误或内存不足
+        printf("[PF] User task page fault, terminating\n");
+        // 终止任务并返回错误码
+        do_exit(-1);  // 使用 -1 表示异常退出
+    } else {
+        // 内核任务触发页面错误，这是严重的内核 bug
+        printf("[PF] Kernel page fault, halting\n");
+        printf("[PF] This is a KERNEL BUG - fault in kernel mode!\n");
+        printf("[PF] fault_addr=0x%x, eip=0x%x, cs=0x%x\n", fault_va, tf->eip, tf->cs);
+        // 停止系统
+        __asm__ volatile("cli; hlt; jmp .");
+    }
 }
 
 void handle_page_fault_(struct trapframe *tf) {
@@ -338,11 +384,13 @@ void do_irq_handler(struct trapframe *tf) {
     // 2. 根据中断号处理不同类型的中断
     switch (tf->trapno) {
         case 0:  // 除法错误
+            // ⚠️ 移除所有printf调试,避免printf中的除法导致二次异常
             handle_divide_error(tf);
             break;
         case 5:  // BOUND异常 - 暂时不处理，直接终止任务
             // ⚠️ BOUND异常可能是伪装的页错误，直接终止
             {
+                printf("[BOUND] BOUND exception at EIP=0x%x\n", tf->eip);
                 extern task_t* current_task[];
                 extern uint8_t logical_cpu_id(void);
                 task_t* cur = current_task[logical_cpu_id()];
@@ -403,8 +451,9 @@ void do_irq_handler(struct trapframe *tf) {
             break;
         }
         default:
-            // ⚠️⚠️⚠️ 暂时禁用 printf
-            // printf("Unhandled interrupt: trapno=%d\n", tf->trapno);
+            // 捕获所有未处理的异常
+            printf("[TRAP] Unhandled trap: trapno=%d, eip=0x%x, err=0x%x\n",
+                   tf->trapno, tf->eip, tf->err);
             // 外部中断需要发送EOI，避免阻塞
             if (tf->trapno >= 32 && tf->trapno <= 47) {
                 send_eoi(tf->trapno - 32);

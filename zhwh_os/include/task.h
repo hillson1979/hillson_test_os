@@ -106,7 +106,12 @@ typedef struct task_t {
 	uid_t			uid;        /**< User ID (future use) */
 	gid_t			gid;        /**< Group ID (future use) */
 	int		state;      /**< Running state */
-	
+
+        // ⚠️⚠️⚠️ 标志：任务是否已经进入过用户态
+        // has_run_user = 0: 还未进入用户态，需要用 task_to_user_mode_with_task
+        // has_run_user = 1: 已经进入过用户态，内核栈上有 trapframe，可以用 switch_to
+        int                     has_run_user;
+
         int                     nice;
 
         time_t			start_time; /**< Start time (UNIX epoch) */
@@ -179,7 +184,7 @@ void efficient_scheduler_loop();
 void user_task_main();
 void kernel_task_main();
 void handle_idle_state(uint8_t cpu);
-void task_to_user_mode_with_task(void);  // 参数通过eax传递
+void task_to_user_mode_with_task(struct task_t *task);  // 参数通过 task 指针传递
 void task_to_user_mode_with_task_wrapper(struct task_t *task);  // C包装函数
 
 void ok_here();
