@@ -148,8 +148,13 @@ enum {
     SYS_KBHIT,        // 新增：检查是否有按键
     SYS_PUTCHAR,      // 新增：输出单个字符(用于显示提示符)
     SYS_GET_FRAMEBUFFER,  // 新增：获取 framebuffer 信息
+    SYS_GETCWD,       // 新增：获取当前工作目录
     SYS_WRITE,        // 占位符，使 SYS_FORK = 11
     SYS_FORK,         // fork 系统调用 (11)
+    SYS_OPEN = 20,    // open 系统调用
+    SYS_CLOSE,        // close 系统调用
+    SYS_READ,         // read 系统调用
+    SYS_LSEEK,        // lseek 系统调用
 };
 
 void syscall_dispatch(struct trapframe *tf) {
@@ -312,6 +317,21 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             break;
         }
+        case SYS_GETCWD: {
+            // getcwd(buf, size) - 获取当前工作目录
+            char *buf = (char*)arg1;
+            uint32_t size = arg2;
+
+            if (buf && size >= 2) {
+                // 简化版：所有进程的当前工作目录都是根目录
+                buf[0] = '/';
+                buf[1] = '\0';
+                tf->eax = 1;  // 返回长度（不包括null）
+            } else {
+                tf->eax = -1;  // 错误：缓冲区太小或为NULL
+            }
+            break;
+        }
         case SYS_WRITE: {
             // write(fd, buf, len) - arg1=fd, arg2=buf, arg3=len
             int fd = (int)arg1;
@@ -369,6 +389,187 @@ void syscall_dispatch(struct trapframe *tf) {
                 // 子进程或失败：返回 0
                 tf->eax = 0;
             }
+            break;
+        }
+        case SYS_OPEN: {
+            // open(pathname, flags)
+            const char *pathname = (const char*)arg1;
+            int flags = (int)arg2;
+
+            printf("[syscall] SYS_OPEN: pathname=0x%x, flags=%d\n", (uint32_t)pathname, flags);
+
+            // 从用户空间拷贝路径名
+            // 使用页表遍历获取用户地址的物理地址
+            char kpath[256];
+            int i = 0;
+
+            printf("[syscall] Reading from user address 0x%x\n", (uint32_t)pathname);
+
+            // 手动实现页表遍历，避免调用 get_physical_address 导致的页错误
+            extern uint32_t kernel_page_directory_phys;
+            uint32_t *pd_virt = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
+
+            // 检查是否在用户空间范围
+            printf("[syscall] DEBUG: pathname=0x%x, 0xC0000000=%d\n",
+                   (uint32_t)pathname, ((uint32_t)pathname < 0xC0000000));
+            if ((uint32_t)pathname < 0xC0000000) {
+                printf("[syscall] User space address, attempting page table walk...\n");
+
+                // 手动遍历页表获取物理地址
+                uint32_t str_virt = (uint32_t)pathname;
+                uint32_t pd_idx = (str_virt >> 22) & 0x3FF;
+                uint32_t pt_idx = (str_virt >> 12) & 0x3FF;
+                uint32_t page_offset = str_virt & 0xFFF;
+
+                printf("[syscall] pd_idx=%d, pt_idx=%d, offset=0x%x\n", pd_idx, pt_idx, page_offset);
+
+                // 检查 PDE
+                uint32_t pde_entry = pd_virt[pd_idx];
+                printf("[syscall] pde_entry=0x%x\n", pde_entry);
+
+                if (!(pde_entry & 0x1)) {
+                    printf("[syscall] ERROR: PDE not present!\n");
+                    kpath[0] = '\0';
+                } else {
+                    // 获取页表物理地址
+                    uint32_t pt_phys = pde_entry & ~0xFFF;
+
+                    printf("[syscall] Page table at phys=0x%x\n", pt_phys);
+
+                    // 使用 map_highmem_physical 映射页表
+                    extern void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags);
+                    uint32_t *pt_virt = (uint32_t*)map_highmem_physical(pt_phys, 4096, 0);
+
+                    if (pt_virt != NULL) {
+                        uint32_t pte = pt_virt[pt_idx];
+                        printf("[syscall] pte=0x%x\n", pte);
+
+                        if (pte & 0x1) {
+                            uint32_t phys_page = pte & ~0xFFF;
+                            printf("[syscall] phys_page=0x%x\n", phys_page);
+
+                            // 使用 map_highmem_physical 动态映射用户物理页
+                            uint8_t *user_page_virt = (uint8_t*)map_highmem_physical(phys_page, 4096, 0);
+
+                            printf("[syscall] user_page_virt=0x%x\n", (uint32_t)user_page_virt);
+
+                            if (user_page_virt != NULL) {
+                                // 验证映射：尝试直接读取映射地址的字符串位置（page_offset）
+                                printf("[syscall] Test read: user_page_virt[%d]=0x%x\n", page_offset, user_page_virt[page_offset]);
+                                printf("[syscall] Test read: user_page_virt[%d]=0x%x\n", page_offset+1, user_page_virt[page_offset+1]);
+                                printf("[syscall] Test read: user_page_virt[%d]=0x%x\n", page_offset+2, user_page_virt[page_offset+2]);
+
+                                // 打印前16字节
+                                printf("[syscall] Raw data: ");
+                                for (int j = 0; j < 16; j++) {
+                                    printf("%02x ", user_page_virt[page_offset + j]);
+                                }
+                                printf("\n");
+
+                                // 复制字符串
+                                int i;
+                                for (i = 0; i < 255; i++) {
+                                    kpath[i] = user_page_virt[page_offset + i];
+                                    if (kpath[i] == '\0') break;
+                                }
+                                kpath[i] = '\0';
+
+                                printf("[syscall] Copied path: '%s' (len=%d)\n", kpath, i);
+                                printf("[syscall] kpath[0]=0x%x ('%c'), kpath[1]=0x%x\n",
+                                       (unsigned char)kpath[0], kpath[0] ? kpath[0] : '?',
+                                       (unsigned char)kpath[1]);
+                            } else {
+                                printf("[syscall] ERROR: Failed to map user page!\n");
+                                kpath[0] = '\0';
+                            }
+                        } else {
+                            printf("[syscall] ERROR: PTE not present!\n");
+                            kpath[0] = '\0';
+                        }
+                    } else {
+                        printf("[syscall] ERROR: Failed to map page table!\n");
+                        kpath[0] = '\0';
+                    }
+                }
+            } else {
+                printf("[syscall] Kernel space address, copying directly\n");
+                // 内核空间地址，直接复制
+                for (i = 0; i < 255; i++) {
+                    kpath[i] = pathname[i];
+                    if (kpath[i] == '\0') break;
+                }
+                kpath[i] = '\0';
+                printf("[syscall] Copied path: '%s' (len=%d)\n", kpath, i);
+            }
+
+            // 调用 VFS 层
+            extern struct file *filp_open(const char *, int);
+            struct file *file = filp_open(kpath, flags);
+            if (file) {
+                // ⚠️ 简化版：使用文件指针作为 fd
+                // 后续需要实现 fd 表
+                tf->eax = (int)file;
+            } else {
+                tf->eax = -1;
+            }
+            break;
+        }
+        case SYS_CLOSE: {
+            // close(fd)
+            int fd = (int)arg1;
+            struct file *file = (struct file*)fd;
+
+            // 调用 VFS 层
+            extern int filp_close(struct file *);
+            int ret = filp_close(file);
+            tf->eax = ret;
+            break;
+        }
+        case SYS_READ: {
+            // read(fd, buf, len)
+            int fd = (int)arg1;
+            char *user_buf = (char*)arg2;
+            uint32_t len = arg3;
+            struct file *file = (struct file*)fd;
+
+            // 调用 VFS 层（先读入内核缓冲区）
+            extern int filp_read(struct file *, char *, uint32_t);
+            char kbuf[512];
+            uint32_t to_read = (len < 512) ? len : 512;
+            int ret = filp_read(file, kbuf, to_read);
+
+            if (ret > 0) {
+                // 拷贝到用户空间
+                for (int i = 0; i < ret; i++) {
+                    char c = kbuf[i];
+                    __asm__ volatile (
+                        "pushfl\n"
+                        "orl $0x40000, (%%esp)\n"
+                        "popfl\n"
+                        "movb %0, (%1)\n"
+                        "pushfl\n"
+                        "andl $~0x40000, (%%esp)\n"
+                        "popfl\n"
+                        :
+                        : "r"(c), "r"(user_buf + i)
+                        : "memory", "cc"
+                    );
+                }
+            }
+            tf->eax = ret;
+            break;
+        }
+        case SYS_LSEEK: {
+            // lseek(fd, offset, whence)
+            int fd = (int)arg1;
+            int offset = (int)arg2;
+            int whence = (int)arg3;
+            struct file *file = (struct file*)fd;
+
+            // 调用 VFS 层
+            extern int filp_lseek(struct file *, int64_t, int);
+            int ret = filp_lseek(file, (int64_t)offset, whence);
+            tf->eax = ret;
             break;
         }
         default:

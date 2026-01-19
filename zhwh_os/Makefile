@@ -21,6 +21,10 @@ C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += driver/vbe.c  # 添加 VBE 驱动
 C_SOURCES += mm/buddy.c  # 启用 Buddy System（减小了 MAX_BUDDY_BLOCKS）
 C_SOURCES += mm/test_memory.c  # 启用内存测试
+C_SOURCES += fs/ramfs.c  # 添加 ramfs 文件系统
+C_SOURCES += fs/vfs.c  # 添加 VFS 层
+C_SOURCES += net/core.c  # 添加网络核心
+C_SOURCES += net/loopback.c  # 添加回环设备
 # C_SOURCES += mm/slab.c  # 暂时禁用 Slab 分配器
 ASM_SOURCES = boot.s vectors.s task_impl.s interrupt_exit.s trap_entry.s #copy_user_32.s
 

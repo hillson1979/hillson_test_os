@@ -9,16 +9,18 @@ CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-bui
 ASFLAGS = $(TARGET_ARCH) -fno-pic
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ts.ld
 
-TARGETS = sched_test5.elf
+TARGETS = sched_test5.elf shell_demo.elf fs_test.elf
 
 # 测试程序源文件
 SCHED5_SOURCE = sched_test5.c
 SHELL_SOURCE = simple_interactive_shell.c
 SYSCALL_TEST_SOURCE = simple_syscall_test.c
+FS_TEST_SOURCE = fs_test.c
 
 # 目标文件
 SCHED5_OBJ = $(SCHED5_SOURCE:.c=.o)
 SHELL_OBJ = shell_demo.o
+FS_TEST_OBJ = $(FS_TEST_SOURCE:.c=.o)
 
 SYSCALL_TEST_OBJ = simple_syscall_test.o
 
@@ -39,8 +41,8 @@ shell_demo.o: $(SHELL_SOURCE) ts.ld
 	$(CC) $(CFLAGS) -I../user -c $(SHELL_SOURCE) -o shell_demo.o
 	@echo "Compiled: $(SHELL_SOURCE)"
 
-shell_demo.elf: shell_demo.o libuser.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ shell_demo.o libuser.o
+shell_demo.elf: shell_demo.o syscalls.o libuser.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ shell_demo.o syscalls.o libuser.o
 	@echo "Built: $@"
 
 
@@ -55,6 +57,15 @@ syscalls.o: syscalls.S
 
 simple_syscall_test.elf: simple_syscall_test.o syscalls.o
 	$(LD) $(LDFLAGS) -o $@ simple_syscall_test.o syscalls.o
+	@echo "Built: $@"
+
+# fs_test 编译规则
+fs_test.o: $(FS_TEST_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(FS_TEST_SOURCE) -o fs_test.o
+	@echo "Compiled: $(FS_TEST_SOURCE)"
+
+fs_test.elf: fs_test.o syscalls.o libuser.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ fs_test.o syscalls.o libuser.o
 	@echo "Built: $@"
 
 %.o: %.c

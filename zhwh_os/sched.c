@@ -133,31 +133,36 @@ can_schedule(struct task_t* thread)
 void
 check_sleepers()
 {
-    struct task_t *pos, *n;
+    struct llist_header *pos, *next;
     time_t now = (uint32_t)2500/1000;//clock_systime() / 1000;
 
-    llist_for_each(pos, n, sched_sleep, sleep.sleepers)
+    llist_for_each_safe(pos, next, sched_sleep)
     {
-        if (task_terminated(pos)) {
+        // 从链表节点获取 task_t 结构体
+        // pos 指向 task->sleep.sleepers
+        // task = container_of(pos, struct task_t, sleep.sleepers)
+        struct task_t *task = (struct task_t*)((char*)pos - __builtin_offsetof(struct task_t, sleep.sleepers));
+
+        if (task_terminated(task)) {
             goto del;
         }
 
-        time_t wtime = pos->sleep.wakeup_time;
-        time_t atime = pos->sleep.alarm_time;
+        time_t wtime = task->sleep.wakeup_time;
+        time_t atime = task->sleep.alarm_time;
 
         if (wtime && now >= wtime) {
-            pos->sleep.wakeup_time = 0;
-            pos->state = PS_READY;
+            task->sleep.wakeup_time = 0;
+            task->state = PS_READY;
         }
 
         if (atime && now >= atime) {
-            pos->sleep.alarm_time = 0;
-            //thread_setsignal(pos, _SIGALRM);//signal.c
+            task->sleep.alarm_time = 0;
+            //thread_setsignal(task, _SIGALRM);//signal.c
         }
 
         if (!wtime && !atime) {
         del:
-            llist_delete(&pos->sleep.sleepers);
+            llist_del(pos);
         }
     }
 

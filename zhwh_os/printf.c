@@ -2,7 +2,7 @@
 #include "vga.h"
 #include <stdarg.h>
 
-static void print_num(uint32_t num, uint32_t base) {
+static void print_num(uint32_t num, uint32_t base, int width, char pad_char) {
     const char* digits = "0123456789ABCDEF";
     char buf[64];
     uint32_t i = 0;
@@ -11,6 +11,11 @@ static void print_num(uint32_t num, uint32_t base) {
         buf[i++] = digits[num % base];
         num /= base;
     } while (num > 0);
+
+    // 填充到指定宽度
+    while (i < width) {
+        buf[i++] = pad_char;
+    }
 
     while (i--) {
         vga_putc(buf[i]);
@@ -28,6 +33,23 @@ void printf(const char* fmt, ...) {
         }
 
         fmt++; // 跳过 '%'
+
+        // 解析格式化选项
+        int width = 0;
+        char pad_char = ' ';  // 默认空格填充
+
+        // 检查是否有 '0' 填充标志
+        if (*fmt == '0') {
+            pad_char = '0';
+            fmt++;
+        }
+
+        // 解析宽度
+        while (*fmt >= '0' && *fmt <= '9') {
+            width = width * 10 + (*fmt - '0');
+            fmt++;
+        }
+
         switch (*fmt++) {
             case 'd': {
                 int32_t num = va_arg(ap, int32_t);
@@ -35,14 +57,14 @@ void printf(const char* fmt, ...) {
                     vga_putc('-');
                     num = -num;
                 }
-                print_num(num, 10);
+                print_num(num, 10, width, pad_char);
                 break;
             }
             case 'u':
-                print_num(va_arg(ap, uint32_t), 10);
+                print_num(va_arg(ap, uint32_t), 10, width, pad_char);
                 break;
             case 'x':
-                print_num(va_arg(ap, uint32_t), 16);
+                print_num(va_arg(ap, uint32_t), 16, width, pad_char);
                 break;
             case 'c':
                 vga_putc((char)va_arg(ap, int));
@@ -71,6 +93,23 @@ void cprintf(const char* fmt, ...) {
         }
 
         fmt++; // 跳过 '%'
+
+        // 解析格式化选项
+        int width = 0;
+        char pad_char = ' ';  // 默认空格填充
+
+        // 检查是否有 '0' 填充标志
+        if (*fmt == '0') {
+            pad_char = '0';
+            fmt++;
+        }
+
+        // 解析宽度
+        while (*fmt >= '0' && *fmt <= '9') {
+            width = width * 10 + (*fmt - '0');
+            fmt++;
+        }
+
         switch (*fmt++) {
             case 'd': {
                 int32_t num = va_arg(ap, int32_t);
@@ -78,14 +117,14 @@ void cprintf(const char* fmt, ...) {
                     vga_putc('-');
                     num = -num;
                 }
-                print_num(num, 10);
+                print_num(num, 10, width, pad_char);
                 break;
             }
             case 'u':
-                print_num(va_arg(ap, uint32_t), 10);
+                print_num(va_arg(ap, uint32_t), 10, width, pad_char);
                 break;
             case 'x':
-                print_num(va_arg(ap, uint32_t), 16);
+                print_num(va_arg(ap, uint32_t), 16, width, pad_char);
                 break;
             case 'c':
                 vga_putc((char)va_arg(ap, int));

@@ -133,7 +133,10 @@ void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags) {
 
         //printf("after i is %d!\n",i);
     }
-    
+
+    // ⚠️ 关键修复：刷新 TLB，确保新的页表映射生效
+    x86_refresh_tlb();
+
     // 记录映射
     mappings[free_slot].phys_addr = phys_addr;
     mappings[free_slot].virt_addr = virt_base + offset;
@@ -141,10 +144,10 @@ void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags) {
     mappings[free_slot].flags = flags;
     mappings[free_slot].in_use = true;
     mappings[free_slot].description = "Highmem mapping";
-    
+
     printf("Mapped highmem: phys 0x%x -> virt 0x%x (size: %u)\n",
            phys_addr, virt_base + offset, size);
-    
+
     next_virt_addr += total_size;
     return (void*)(virt_base + offset);
 }

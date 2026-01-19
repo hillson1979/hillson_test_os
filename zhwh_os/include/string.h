@@ -18,9 +18,11 @@ int strcmp(const char *str1, const char *str2);
 int strncmp(const char *str1, const char *str2, unsigned int len);
 
 char *strcpy(char *dest, const char *src);
+char *strncpy(char *dest, const char *src, unsigned int n);
 
 char *strcat(char *dest, const char *src);
 char *strchr(const char *s, int c);
+char *strtok(char *str, const char *delim);
 
 
 #endif

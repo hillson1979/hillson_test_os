@@ -1,3 +1,6 @@
+#ifndef LLIST_H
+#define LLIST_H
+
 #include "types.h"
 struct llist_header {
     struct llist_header *next, *prev;
@@ -82,3 +85,47 @@ typedef uint32_t ptr_t;
 
 
 //static inline int llist_empty(struct llist_header *list);
+
+/**
+ * llist_del - 从链表中删除一个条目
+ * @elem: 要删除的条目
+ */
+static inline void
+llist_del(struct llist_header* elem)
+{
+    struct llist_header *prev, *next;
+    prev = elem->prev;
+    next = elem->next;
+    next->prev = prev;
+    prev->next = next;
+}
+
+/**
+ * llist_empty - 检查链表是否为空
+ * @head: 链表头
+ */
+static inline int
+llist_empty(struct llist_header *head)
+{
+    return head->next == head;
+}
+
+/**
+ * llist_for_each - 遍历链表（简化版）
+ * @pos: 当前位置
+ * @head: 链表头
+ */
+#define llist_for_each(pos, head) \
+    for (pos = (head)->next; pos != (head); pos = pos->next)
+
+/**
+ * llist_for_each_safe - 安全遍历链表（允许删除）
+ * @pos: 当前位置
+ * @next: 下一个位置（临时变量）
+ * @head: 链表头
+ */
+#define llist_for_each_safe(pos, next, head) \
+    for (pos = (head)->next, next = pos->next; pos != (head); \
+         pos = next, next = pos->next)
+
+#endif // LLIST_H

@@ -109,6 +109,23 @@ char *strcpy(char *dest, const char *src)
   return _dest;
 }
 
+// Copy at most n characters from src into dest, and
+// return dest. If src is shorter than n, dest is padded with null bytes.
+char *strncpy(char *dest, const char *src, unsigned int n)
+{
+  char *_dest = dest;
+  while (n > 0 && *src) {
+    *dest++ = *src++;
+    n--;
+  }
+  // Pad with null bytes if needed
+  while (n > 0) {
+    *dest++ = '\0';
+    n--;
+  }
+  return _dest;
+}
+
 // Concatenate the NULL-terminated string src onto
 // the end of dest, and return dest.
 char *strcat(char *dest, const char *src)
@@ -121,6 +138,37 @@ char *strcat(char *dest, const char *src)
     *dest++ = *src++;
   *dest = '\0';
   return _dest;
+}
+
+// Tokenize a string (simple, non-reentrant implementation)
+char *strtok(char *str, const char *delim)
+{
+  static char *last = NULL;
+  char *token;
+
+  if (str != NULL)
+    last = str;
+
+  if (last == NULL || *last == '\0')
+    return NULL;
+
+  // Skip leading delimiters
+  while (*last && strchr(delim, *last))
+    last++;
+
+  if (*last == '\0')
+    return NULL;
+
+  token = last;
+
+  // Find end of token
+  while (*last && !strchr(delim, *last))
+    last++;
+
+  if (*last)
+    *last++ = '\0';
+
+  return token;
 }
 
 unsigned strlen(const char *src)

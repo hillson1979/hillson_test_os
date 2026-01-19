@@ -156,6 +156,29 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         keyboard_init();
         printf("Keyboard driver initialized\n");
 
+        // 初始化文件系统
+        extern void fs_init(void);
+        extern void vfs_set_root(struct super_block *sb);
+        extern struct super_block *ramfs_mount(void);
+
+        printf("Initializing file system...\n");
+        fs_init();  // 这会调用 ramfs_mount 并设置根文件系统
+        printf("File system initialized\n");
+
+        // 初始化网络协议栈
+        extern void net_init(void);
+        extern int loopback_init(void);
+        extern int loopback_send_test(void);
+
+        net_init();
+        loopback_init();
+        printf("Network initialized\n");
+
+        // 发送网络测试包
+        printf("\n=== Network Test ===\n");
+        loopback_send_test();
+        printf("=== Network Test Complete ===\n\n");
+
         // 启用键盘中断 (IRQ1)
         // 传统PIC方法
         unsigned char mask1 = inb(0x21);

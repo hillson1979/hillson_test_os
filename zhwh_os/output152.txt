@@ -6,15 +6,15 @@ Press Ctrl-B to configure iPXE (PCI 00:03.0)...
 
 
 Booting from Hard Disk...
-GRUB [01;01H[2J[02;30HGNU GRUB  version 2.[02;49H[02;50H12[04;02H┌──────────────────────────────────────[04;40H[04;41H───────────────────[04;59H[04;60H───────────────────┐[05;02H│[05;02H[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;02H[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└──────────────────────────────────[18;36H[18;37H────────────────────────[18;60H[18;61H────[18;64H[18;65H──────[18;70H[18;71H────────[18;78H[18;79H┘[20;02H     Use the ↑ and ↓ keys to select which ent[20;46H[20;47Hry is highlighted.          
-      Press enter to boot[21;25H[21;26H the sel[21;33H[21;34He[21;34H[21;35Hcted OS, `e' to edit the commands       
-      before booting or `c' for a command-line.                [22;63H[22;64H           [05;80H [05;03H My OS - Di[05;13H[05;14Hrect Write Test [05;29H[05;30H           [05;40H[05;41H             [05;53H[05;54H       [05;60H[05;61H                  [06;03H My OS - Simple p[06;19H[06;20Hrin[06;22H[06;23Htf Te[06;27H[06;28Hst                           [06;56H[06;57H                 [06;73H[06;74H     [07;03H[0;30;47m*My [07;06H[07;07HOS - 5 Process Test                                                     [08;03H[0m My OS - shell_demo Test                                                    [09;03H My OS - Simple Syscall Test                                  [09;64H[09;65H              [10;03H                                                                            [11;03H                 [11;19H[11;20H                         [11;44H[11;45H                                  [12;03H                         [12;27H[12;28H                                    [12;63H[12;64H               [13;03H                 [13;19H[13;20H                                    [13;55H[13;56H                       [14;03H        [14;10H[14;11H                                                                    [15;03H   [15;05H[15;06H                                                                         [16;03H [16;03H[16;04H                             [16;32H[16;33H                            [16;60H[16;61H          [16;70H[16;71H        [17;03H                  [17;20H[17;21H                                                     [17;73H[17;74H     [17;80H 
+GRUB [01;01H[2J[02;30HGN[02;31H[02;32HU GRUB  version 2.12[04;02H┌───────────────────────────────────[04;37H[04;38H───────────────────[04;56H[04;57H─────────[04;65H[04;66H─────────────┐[05;02H│[05;79H│[05;79H[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[11;79H[12;02H│[12;79H│[13;02H│[13;02H[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[17;79H[18;02H└─────────────────────[18;23H[18;24H──────────────────[18;41H[18;42H─────────────────────────[18;66H[18;67H────────────┘[20;02H     Us[20;08H[20;09He[20;09H[20;10H the ↑ and ↓ [20;22H[20;23Hkeys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the com[21;62H[21;63Hmands       
+      before booting or `c' for a command-line.                           [05;80H [05;03H My OS - Direct Write Test                                                  [06;03H [06;03H[06;04HMy OS - Simple printf Test                                                 [07;03H[0;30;47m*My O[07;07H[07;08HS[07;08H[07;09H - 5 Process T[07;22H[07;23Hest          [07;35H[07;36H          [07;45H[07;46H                [07;61H[07;62H         [07;70H[07;71H        [08;03H[0m My OS - shell_demo Test                                     [08;63H[08;64H               [09;03H M[09;04H[09;05Hy OS - Simple Syscall Test       [09;37H[09;38H                                    [09;73H[09;74H     [10;03H My OS [10;09H[10;10H- File System Test                         [10;52H[10;53H                [10;68H[10;69H          [11;03H      [11;08H[11;09H                     [11;29H[11;30H                          [11;55H[11;56H                       [12;03H    [12;06H[12;07H                   [12;25H[12;26H                                              [12;71H[12;72H       [13;03H                             [13;31H[13;32H                     [13;52H[13;53H                          [14;03H        [14;10H[14;11H                                         [14;51H[14;52H                           [15;03H     [15;07H[15;08H                                  [15;41H[15;42H                               [15;72H[15;73H      [16;03H                           [16;29H[16;30H                                           [16;72H[16;73H      [17;03H         [17;11H[17;12H                                  [17;45H[17;46H                   [17;64H[17;65H              [17;80H 
 
 
 
 
 
-   The highlight[23;16H[23;17Hed entry will be executed automatic[23;51H[23;52Hally in 5s.                 [07;78H
+   The highlighted entry will be executed automatically in 5s.                 [07;78H
 
 
 
@@ -30,7 +30,7 @@ GRUB [01;01H[2J[02;30HGNU GRUB  version 2.[02;49H[02;50H12[04;02H┌──
 
 
 
- [23;02H  The h[23;08H[23;09Highlighted entry will[23;29H[23;30H be execu[23;38H[23;39Hted [23;42H[23;43Hautomatically in 4s.              [23;76H[23;77H   [07;78H
+   The highlighted entry will be executed automatically in 4s.                 [07;78H
 
 
 
@@ -46,7 +46,7 @@ GRUB [01;01H[2J[02;30HGNU GRUB  version 2.[02;49H[02;50H12[04;02H┌──
 
 
 
-   The highlighted entry wil[23;28H[23;29Hl be executed automaticall[23;54H[23;55Hy in 3s.           [23;73H[23;74H      [07;78H
+ [23;02H  The highlighted entry will be executed automatically in 3s.                 [07;78H
 
 
 
@@ -62,7 +62,7 @@ GRUB [01;01H[2J[02;30HGNU GRUB  version 2.[02;49H[02;50H12[04;02H┌──
 
 
 
-   The high[23;11H[23;12Hlighted entry will be executed automatically in 2s.                 [07;78H
+ [23;02H  The highlighted entry will be exec[23;37H[23;38Huted automat[23;49H[23;50Hically in 2s.     [23;67H[23;68H            [07;78H
 
 
 
@@ -78,7 +78,7 @@ GRUB [01;01H[2J[02;30HGNU GRUB  version 2.[02;49H[02;50H12[04;02H┌──
 
 
 
-   T[23;04H[23;05Hhe high[23;11H[23;12Hlighted entry will be executed automatically in 1[23;60H[23;61Hs.                 [07;78H
+   The highlighted entry[23;24H[23;25H will be executed automatically in 1s.                 [07;78H
 
 
 
@@ -94,7 +94,7 @@ GRUB [01;01H[2J[02;30HGNU GRUB  version 2.[02;49H[02;50H12[04;02H┌──
 
 
 
-   The highlighted entry will be execu[23;38H[23;39Hted automatically in 0s.    [23;66H[23;67H             [01;01H[2J[2J[kernel_main] Saved kernel CR3 phys=0x101000
+   The highlighted entry will be executed automatically in 0s.                 [01;01H[2J[2J[kernel_main] Saved kernel CR3 phys=0x101000
 === Serial initialized ===
 Kernel Booted with Multiboot 2!
 Magic: 0x36D76289
@@ -295,7 +295,7 @@ Kernel Booted with Multiboot 2!
 mm_init: starting memory management initialization
 mm_init: detected 510 MB physical memory (mem_upper=523136 KB)
 mm_init: initializing physical memory manager...
-pmm_init: kernel_end_phys=0x3AE000
+pmm_init: kernel_end_phys=0x3B0000
 pmm_init: placing buddy system data at 16MB (0x1000000)
 pmm_init: page tables will be created on-demand when accessing 0xC1000000+
 pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
@@ -354,10 +354,10 @@ Kernel Booted with Multiboot 2!
 After seginit
 Before tss_init
 tss_init: starting
-tss address: 0xC0109BAE, sizeof(tss): 108
+tss address: 0xC0109B50, sizeof(tss): 108
 tss_init: before memset, will write 108 bytes
 tss_init: after memset
-TSS init: addr=0xC0109BAE, ESP0=0xC03ADF88
+TSS init: addr=0xC0109B50, ESP0=0xC03AFF88
 TSS init:selector=0x28 
 TSS loaded into task register
 After tss_init
@@ -370,6 +370,13 @@ Kernel Booted with Multiboot 2!
 Global interrupts enabled
 [KBD] Controller initialized, config=0x61
 Keyboard driver initialized
+Initializing file system...
+[fs] Initializing file system...
+[ramfs] Mounting ramfs...
+[ramfs] Allocated inode: ino=1, mode=0x41C0
+[ramfs] Mounted successfully, root_ino=1
+[fs] File system initialized
+File system initialized
 PIC initial mask: 0xB8
 PIC new mask: 0xB8 (verified)
 Keyboard IRQ1 enabled via PIC (mask & 0x02 = 0)
@@ -387,7 +394,7 @@ Kernel Booted with Multiboot 2!
 =============================================
 
 task init
-[init_task] kstack virt=0xC02A3160
+[init_task] kstack virt=0xC02A51E0
 [task_load] user task: cr3=NULL (will be set by task_prepare_pde)
 start user task 
 Tag 0: type=21, size=12
@@ -395,32 +402,32 @@ Kernel Booted with Multiboot 2!
 Tag 2: type=2, size=29
 Tag 3: type=10, size=28
 Tag 4: type=3, size=17
-mod 0: start=0x3CA000 end=0x3CCA3C cmdline=
+mod 0: start=0x3D0000 end=0x3D2E24 cmdline=
 Tag 5: type=6, size=160
 Tag 6: type=9, size=780
 Tag 7: type=4, size=16
 Tag 8: type=5, size=20
 Tag 9: type=8, size=32
 Tag 10: type=14, size=28
-[user_task_main] START: th=0xC02A2160
-User task started (task=0xC02A2160)
-[user_task_main] Calling task_prepare_pde for th=0xC02A2160
-[task_prepare_pde] START for task=0xC02A2160
+[user_task_main] START: th=0xC02A41E0
+User task started (task=0xC02A41E0)
+[user_task_main] Calling task_prepare_pde for th=0xC02A41E0
+[task_prepare_pde] START for task=0xC02A41E0
 [task_prepare_pde] User task using kernel CR3: 0x101000 (shared with all)
 [task_prepare_pde] task->pde=0x101000 (kernel page directory)
 [task_prepare_pde] Calling load_module_to_user...
 [load_module_to_user] Starting...
-[load_module_to_user] Module: start=0x3CA000 end=0x3CCA3C size=0x2A3C cmdline=
-[load_module_to_user] Raw physical bytes at 0x3CA000: ?2x ?2x ?2x ?2x
-[load_module_to_user] ELF header at virtual 0xC03CA000
+[load_module_to_user] Module: start=0x3D0000 end=0x3D2E24 size=0x2E24 cmdline=
+[load_module_to_user] Raw physical bytes at 0x3D0000: ?2x ?2x ?2x ?2x
+[load_module_to_user] ELF header at virtual 0xC03D0000
 [load_module_to_user] First 4 bytes: 0x7F 0x45 0x4C 0x46
 [load_module_to_user] ELF file validated!
 [load_module_to_user] e_entry=0x8000143, e_phoff=52, e_phnum=3
 [load_module_to_user] Program Header 0: p_type=0x1
-[load_module_to_user] PT_LOAD: va=0x8000000, file_pa=0x3CB000, memsz=0x7E0, filesz=0x7E0
+[load_module_to_user] PT_LOAD: va=0x8000000, file_pa=0x3D1000, memsz=0x94C, filesz=0x94C
 [load_module_to_user] Starting page mapping loop...
 [load_module_to_user] Loop: off=0, dst_va=0x8000000
-[load_module_to_user] Copied 0x7E0 bytes from ELF to new page
+[load_module_to_user] Copied 0x94C bytes from ELF to new page
 [load_module_to_user] Calling map_page: dst_va=0x8000000 dst_pa=0x2401000
 [map_page] vaddr=0x8000000 new PT at phys=0x2402000
 [map_page] Set pd_user[32]=0x2402007
@@ -459,7 +466,7 @@ Kernel Booted with Multiboot 2!
   eip=0x8000143, esp=0xBFFFEFFC
   cs=0x1B, ss=0x23, ds=0x23, eflags=0x200
 [task_prepare_pde] load_module_to_user returned, checking EIP...
-[task_prepare_pde] task->tf=0xC02A3114, task->tf->eip=0x8000143
+[task_prepare_pde] task->tf=0xC02A5194, task->tf->eip=0x8000143
 [task_prepare_pde] Verifying trapframe:
   eip=0x8000143, cs=0x1B, eflags=0x200, esp=0xBFFFEFFC
 [task_prepare_pde] User stack already mapped by load_module_to_user (4 pages = 16KB)
@@ -467,32 +474,31 @@ Kernel Booted with Multiboot 2!
 [task_prepare_pde] Keeping tf->esp=0xBFFFEFFC (set by load_module_to_user)
 [task_prepare_pde] This ESP points to argc, following Linux ABI standard
 [user_task_main] Initialization complete, returning to scheduler
-[start_task] DEBUG: pid=1, first_task=0xC02A2160, current_task[0]=0xC02A2160
+[start_task] DEBUG: pid=1, first_task=0xC02A41E0, current_task[0]=0xC02A41E0
 [start_task] Added task pid=1 to chain: prev->pid=1, next->pid=1
 [kernel_main] User task initialized, state=PS_CREATED
-user task 0xC02A2160 kernel task 0x0
+user task 0xC02A41E0 kernel task 0x0
 Starting scheduler with multiple tasks...
 [schedule] ENTRY - schedule() called!
-[schedule] Initialized schedule_switch_to_return_addr=0xC01127FF
+[schedule] Initialized schedule_switch_to_return_addr=0xC0112921
 [schedule] cpu_id=0
 [schedule] Before inline asm
 [schedule] After inline asm, flags=0x282
 [pick_next_task_cfs] current: pid=1, state=64, user_stack=0x2403000
-[pick_next_task_cfs] current->next=0xC02A2160
+[pick_next_task_cfs] current->next=0xC02A41E0
 [pick_next_task_cfs] no other task, keeping current: pid=1
 [schedule] first_time_user=1, switch_to_user=0 (user_stack=0x2403000, state=64)
 [schedule] First time entering user mode for pid=1
-[schedule] About to call task_to_user_mode_with_task, next=0xC02A2160
-[task_to_user_mode_wrapper] ENTRY: task=0xC02A2160
-[task_to_user_mode_wrapper] task=0xC02A2160, pid=1
-[task_to_user_mode_wrapper] task->tf=0xC02A3114
+[schedule] About to call task_to_user_mode_with_task, next=0xC02A41E0
+[task_to_user_mode_wrapper] ENTRY: task=0xC02A41E0
+[task_to_user_mode_wrapper] task=0xC02A41E0, pid=1
+[task_to_user_mode_wrapper] task->tf=0xC02A5194
 [task_to_user_mode_wrapper] trapframe content:
   eip=0x8000143, cs=0x1B, eflags=0x200
   esp=0xBFFFEFFC, ss=0x23
   eax=0x0 (should be 0 for child)
-[task_to_user_mode_wrapper] task_volatile = 0xC02A2160 (about to pass to EAX)
-[task_to_user_mode_with_task] ENTRY: EAX=0xC02A2160 (should be 0xC02A2160)
-[task_to_user_mode_with_task] task->tf (EBX) = 0xC02A3114
+[task_to_user_mode_wrapper] task_volatile = 0xC02A41E0 (about to call task_to_user_mode_with_task)
+[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC02A41E0
 [syscall] SYS_PUTCHAR: char=0x53 ('S')
 S[syscall] SYS_PUTCHAR: done, eax=0
 [syscall] SYS_PUTCHAR: char=0x74 ('t')
@@ -508,7 +514,7 @@ Kernel Booted with Multiboot 2!
 
 [syscall] SYS_PUTCHAR: done, eax=0
 [do_fork] Parent PID=1 forking...
-[do_fork] parent=0xC02A2160, parent->tf=0xC02A3114, parent->kstack=0xC02A3160
+[do_fork] parent=0xC02A41E0, parent->tf=0xC02A5194, parent->kstack=0xC02A51E0
 [do_fork] Temporarily switched CR3: 0x101000 -> 0x101003
 [do_fork] Mapping child task struct to kernel page table: phys=0x2408000, virt=0xC2408000
 [map_page] vaddr=0xC2408000 reusing existing pd_user[777]=0x205023
@@ -531,26 +537,26 @@ Kernel Booted with Multiboot 2!
 [do_fork] DEBUG: child task struct addr=0xC2408000
 [do_fork] DEBUG: &child->tf=0xC2408098, offset=152
 [do_fork] DEBUG: child->tf=0xC2409FB4 (value stored)
-[do_fork] Before memcpy: child->tf=0xC2409FB4, parent->tf=0xC02A3114, size=76
+[do_fork] Before memcpy: child->tf=0xC2409FB4, parent->tf=0xC02A5194, size=76
 [do_fork] Trapframe copied successfully
-[do_fork] Trapframe copied: eip=0x8000269, esp=0xBFFFEFDC
-[do_fork] Parent tf at 0xC02A3114, Child tf at 0xC2409FB4, sizeof(tf)=76
+[do_fork] Trapframe copied: eip=0x80002A3, esp=0xBFFFEFDC
+[do_fork] Parent tf at 0xC02A5194, Child tf at 0xC2409FB4, sizeof(tf)=76
 [do_fork] Child trapfield DUMP:
-  eip=0x8000269, cs=0x1B, eflags=0x282
+  eip=0x80002A3, cs=0x1B, eflags=0x282
   esp=0xBFFFEFDC, ss=0x23
-  eax=0x0, ebx=0xA, ecx=0x23, edx=0x0
-  esi=0x0, edi=0xC02A2160, ebp=0xBFFFEFF8
+  eax=0x0, ebx=0xA, ecx=0x0, edx=0x0
+  esi=0x0, edi=0x0, ebp=0xBFFFEFF8
 [do_fork] Child sharing parent's address space (including user stack)
 [do_fork] ⚠️ WARNING: Multiple children will overwrite each other's user stack!
 [do_fork] ⚠️ TODO: Implement COW (Copy-On-Write) mechanism
-[do_fork] Child trapframe ready: tf=0xC2409FB4, eip=0x8000269, esp=0xBFFFEFDC
+[do_fork] Child trapframe ready: tf=0xC2409FB4, eip=0x80002A3, esp=0xBFFFEFDC
 [do_fork] Child will enter user mode via task_to_user_mode_with_task
 [do_fork] Found first_task: pid=1
 [do_fork] Added child to circular list: prev->pid=1, next->pid=1
 [do_fork] Child PID=2 created successfully, state=64 (PS_CREATED)
 [do_fork] Restored CR3: 0x101003 -> 0x101000
 [do_fork] Parent PID=1 forking...
-[do_fork] parent=0xC02A2160, parent->tf=0xC02A3114, parent->kstack=0xC02A3160
+[do_fork] parent=0xC02A41E0, parent->tf=0xC02A5194, parent->kstack=0xC02A51E0
 [do_fork] Temporarily switched CR3: 0x101000 -> 0x101003
 [do_fork] Mapping child task struct to kernel page table: phys=0x240D000, virt=0xC240D000
 [map_page] vaddr=0xC240D000 reusing existing pd_user[777]=0x205023
@@ -573,26 +579,26 @@ Kernel Booted with Multiboot 2!
 [do_fork] DEBUG: child task struct addr=0xC240D000
 [do_fork] DEBUG: &child->tf=0xC240D098, offset=152
 [do_fork] DEBUG: child->tf=0xC240EFB4 (value stored)
-[do_fork] Before memcpy: child->tf=0xC240EFB4, parent->tf=0xC02A3114, size=76
+[do_fork] Before memcpy: child->tf=0xC240EFB4, parent->tf=0xC02A5194, size=76
 [do_fork] Trapframe copied successfully
-[do_fork] Trapframe copied: eip=0x8000269, esp=0xBFFFEFDC
-[do_fork] Parent tf at 0xC02A3114, Child tf at 0xC240EFB4, sizeof(tf)=76
+[do_fork] Trapframe copied: eip=0x80002A3, esp=0xBFFFEFDC
+[do_fork] Parent tf at 0xC02A5194, Child tf at 0xC240EFB4, sizeof(tf)=76
 [do_fork] Child trapfield DUMP:
-  eip=0x8000269, cs=0x1B, eflags=0x202
+  eip=0x80002A3, cs=0x1B, eflags=0x202
   esp=0xBFFFEFDC, ss=0x23
-  eax=0x0, ebx=0xA, ecx=0x23, edx=0x0
-  esi=0x0, edi=0xC02A2160, ebp=0xBFFFEFF8
+  eax=0x0, ebx=0xA, ecx=0x0, edx=0x0
+  esi=0x0, edi=0x0, ebp=0xBFFFEFF8
 [do_fork] Child sharing parent's address space (including user stack)
 [do_fork] ⚠️ WARNING: Multiple children will overwrite each other's user stack!
 [do_fork] ⚠️ TODO: Implement COW (Copy-On-Write) mechanism
-[do_fork] Child trapframe ready: tf=0xC240EFB4, eip=0x8000269, esp=0xBFFFEFDC
+[do_fork] Child trapframe ready: tf=0xC240EFB4, eip=0x80002A3, esp=0xBFFFEFDC
 [do_fork] Child will enter user mode via task_to_user_mode_with_task
 [do_fork] Found first_task: pid=1
 [do_fork] Added child to circular list: prev->pid=2, next->pid=1
 [do_fork] Child PID=3 created successfully, state=64 (PS_CREATED)
 [do_fork] Restored CR3: 0x101003 -> 0x101000
 [do_fork] Parent PID=1 forking...
-[do_fork] parent=0xC02A2160, parent->tf=0xC02A3114, parent->kstack=0xC02A3160
+[do_fork] parent=0xC02A41E0, parent->tf=0xC02A5194, parent->kstack=0xC02A51E0
 [do_fork] Temporarily switched CR3: 0x101000 -> 0x101003
 [do_fork] Mapping child task struct to kernel page table: phys=0x2412000, virt=0xC2412000
 [map_page] vaddr=0xC2412000 reusing existing pd_user[777]=0x205023
@@ -615,26 +621,26 @@ Kernel Booted with Multiboot 2!
 [do_fork] DEBUG: child task struct addr=0xC2412000
 [do_fork] DEBUG: &child->tf=0xC2412098, offset=152
 [do_fork] DEBUG: child->tf=0xC2413FB4 (value stored)
-[do_fork] Before memcpy: child->tf=0xC2413FB4, parent->tf=0xC02A3114, size=76
+[do_fork] Before memcpy: child->tf=0xC2413FB4, parent->tf=0xC02A5194, size=76
 [do_fork] Trapframe copied successfully
-[do_fork] Trapframe copied: eip=0x8000269, esp=0xBFFFEFDC
-[do_fork] Parent tf at 0xC02A3114, Child tf at 0xC2413FB4, sizeof(tf)=76
+[do_fork] Trapframe copied: eip=0x80002A3, esp=0xBFFFEFDC
+[do_fork] Parent tf at 0xC02A5194, Child tf at 0xC2413FB4, sizeof(tf)=76
 [do_fork] Child trapfield DUMP:
-  eip=0x8000269, cs=0x1B, eflags=0x206
+  eip=0x80002A3, cs=0x1B, eflags=0x206
   esp=0xBFFFEFDC, ss=0x23
-  eax=0x0, ebx=0xA, ecx=0x23, edx=0x0
-  esi=0x0, edi=0xC02A2160, ebp=0xBFFFEFF8
+  eax=0x0, ebx=0xA, ecx=0x0, edx=0x0
+  esi=0x0, edi=0x0, ebp=0xBFFFEFF8
 [do_fork] Child sharing parent's address space (including user stack)
 [do_fork] ⚠️ WARNING: Multiple children will overwrite each other's user stack!
 [do_fork] ⚠️ TODO: Implement COW (Copy-On-Write) mechanism
-[do_fork] Child trapframe ready: tf=0xC2413FB4, eip=0x8000269, esp=0xBFFFEFDC
+[do_fork] Child trapframe ready: tf=0xC2413FB4, eip=0x80002A3, esp=0xBFFFEFDC
 [do_fork] Child will enter user mode via task_to_user_mode_with_task
 [do_fork] Found first_task: pid=1
 [do_fork] Added child to circular list: prev->pid=3, next->pid=1
 [do_fork] Child PID=4 created successfully, state=64 (PS_CREATED)
 [do_fork] Restored CR3: 0x101003 -> 0x101000
 [do_fork] Parent PID=1 forking...
-[do_fork] parent=0xC02A2160, parent->tf=0xC02A3114, parent->kstack=0xC02A3160
+[do_fork] parent=0xC02A41E0, parent->tf=0xC02A5194, parent->kstack=0xC02A51E0
 [do_fork] Temporarily switched CR3: 0x101000 -> 0x101003
 [do_fork] Mapping child task struct to kernel page table: phys=0x2417000, virt=0xC2417000
 [map_page] vaddr=0xC2417000 reusing existing pd_user[777]=0x205023
@@ -657,39 +663,48 @@ Kernel Booted with Multiboot 2!
 [do_fork] DEBUG: child task struct addr=0xC2417000
 [do_fork] DEBUG: &child->tf=0xC2417098, offset=152
 [do_fork] DEBUG: child->tf=0xC2418FB4 (value stored)
-[do_fork] Before memcpy: child->tf=0xC2418FB4, parent->tf=0xC02A3114, size=76
+[do_fork] Before memcpy: child->tf=0xC2418FB4, parent->tf=0xC02A5194, size=76
 [do_fork] Trapframe copied successfully
-[do_fork] Trapframe copied: eip=0x8000269, esp=0xBFFFEFDC
-[do_fork] Parent tf at 0xC02A3114, Child tf at 0xC2418FB4, sizeof(tf)=76
+[do_fork] Trapframe copied: eip=0x80002A3, esp=0xBFFFEFDC
+[do_fork] Parent tf at 0xC02A5194, Child tf at 0xC2418FB4, sizeof(tf)=76
 [do_fork] Child trapfield DUMP:
-  eip=0x8000269, cs=0x1B, eflags=0x202
+  eip=0x80002A3, cs=0x1B, eflags=0x202
   esp=0xBFFFEFDC, ss=0x23
-  eax=0x0, ebx=0xA, ecx=0x23, edx=0x0
-  esi=0x0, edi=0xC02A2160, ebp=0xBFFFEFF8
+  eax=0x0, ebx=0xA, ecx=0x0, edx=0x0
+  esi=0x0, edi=0x0, ebp=0xBFFFEFF8
 [do_fork] Child sharing parent's address space (including user stack)
 [do_fork] ⚠️ WARNING: Multiple children will overwrite each other's user stack!
 [do_fork] ⚠️ TODO: Implement COW (Copy-On-Write) mechanism
-[do_fork] Child trapframe ready: tf=0xC2418FB4, eip=0x8000269, esp=0xBFFFEFDC
+[do_fork] Child trapframe ready: tf=0xC2418FB4, eip=0x80002A3, esp=0xBFFFEFDC
 [do_fork] Child will enter user mode via task_to_user_mode_with_task
 [do_fork] Found first_task: pid=1
 [do_fork] Added child to circular list: prev->pid=4, next->pid=1
 [do_fork] Child PID=5 created successfully, state=64 (PS_CREATED)
 [do_fork] Restored CR3: 0x101003 -> 0x101000
-[syscall] SYS_PUTCHAR: char=0x50 ('P')
-P[syscall] SYS_PUTCHAR: done, eax=0
-[syscall] SYS_PUTCHAR: char=0x30 ('0')
-0[syscall] SYS_PUTCHAR: done, eax=0
-[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: done, eax=0
-[syscall] SYS_PUTCHAR: char=0x30 ('0')
-0[syscall] SYS_PUTCHAR: done, eax=0
-[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x40 ('@')
+@[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x40 ('@')
+@[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x40 ('@')
+@[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x40 ('@')
+@[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x40 ('@')
+@[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x40 ('@')
+@[syscall] SYS_PUTCHAR: done, eax=0
+[PF] fault_addr=0x0 err=0x5 eip=0x0
+[PF] User task page fault, terminating
+[do_exit] Task 1 exiting with code -1
+[do_exit] Freeing user stack at 0x2403000 (virt)
+[do_exit] Trapframe was at 0xC02A5194 (will be freed with kstack)
+[do_exit] Kernel stack at 0xC02A51E0 (keeping for now)
+[do_exit] Task 1 marked as terminated
 [schedule] ENTRY - schedule() called!
 [schedule] cpu_id=0
 [schedule] Before inline asm
-[schedule] After inline asm, flags=0x282
-[pick_next_task_cfs] current: pid=1, state=1, user_stack=0x2403000
+[schedule] After inline asm, flags=0x86
+[pick_next_task_cfs] current: pid=1, state=2, user_stack=0x0
 [pick_next_task_cfs] current->next=0xC2408000
 [pick_next_task_cfs] [0] checking next: pid=2, state=64, user_stack=0x2403000, can_schedule=1
 [pick_next_task_cfs] selected next: pid=2
@@ -700,14 +715,431 @@ Kernel Booted with Multiboot 2!
 [task_to_user_mode_wrapper] task=0xC2408000, pid=2
 [task_to_user_mode_wrapper] task->tf=0xC2409FB4
 [task_to_user_mode_wrapper] trapframe content:
-  eip=0x8000269, cs=0x1B, eflags=0x282
+  eip=0x80002A3, cs=0x1B, eflags=0x282
   esp=0xBFFFEFDC, ss=0x23
   eax=0x0 (should be 0 for child)
-[task_to_user_mode_wrapper] task_volatile = 0xC2408000 (about to pass to EAX)
-[task_to_user_mode_with_task] ENTRY: EAX=0xC2408000 (should be 0xC02A2160)
-[task_to_user_mode_with_task] task->tf (EBX) = 0xC2409FB4
-[PF] fault_addr=0x34 err=0x2 eip=0xC0107B9A
-[PF] Kernel page fault, halting
-[PF] This is a KERNEL BUG - fault in kernel mode!
-[PF] fault_addr=0x34, eip=0xC0107B9A, cs=0x8
-
+[task_to_user_mode_wrapper] task_volatile = 0xC2408000 (about to call task_to_user_mode_with_task)
+[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC2408000
+[syscall] SYS_PUTCHAR: char=0x50 ('P')
+P[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x34 ('4')
+4[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x2D ('-')
+-[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x30 ('0')
+0[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x20 (' ')
+ [syscall] SYS_PUTCHAR: done, eax=0
+[schedule] ENTRY - schedule() called!
+[schedule] cpu_id=0
+[schedule] Before inline asm
+[schedule] After inline asm, flags=0x282
+[pick_next_task_cfs] current: pid=2, state=1, user_stack=0x2403000
+[pick_next_task_cfs] current->next=0xC240D000
+[pick_next_task_cfs] [0] checking next: pid=3, state=64, user_stack=0x2403000, can_schedule=1
+[pick_next_task_cfs] selected next: pid=3
+[schedule] first_time_user=1, switch_to_user=0 (user_stack=0x2403000, state=64)
+[schedule] First time entering user mode for pid=3
+[schedule] About to call task_to_user_mode_with_task, next=0xC240D000
+[task_to_user_mode_wrapper] ENTRY: task=0xC240D000
+[task_to_user_mode_wrapper] task=0xC240D000, pid=3
+[task_to_user_mode_wrapper] task->tf=0xC240EFB4
+[task_to_user_mode_wrapper] trapframe content:
+  eip=0x80002A3, cs=0x1B, eflags=0x202
+  esp=0xBFFFEFDC, ss=0x23
+  eax=0x0 (should be 0 for child)
+[task_to_user_mode_wrapper] task_volatile = 0xC240D000 (about to call task_to_user_mode_with_task)
+[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC240D000
+[syscall] SYS_PUTCHAR: char=0x50 ('P')
+P[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x34 ('4')
+4[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x2D ('-')
+-[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x30 ('0')
+0[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x20 (' ')
+ [syscall] SYS_PUTCHAR: done, eax=0
+[schedule] ENTRY - schedule() called!
+[schedule] cpu_id=0
+[schedule] Before inline asm
+[schedule] After inline asm, flags=0x282
+[pick_next_task_cfs] current: pid=3, state=1, user_stack=0x2403000
+[pick_next_task_cfs] current->next=0xC2412000
+[pick_next_task_cfs] [0] checking next: pid=4, state=64, user_stack=0x2403000, can_schedule=1
+[pick_next_task_cfs] selected next: pid=4
+[schedule] first_time_user=1, switch_to_user=0 (user_stack=0x2403000, state=64)
+[schedule] First time entering user mode for pid=4
+[schedule] About to call task_to_user_mode_with_task, next=0xC2412000
+[task_to_user_mode_wrapper] ENTRY: task=0xC2412000
+[task_to_user_mode_wrapper] task=0xC2412000, pid=4
+[task_to_user_mode_wrapper] task->tf=0xC2413FB4
+[task_to_user_mode_wrapper] trapframe content:
+  eip=0x80002A3, cs=0x1B, eflags=0x206
+  esp=0xBFFFEFDC, ss=0x23
+  eax=0x0 (should be 0 for child)
+[task_to_user_mode_wrapper] task_volatile = 0xC2412000 (about to call task_to_user_mode_with_task)
+[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC2412000
+[syscall] SYS_PUTCHAR: char=0x50 ('P')
+P[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x34 ('4')
+4[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x2D ('-')
+-[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x30 ('0')
+0[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x20 (' ')
+ [syscall] SYS_PUTCHAR: done, eax=0
+[schedule] ENTRY - schedule() called!
+[schedule] cpu_id=0
+[schedule] Before inline asm
+[schedule] After inline asm, flags=0x282
+[pick_next_task_cfs] current: pid=4, state=1, user_stack=0x2403000
+[pick_next_task_cfs] current->next=0xC2417000
+[pick_next_task_cfs] [0] checking next: pid=5, state=64, user_stack=0x2403000, can_schedule=1
+[pick_next_task_cfs] selected next: pid=5
+[schedule] first_time_user=1, switch_to_user=0 (user_stack=0x2403000, state=64)
+[schedule] First time entering user mode for pid=5
+[schedule] About to call task_to_user_mode_with_task, next=0xC2417000
+[task_to_user_mode_wrapper] ENTRY: task=0xC2417000
+[task_to_user_mode_wrapper] task=0xC2417000, pid=5
+[task_to_user_mode_wrapper] task->tf=0xC2418FB4
+[task_to_user_mode_wrapper] trapframe content:
+  eip=0x80002A3, cs=0x1B, eflags=0x202
+  esp=0xBFFFEFDC, ss=0x23
+  eax=0x0 (should be 0 for child)
+[task_to_user_mode_wrapper] task_volatile = 0xC2417000 (about to call task_to_user_mode_with_task)
+[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC2417000
+[syscall] SYS_PUTCHAR: char=0x50 ('P')
+P[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x34 ('4')
+4[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x2D ('-')
+-[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x30 ('0')
+0[syscall] SYS_PUTCHAR: done, eax=0
+[syscall] SYS_PUTCHAR: char=0x20 (' ')
+ [syscall] SYS_PUTCHAR: done, eax=0
+[schedule] ENTRY - schedule() called!
+[schedule] cpu_id=0
+[schedule] Before inline asm
+[schedule] After inline asm, flags=0x282
+[pick_next_task_cfs] current: pid=5, state=1, user_stack=0x2403000
+[pick_next_task_cfs] current->next=0xC02A41E0
+[pick_next_task_cfs] [0] checking next: pid=1, state=2, user_stack=0x0, can_schedule=0
+[pick_next_task_cfs] skipping kernel task pid=1 (no user_stack)
+[pick_next_task_cfs] [1] checking next: pid=2, state=0, user_stack=0x2403000, can_schedule=1
+[pick_next_task_cfs] selected next: pid=2
+[schedule] first_time_user=0, switch_to_user=0 (user_stack=0x2403000, state=0)
+[schedule] CPU0: switch from task_5 to task_2
+c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
+
+
+iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+1EFCAF60+1EF0AF60 CA00
+Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB [01;01H[2J[02;30HGNU GRUB  version 2.12[04;02H┌────────────────[04;18H[04;19H────────────────────────────────────────────────────────────┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[07;79H[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;02H[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└───────────────────────────[18;29H[18;30H────────────────────────[18;53H[18;54H──────────────────────[18;75H[18;76H───┘[20;02H     Use the ↑ and ↓ ke[20;24H[20;25Hys to select which entry is highli[20;58H[20;59Hghted.          
+ [21;02H     Press enter to boot the[21;29H[21;30H selected OS, `e' to edit the commands       
+      before booting or `c' [22;28H[22;29Hfor a command-line.                     [22;68H[22;69H      [05;80H [05;03H My OS - Direct Write Test                  [05;46H[05;47H                               [05;77H[05;78H [06;03H My OS - Simple printf Test                                                 [07;03H[0;30;47m*My OS - 5 Process Test  [07;27H[07;28H                   [07;46H[07;47H                         [07;71H[07;72H       [08;03H[0m My OS - sh[08;13H[08;14Hell_demo Te[08;24H[08;25Hst                              [08;56H[08;57H                      [09;03H My OS - Simpl[09;16H[09;17He Syscall Test                          [09;56H[09;57H                      [10;03H My OS - File [10;16H[10;17HSystem Test                                                   [11;03H                         [11;27H[11;28H                                                   [12;03H            [12;14H[12;15H                                                  [12;64H[12;65H              [13;03H                                             [13;47H[13;48H                               [14;03H      [14;08H[14;09H                                       [14;47H[14;48H                               [15;03H                           [15;29H[15;30H                                                 [16;03H                                                                            [17;03H           [17;13H[17;14H                                   [17;48H[17;49H                              [17;80H 
+
+
+
+
+
+   The highlighted[23;18H[23;19H entry will be exe[23;36H[23;37Hcuted automatically in 5s.                 [07;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highlighted entry will be executed automatically in 4s.                 [07;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   Th[23;05H[23;06He highlighted entry will be executed automatically in 3s.                 [07;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highl[23;12H[23;13Highted entry will be executed automatically in[23;58H[23;59H 2s.                 [07;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highlighted [23;19H[23;20Hentry will be executed aut[23;45H[23;46Homatically in 1s. [23;63H[23;64H [23;64H[23;65H   [23;67H[23;68H [23;68H[23;69H           [07;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ [23;02H  The highlight[23;16H[23;17Hed entry will[23;29H[23;30H be executed au[23;44H[23;45Htomatically in 0s.    [23;66H[23;67H             [01;01H[2J[2J[kernel_main] Saved kernel CR3 phys=0x101000
+=== Serial initialized ===
+Kernel Booted with Multiboot 2!
+Magic: 0x36D76289
+Info addr: 0x106010
+cpuid is 0 
+lapicid is 0 
+ ---IOAPIC ---
+ioapicid is 0 
+ioapic addr is is 0xFEC00000 
+Highmem mapping initialized
+Identity mapped: 0xC0000000-0xC03FFFFF
+Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...
+Allocating new page table for directory entry 772
+alloc_page_table: virt=0xC1000000, phys=0x1000000, pd_idx=772
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
+  Allocated PT at phys=0x200000
+  Writing PDE: pd[772] = 0x200003
+  pd[772] now = 0x200003
+  pt_virt = 0xC0200000 (from pd[772]=0x200003)
+  Clearing page table...
+  Filling PTEs: phys=0x1000000 -> virt=0xC1000000
+  Flushing TLB for virt=0xC1000000
+  Done!
+Allocated new page table for directory entry 0xC1000000
+Allocated new page table for directory entry 0xC1000000
+phys_addr is 0x1000000
+virt_addr is 0xC1000000
+pte is 0x110
+  Mapped 0xC1000000 (phys 0x1000000)
+  Mapped 0xC1100000 (phys 0x1100000)
+  Mapped 0xC1200000 (phys 0x1200000)
+  Mapped 0xC1300000 (phys 0x1300000)
+Allocating new page table for directory entry 773
+alloc_page_table: virt=0xC1400000, phys=0x1400000, pd_idx=773
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
+  Allocated PT at phys=0x201000
+  Writing PDE: pd[773] = 0x201003
+  pd[773] now = 0x201003
+  pt_virt = 0xC0201000 (from pd[773]=0x201003)
+  Clearing page table...
+  Filling PTEs: phys=0x1400000 -> virt=0xC1400000
+  Flushing TLB for virt=0xC1400000
+  Done!
+Allocated new page table for directory entry 0xC1400000
+Allocated new page table for directory entry 0xC1400000
+phys_addr is 0x1400000
+virt_addr is 0xC1400000
+pte is 0x0
+  Mapped 0xC1400000 (phys 0x1400000)
+  Mapped 0xC1500000 (phys 0x1500000)
+  Mapped 0xC1600000 (phys 0x1600000)
+  Mapped 0xC1700000 (phys 0x1700000)
+Allocating new page table for directory entry 774
+alloc_page_table: virt=0xC1800000, phys=0x1800000, pd_idx=774
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
+  Allocated PT at phys=0x202000
+  Writing PDE: pd[774] = 0x202003
+  pd[774] now = 0x202003
+  pt_virt = 0xC0202000 (from pd[774]=0x202003)
+  Clearing page table...
+  Filling PTEs: phys=0x1800000 -> virt=0xC1800000
+  Flushing TLB for virt=0xC1800000
+  Done!
+Allocated new page table for directory entry 0xC1800000
+Allocated new page table for directory entry 0xC1800000
+phys_addr is 0x1800000
+virt_addr is 0xC1800000
+pte is 0x0
+  Mapped 0xC1800000 (phys 0x1800000)
+  Mapped 0xC1900000 (phys 0x1900000)
+  Mapped 0xC1A00000 (phys 0x1A00000)
+  Mapped 0xC1B00000 (phys 0x1B00000)
+Allocating new page table for directory entry 775
+alloc_page_table: virt=0xC1C00000, phys=0x1C00000, pd_idx=775
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
+  Allocated PT at phys=0x203000
+  Writing PDE: pd[775] = 0x203003
+  pd[775] now = 0x203003
+  pt_virt = 0xC0203000 (from pd[775]=0x203003)
+  Clearing page table...
+  Filling PTEs: phys=0x1C00000 -> virt=0xC1C00000
+  Flushing TLB for virt=0xC1C00000
+  Done!
+Allocated new page table for directory entry 0xC1C00000
+Allocated new page table for directory entry 0xC1C00000
+phys_addr is 0x1C00000
+virt_addr is 0xC1C00000
+pte is 0x0
+  Mapped 0xC1C00000 (phys 0x1C00000)
+  Mapped 0xC1D00000 (phys 0x1D00000)
+  Mapped 0xC1E00000 (phys 0x1E00000)
+  Mapped 0xC1F00000 (phys 0x1F00000)
+Allocating new page table for directory entry 776
+alloc_page_table: virt=0xC2000000, phys=0x2000000, pd_idx=776
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
+  Allocated PT at phys=0x204000
+  Writing PDE: pd[776] = 0x204003
+  pd[776] now = 0x204003
+  pt_virt = 0xC0204000 (from pd[776]=0x204003)
+  Clearing page table...
+  Filling PTEs: phys=0x2000000 -> virt=0xC2000000
+  Flushing TLB for virt=0xC2000000
+  Done!
+Allocated new page table for directory entry 0xC2000000
+Allocated new page table for directory entry 0xC2000000
+phys_addr is 0x2000000
+virt_addr is 0xC2000000
+pte is 0x0
+  Mapped 0xC2000000 (phys 0x2000000)
+  Mapped 0xC2100000 (phys 0x2100000)
+  Mapped 0xC2200000 (phys 0x2200000)
+  Mapped 0xC2300000 (phys 0x2300000)
+Allocating new page table for directory entry 777
+alloc_page_table: virt=0xC2400000, phys=0x2400000, pd_idx=777
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
+  Allocated PT at phys=0x205000
+  Writing PDE: pd[777] = 0x205003
+  pd[777] now = 0x205003
+  pt_virt = 0xC0205000 (from pd[777]=0x205003)
+  Clearing page table...
+  Filling PTEs: phys=0x2400000 -> virt=0xC2400000
+  Flushing TLB for virt=0xC2400000
+  Done!
+Allocated new page table for directory entry 0xC2400000
+Allocated new page table for directory entry 0xC2400000
+phys_addr is 0x2400000
+virt_addr is 0xC2400000
+pte is 0x0
+  Mapped 0xC2400000 (phys 0x2400000)
+  Mapped 0xC2500000 (phys 0x2500000)
+  Mapped 0xC2600000 (phys 0x2600000)
+  Mapped 0xC2700000 (phys 0x2700000)
+Allocating new page table for directory entry 778
+alloc_page_table: virt=0xC2800000, phys=0x2800000, pd_idx=778
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
+  Allocated PT at phys=0x206000
+  Writing PDE: pd[778] = 0x206003
+  pd[778] now = 0x206003
+  pt_virt = 0xC0206000 (from pd[778]=0x206003)
+  Clearing page table...
+  Filling PTEs: phys=0x2800000 -> virt=0xC2800000
+  Flushing TLB for virt=0xC2800000
+  Done!
+Allocated new page table for directory entry 0xC2800000
+Allocated new page table for directory entry 0xC2800000
+phys_addr is 0x2800000
+virt_addr is 0xC2800000
+pte is 0x0
+  Mapped 0xC2800000 (phys 0x2800000)
+  Mapped 0xC2900000 (phys 0x2900000)
+  Mapped 0xC2A00000 (phys 0x2A00000)
+  Mapped 0xC2B00000 (phys 0x2B00000)
+Allocating new page table for directory entry 779
+alloc_page_table: virt=0xC2C00000, phys=0x2C00000, pd_idx=779
+  pd[pd_idx]=0x0
+  Page table not present, allocating...
+alloc_early_page_table: allocated phys=0x207000, virt=0xC0207000
+  Allocated PT at phys=0x207000
+  Writing PDE: pd[779] = 0x207003
+  pd[779] now = 0x207003
+  pt_virt = 0xC0207000 (from pd[779]=0x207003)
+  Clearing page table...
+  Filling PTEs: phys=0x2C00000 -> virt=0xC2C00000
+  Flushing TLB for virt=0xC2C00000
+  Done!
+Allocated new page table for directory entry 0xC2C00000
+Allocated new page table for directory entry 0xC2C00000
+phys_addr is 0x2C00000
+virt_addr is 0xC2C00000
+pte is 0x0
+  Mapped 0xC2C00000 (phys 0x2C00000)
+  Mapped 0xC2D00000 (phys 0x2D00000)
+  Mapped 0xC2E00000 (phys 0x2E00000)
+  Mapped 0xC2F00000 (phys 0x2F00000)
+Buddy system data area mapped successfully
+Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
+Virtual address layout:
+  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
+  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
+    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
+    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
+Multiboot2 info: mem_lower=639 KB, mem_upper=523136 KB
+Initializing memory management...
+mm_init: starting memory management initialization
+mm_init: detected 510 MB physical memory (mem_upper=523136 KB)
+mm_init: initializing physical memory manager...
+pmm_init: kernel_end_phys=0x3B0000
+pmm_init: placing buddy system data at 16MB (0x1000000)
+pmm_init: page tables will be created on-demand when accessing 0xC1000000+
+pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
+pmm_init: buddy system data structures for 475 MB:
+  max_blocks=121748, buddy_data_size=1 MB (1949696 bytes)
+pmm_init: buddy_data_virt=0xC1000000 (will be mapped on-demand)
+pmm_init: physical memory manager initialized
+  start: 0x2400000 (36 MB), end: 0x1FF7FFFF (511 MB)
+  total pages: 121728 (475 MB)
+pmm_init: initializing buddy system...
+  base_page=9216, managed_pages=121728, max_order=16
+pmm_init: reserving 128 MB for kernel (pages 9216-41983)
+buddy_init: bas
