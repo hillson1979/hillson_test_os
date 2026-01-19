@@ -159,8 +159,8 @@ void pmm_init(void) {
     printf("  base_page=%u, managed_pages=%u, max_order=%u\n",
            base_page, pmm_total_pages, max_order);
 
-    // 为内核保留前 128MB 内存 (32768 页)
-    uint32_t kernel_reserved_pages = 32768;  // 128MB
+    // 为内核保留前 512MB 内存 (131072 页)
+    uint32_t kernel_reserved_pages = 131072;  // 512MB
     printf("pmm_init: reserving %u MB for kernel (pages %u-%u)\n",
            (kernel_reserved_pages * 4096) / (1024 * 1024),
            base_page, base_page + kernel_reserved_pages - 1);

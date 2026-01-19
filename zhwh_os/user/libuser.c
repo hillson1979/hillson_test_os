@@ -135,6 +135,10 @@ extern int syscall_write(int fd, const char *buf, int len);
 extern int syscall_fork(void);
 extern void syscall_exit(int code) __attribute__((noreturn));
 extern void syscall_yield(void);
+extern int syscall_open(const char *pathname, int flags);
+extern int syscall_close(int fd);
+extern int syscall_read(int fd, char *buf, int len);
+extern int syscall_lseek(int fd, int offset, int whence);
 
 // write 系统调用
 int write(int fd, const char *buf, int len) {
@@ -159,3 +163,24 @@ void exit(int code) {
 void yield(void) {
     syscall_yield();
 }
+
+// 文件系统系统调用
+int open(const char *pathname, int flags) {
+    return syscall_open(pathname, flags);
+}
+
+int close(int fd) {
+    return syscall_close(fd);
+}
+
+int read(int fd, char *buf, int len) {
+    return syscall_read(fd, buf, len);
+}
+
+int lseek(int fd, int offset, int whence) {
+    return syscall_lseek(fd, offset, whence);
+}
+
+// getcwd 系统调用
+extern int getcwd(char *buf, int size);
+

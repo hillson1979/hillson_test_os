@@ -10,6 +10,18 @@
 #define SYS_YIELD 3
 #define SYS_WRITE 10
 #define SYS_FORK 11
+#define SYS_OPEN 20
+#define SYS_CLOSE 21
+#define SYS_READ 22
+#define SYS_LSEEK 23
+
+// 文件打开标志
+#define O_RDONLY 0
+#define O_WRONLY 1
+#define O_RDWR 2
+#define O_CREAT 0100
+#define O_TRUNC 01000
+#define O_APPEND 02000
 
 // 系统调用包装宏
 #define syscall1(num, arg1) \
@@ -48,5 +60,14 @@ void exit(int code) __attribute__((noreturn));
 
 // yield - 让出CPU
 void yield(void);
+
+// 文件系统系统调用
+int open(const char *pathname, int flags);
+int close(int fd);
+int read(int fd, char *buf, int len);
+int lseek(int fd, int offset, int whence);
+
+// 工作目录系统调用
+int getcwd(char *buf, int size);
 
 #endif // LIBUSER_H

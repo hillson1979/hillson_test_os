@@ -26,15 +26,6 @@ static inline void llist_add_tail(struct llist_header *new, struct llist_header 
     head->prev = new;
 }
 
-/**
- * 检查链表是否为空
- * @param list 要检查的链表头
- * @return 为空返回1，非空返回0
- */
- int llist_empty(struct llist_header *list) {
-    // 空链表时，哨兵节点的next指向自身
-    return (list->next == &list);
-}
  void
 llist_delete(struct llist_header* elem)
 {
