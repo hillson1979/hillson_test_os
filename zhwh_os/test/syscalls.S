@@ -120,3 +120,12 @@ syscall_lseek:
     int $0x80              # 触发系统调用
     # 返回值在EAX中：新的文件位置
     ret
+
+# SYS_NET_PING系统调用 (参数: const char *ip_addr)
+.global syscall_net_ping
+syscall_net_ping:
+    movl $30, %eax         # 系统调用号 SYS_NET_PING
+    movl 4(%esp), %ebx     # 参数1: ip_addr 字符串指针
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret

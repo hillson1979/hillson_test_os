@@ -160,8 +160,23 @@ ioapicenable(int irq, int cpunum)
   // Mark interrupt edge-triggered, active high,
   // enabled, and routed to the given cpunum,
   // which happens to be that cpu's APIC ID.
+
+  // 🔥 调试：打印配置信息
+  printf("[ioapicenable] Enabling IRQ%d on CPU%d\n", irq, cpunum);
+  printf("[ioapicenable] Writing to REG_TABLE+%d (0x%x)\n", 2*irq, REG_TABLE+2*irq);
+  printf("[ioapicenable] Vector = %d (0x%x)\n", T_IRQ0 + irq, T_IRQ0 + irq);
+
+  uint32_t low_before = ioapicread(REG_TABLE+2*irq);
+  uint32_t high_before = ioapicread(REG_TABLE+2*irq+1);
+  printf("[ioapicenable] Before: low=0x%x high=0x%x\n", low_before, high_before);
+
   ioapicwrite(REG_TABLE+2*irq, T_IRQ0 + irq);
   ioapicwrite(REG_TABLE+2*irq+1, cpunum << 24);
+
+  uint32_t low_after = ioapicread(REG_TABLE+2*irq);
+  uint32_t high_after = ioapicread(REG_TABLE+2*irq+1);
+  printf("[ioapicenable] After: low=0x%x high=0x%x\n", low_after, high_after);
+  printf("[ioapicenable] Done!\n");
 }
 
 

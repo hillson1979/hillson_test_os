@@ -25,6 +25,8 @@ C_SOURCES += fs/ramfs.c  # 添加 ramfs 文件系统
 C_SOURCES += fs/vfs.c  # 添加 VFS 层
 C_SOURCES += net/core.c  # 添加网络核心
 C_SOURCES += net/loopback.c  # 添加回环设备
+C_SOURCES += net/rtl8139.c  # 添加 RTL8139 网卡驱动
+C_SOURCES += net/e1000.c  # 添加 E1000 网卡驱动
 # C_SOURCES += mm/slab.c  # 暂时禁用 Slab 分配器
 ASM_SOURCES = boot.s vectors.s task_impl.s interrupt_exit.s trap_entry.s #copy_user_32.s
 

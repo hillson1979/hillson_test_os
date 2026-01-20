@@ -148,8 +148,9 @@ void handle_timer_interrupt(struct trapframe *tf){
     }
 };
 void handle_keyboard_interrupt(struct trapframe *tf){
-    // ⚠️ 暂时禁用 printf
-    // printf("enter keyboard interrupt---\n");
+    // 调用键盘驱动的中断处理函数
+    extern void keyboard_handler(void);
+    keyboard_handler();
 };
 // ... 其他中断处理函数 ...
 
@@ -425,7 +426,9 @@ void do_irq_handler(struct trapframe *tf) {
             // 调用键盘驱动处理程序
             extern void keyboard_handler(void);
             keyboard_handler();
-            send_eoi(1);  // 发送EOI
+            // 使用 lapiceoi() 而不是 send_eoi()
+            // 因为这个系统使用的是 IOAPIC，不是 8259A PIC
+            lapiceoi();
             break;
         } 
         // ... 其他中断类型 ...

@@ -43,6 +43,13 @@ kbdgetc(void)
   return c;
 }
 
+void kbdintr(void)
+{
+  // 调用键盘驱动的中断处理函数
+  extern void keyboard_handler(void);
+  keyboard_handler();
+}
+
 void
 handle_keyboard_interrupt()//kbdintr(void)
 {

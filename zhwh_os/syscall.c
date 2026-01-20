@@ -144,9 +144,9 @@ enum {
     SYS_YIELD,
     SYS_GET_MEM_STATS,
     SYS_READ_MEM,
-    SYS_GETCHAR,      // 新增：读取单个字符
-    SYS_KBHIT,        // 新增：检查是否有按键
-    SYS_PUTCHAR,      // 新增：输出单个字符(用于显示提示符)
+    SYS_GET_MEM_USAGE,
+    SYS_GETCHAR,      // = 7 新增：读取单个字符
+    SYS_PUTCHAR,      // = 8 新增：输出单个字符(用于显示提示符)
     SYS_GET_FRAMEBUFFER,  // 新增：获取 framebuffer 信息
     SYS_GETCWD,       // 新增：获取当前工作目录
     SYS_WRITE,        // 占位符，使 SYS_FORK = 11
@@ -155,6 +155,7 @@ enum {
     SYS_CLOSE,        // close 系统调用
     SYS_READ,         // read 系统调用
     SYS_LSEEK,        // lseek 系统调用
+    SYS_NET_PING = 30, // 网络_ping 系统调用
 };
 
 void syscall_dispatch(struct trapframe *tf) {
@@ -264,21 +265,12 @@ void syscall_dispatch(struct trapframe *tf) {
             tf->eax = c;
             break;
         }
-        case SYS_KBHIT: {
-            // 检查是否有按键可用
-            extern int keyboard_kbhit(void);
-            int hit = keyboard_kbhit();
-            tf->eax = hit;
-            break;
-        }
         case SYS_PUTCHAR: {
             // 输出单个字符(字符在EBX中)
-            printf("[syscall] SYS_PUTCHAR: char=0x%x ('%c')\n", arg1, (char)arg1);
-            char c = (char)arg1;
+            uint8_t ch = (uint8_t)(arg1 & 0xFF);
             extern void vga_putc(char);
-            vga_putc(c);
+            vga_putc((char)ch);
             tf->eax = 0;
-            printf("[syscall] SYS_PUTCHAR: done, eax=0\n");
             break;
         }
         case SYS_GET_FRAMEBUFFER: {
@@ -570,6 +562,56 @@ void syscall_dispatch(struct trapframe *tf) {
             extern int filp_lseek(struct file *, int64_t, int);
             int ret = filp_lseek(file, (int64_t)offset, whence);
             tf->eax = ret;
+            break;
+        }
+        case SYS_NET_PING: {
+            // net_ping(ip_addr)
+            // arg1 是 IP 地址字符串指针
+            const char *ip_str = (const char *)arg1;
+
+            // 简单的 IP 地址解析 (a.b.c.d)
+            uint32_t ip = 0;
+            int parts[4];
+            int part_count = 0;
+            const char *p = ip_str;
+            int current = 0;
+
+            while (*p && part_count < 4) {
+                if (*p == '.') {
+                    parts[part_count++] = current;
+                    current = 0;
+                    p++;
+                } else if (*p >= '0' && *p <= '9') {
+                    current = current * 10 + (*p - '0');
+                    p++;
+                } else {
+                    break;
+                }
+            }
+            parts[part_count] = current;
+
+            if (part_count == 3) {
+                // 组合成 32 位 IP
+                ip = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
+
+                // 调用网络层发送 ping
+                extern int icmp_send_echo(void *dev, uint32_t dst_ip, uint16_t id, uint16_t seq);
+                extern void *net_device_get_default(void);
+
+                void *dev = net_device_get_default();
+                if (dev) {
+                    // 发送 4 个 ping 包
+                    int i;
+                    for (i = 0; i < 4; i++) {
+                        icmp_send_echo(dev, ip, 0x1234, i + 1);
+                    }
+                    tf->eax = 0;  // 成功
+                } else {
+                    tf->eax = -1;  // 失败：没有网络设备
+                }
+            } else {
+                tf->eax = -2;  // 失败：无效的 IP 地址
+            }
             break;
         }
         default:

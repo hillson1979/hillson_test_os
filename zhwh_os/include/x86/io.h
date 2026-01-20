@@ -8,7 +8,7 @@
 #define IRQ(n) (n+32)
 
 static inline void outb(uint16_t port, uint8_t value) {
-  __asm__ volatile ("outb %1, %0" : : "dN" (port), "a" (value));
+  __asm__ volatile ("outb %1, %0" : : "dN" (port), "a" (value) : "memory");
 }
 
 static inline void outw(uint16_t port, uint16_t value) {

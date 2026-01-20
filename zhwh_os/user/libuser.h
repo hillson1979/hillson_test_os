@@ -8,12 +8,16 @@
 #define SYS_PRINTF 1
 #define SYS_EXIT 2
 #define SYS_YIELD 3
+#define SYS_GETCHAR 7
+#define SYS_PUTCHAR 8
+#define SYS_GETCWD 9
 #define SYS_WRITE 10
 #define SYS_FORK 11
 #define SYS_OPEN 20
 #define SYS_CLOSE 21
 #define SYS_READ 22
 #define SYS_LSEEK 23
+#define SYS_NET_PING 30  // 新增：网络 ping 系统调用
 
 // 文件打开标志
 #define O_RDONLY 0
@@ -69,5 +73,17 @@ int lseek(int fd, int offset, int whence);
 
 // 工作目录系统调用
 int getcwd(char *buf, int size);
+
+// 字符 I/O 系统调用
+int sys_getchar(void);
+void sys_putchar(char c);
+
+// 网络系统调用
+int net_ping(const char *ip_addr);  // Ping 指定的 IP 地址
+
+// 字符串和内存工具函数
+int strlen(const char *s);
+void *memcpy(void *dst, const void *src, int n);
+void *memset(void *s, int c, int n);
 
 #endif // LIBUSER_H
