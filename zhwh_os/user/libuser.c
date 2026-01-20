@@ -2,18 +2,25 @@
 #include "libuser.h"
 
 // 简单的 strlen 实现
-static int strlen(const char *s) {
+int strlen(const char *s) {
     int len = 0;
     while (s[len]) len++;
     return len;
 }
 
 // 简单的 memcpy 实现
-static void *memcpy(void *dst, const void *src, int n) {
+void *memcpy(void *dst, const void *src, int n) {
     char *d = (char*)dst;
     const char *s = (const char*)src;
     while (n--) *d++ = *s++;
     return dst;
+}
+
+// 简单的 memset 实现
+void *memset(void *s, int c, int n) {
+    char *p = (char*)s;
+    while (n--) *p++ = c;
+    return s;
 }
 
 // 简单的数字转字符串
@@ -183,4 +190,11 @@ int lseek(int fd, int offset, int whence) {
 
 // getcwd 系统调用
 extern int getcwd(char *buf, int size);
+
+// 网络系统调用包装函数
+extern int syscall_net_ping(const char *ip_addr);
+
+int net_ping(const char *ip_addr) {
+    return syscall_net_ping(ip_addr);
+}
 

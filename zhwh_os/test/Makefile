@@ -9,13 +9,15 @@ CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-bui
 ASFLAGS = $(TARGET_ARCH) -fno-pic
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ts.ld
 
-TARGETS = sched_test5.elf shell_demo.elf fs_test.elf
+TARGETS = sched_test5.elf shell_demo.elf fs_test.elf net_test.elf net_shell.elf
 
 # 测试程序源文件
 SCHED5_SOURCE = sched_test5.c
 SHELL_SOURCE = simple_interactive_shell.c
 SYSCALL_TEST_SOURCE = simple_syscall_test.c
 FS_TEST_SOURCE = fs_test.c
+NET_TEST_SOURCE = net_test.c
+NET_SHELL_SOURCE = net_shell.c
 
 # 目标文件
 SCHED5_OBJ = $(SCHED5_SOURCE:.c=.o)
@@ -66,6 +68,24 @@ fs_test.o: $(FS_TEST_SOURCE) ts.ld
 
 fs_test.elf: fs_test.o syscalls.o libuser.o ts.ld
 	$(LD) $(LDFLAGS) -o $@ fs_test.o syscalls.o libuser.o
+	@echo "Built: $@"
+
+# net_test 编译规则
+net_test.o: $(NET_TEST_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(NET_TEST_SOURCE) -o net_test.o
+	@echo "Compiled: $(NET_TEST_SOURCE)"
+
+net_test.elf: net_test.o syscalls.o libuser.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ net_test.o syscalls.o libuser.o
+	@echo "Built: $@"
+
+# net_shell 编译规则
+net_shell.o: $(NET_SHELL_SOURCE) ts.ld
+	$(CC) $(CFLAGS) -I../user -c $(NET_SHELL_SOURCE) -o net_shell.o
+	@echo "Compiled: $(NET_SHELL_SOURCE)"
+
+net_shell.elf: net_shell.o syscalls.o libuser.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ net_shell.o syscalls.o libuser.o
 	@echo "Built: $@"
 
 %.o: %.c

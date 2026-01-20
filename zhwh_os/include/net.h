@@ -194,20 +194,32 @@ int net_tx_packet(net_device_t *dev, uint8_t *data, uint32_t len);
 
 // 协议处理
 int eth_input(net_device_t *dev, uint8_t *data, uint32_t len);
+int arp_input(net_device_t *dev, uint8_t *data, uint32_t len);
 int ip_input(net_device_t *dev, uint8_t *data, uint32_t len);
+int ip_output(net_device_t *dev, uint32_t dst_ip, uint8_t protocol,
+              uint8_t *data, uint32_t len);
 int icmp_input(net_device_t *dev, uint8_t *data, uint32_t len);
+int icmp_send_echo(net_device_t *dev, uint32_t dst_ip, uint16_t id, uint16_t seq);
 int udp_input(net_device_t *dev, uint8_t *data, uint32_t len);
+int udp_output(net_device_t *dev, uint32_t dst_ip, uint16_t src_port,
+               uint16_t dst_port, uint8_t *data, uint32_t len);
 int tcp_input(net_device_t *dev, uint8_t *data, uint32_t len);
+int tcp_output(net_device_t *dev, uint32_t dst_ip, uint16_t src_port,
+               uint16_t dst_port, uint32_t seq, uint32_t ack,
+               uint8_t flags, uint8_t *data, uint32_t len);
 
 // ARP
 int arp_request(net_device_t *dev, uint32_t ip_addr);
-int arp_reply(net_device_t *dev, uint32_t ip_addr, uint8_t *mac_addr);
+int arp_resolve(net_device_t *dev, uint32_t ip_addr, uint8_t *mac_addr);
 int arp_lookup(uint32_t ip_addr, uint8_t *mac_addr);
 
 // 工具函数
 uint16_t internet_checksum(uint16_t *data, uint32_t len);
 void print_mac(uint8_t *mac);
 void print_ip(uint32_t ip);
+
+// 以太网广播地址
+extern uint8_t eth_broadcast[ETH_ALEN];
 
 // 配置
 int net_set_ipaddr(uint32_t ip);

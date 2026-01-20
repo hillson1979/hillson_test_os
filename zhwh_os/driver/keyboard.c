@@ -5,6 +5,9 @@
 #include "keyboard.h"
 #include "x86/io.h"
 
+// 声明 printf 函数
+extern int printf(const char*, ...);
+
 // US QWERTY 键盘扫描码到 ASCII 的转换表
 // 索引是扫描码，值是对应的 ASCII 字符
 static const char scancode_to_ascii_table[] = {
@@ -94,26 +97,80 @@ static void keyboard_buffer_put(char c) {
     kbd_state.buffer_tail = next_tail;
 }
 
-// 初始化键盘驱动
+// 辅助函数：等待输入缓冲区空（IBF=0）
+static void kbd_wait_input_clear(void) {
+    int timeout = 100000;
+    while (timeout-- && (inb(0x64) & 0x02)) {
+        // Wait for IBF clear
+    }
+    if (timeout == 0) {
+        printf("[KBD] ⚠️⚠️⚠️ Timeout waiting for IBF clear!\n");
+    }
+}
+
+// 辅助函数：等待输出缓冲区满（OBF=1）
+static void kbd_wait_output_full(void) {
+    int timeout = 100000;
+    while (timeout-- && !(inb(0x64) & 0x01)) {
+        // Wait for OBF set
+    }
+    if (timeout == 0) {
+        printf("[KBD] ⚠️⚠️⚠️ Timeout waiting for OBF set!\n");
+    }
+}
+
+// 初始化键盘驱动 - 严格版初始化序列
 void keyboard_init(void) {
     kbd_state.shift_pressed = 0;
     kbd_state.caps_lock = 0;
     kbd_state.buffer_head = 0;
     kbd_state.buffer_tail = 0;
 
-    // 简化的PS/2键盘控制器初始化
-    // 直接启用键盘中断
-    outb(KBD_CMD_PORT, 0xAE);  // 启用键盘设备
+    // 1. 禁用键盘端口
+    kbd_wait_input_clear();
+    outb(0x64, 0xAD);
 
-    // 读取并修改配置字节
-    outb(KBD_CMD_PORT, 0x20);  // 读取配置命令
-    unsigned char config = inb(KBD_DATA_PORT);
-    config |= 0x01;  // 设置bit 0，启用键盘中断
-    outb(KBD_CMD_PORT, 0x60);  // 写配置命令
-    outb(KBD_DATA_PORT, config);
+    // 2. 清空可能残留的 OBF
+    if (inb(0x64) & 0x01) {
+        inb(0x60);  // 丢弃
+    }
 
-    extern int printf(const char*, ...);
-    printf("[KBD] Controller initialized, config=0x%x\n", config);
+    // 3. 读 Controller Config
+    kbd_wait_input_clear();
+    outb(0x64, 0x20);
+    kbd_wait_output_full();
+    unsigned char cfg = inb(0x60);
+
+    // 4. 启用 IRQ1 (设置 bit 0)
+    cfg |= 0x01;
+
+    // 5. 写回 Config
+    kbd_wait_input_clear();
+    outb(0x64, 0x60);
+    kbd_wait_input_clear();
+    outb(0x60, cfg);
+
+    // 6. 启用键盘端口
+    kbd_wait_input_clear();
+    outb(0x64, 0xAE);
+
+    // 7. 发送回送命令测试键盘
+    kbd_wait_input_clear();
+    outb(0x60, 0xEE);
+    kbd_wait_output_full();
+    inb(0x60);  // 丢弃回送响应
+
+    // 8. 🔥🔥 启用扫描（关键步骤）
+    kbd_wait_input_clear();
+    outb(0x60, 0xF4);
+
+    // 9. 等待 ACK
+    kbd_wait_output_full();
+    inb(0x60);  // 丢弃 ACK
+
+    // 🔥🔥🔥 关键修复：在 IOAPIC 中启用 IRQ1！
+    extern void ioapicenable(int irq, int cpunum);
+    ioapicenable(1, 0);  // 启用 IRQ1，路由到 CPU 0
 }
 
 // 简单的十六进制转字符辅助函数
@@ -157,33 +214,21 @@ void keyboard_handler(void) {
     if (c != 0) {
         keyboard_buffer_put(c);
     }
+
+    // ⚠️⚠️⚠️ 注意：不要在这里发送 EOI！
+    // EOI 由 interrupt.c 中的 lapiceoi() 统一发送
 }
 
-// 从键盘缓冲区读取一个字符
+// 从键盘缓冲区读取一个字符（使用中断驱动的 buffer）
 int keyboard_getchar(void) {
     // 等待直到有字符可用
+    // 使用 sti + hlt 让 CPU 进入可中断的睡眠状态
+    // 只有这样，IRQ1 才有机会被执行！
     while (kbd_state.buffer_head == kbd_state.buffer_tail) {
-        // 轮询键盘状态端口
-        unsigned char status = inb(KBD_CMD_PORT);
-        if (status & 0x01) {  // 输出缓冲区有数据
-            // 直接读取扫描码并处理
-            uint8_t scancode = inb(KBD_DATA_PORT);
-
-            // 忽略按键释放事件（bit 7 = 1）
-            if (scancode & 0x80) {
-                continue;  // 跳过释放事件，继续等待下一个按下
-            }
-
-            // 转换为ASCII（此时bit 7 = 0，是按下事件）
-            char c = scancode_to_ascii(scancode);
-
-            if (c != 0) {
-                keyboard_buffer_put(c);
-            }
-        }
-
-        // 短暂延迟，避免CPU占用过高
-        for(volatile int i=0; i<1000; i++);
+        // sti: 确保中断标志位 IF=1
+        // hlt: CPU 暂停，等待任何中断唤醒
+        // 当 IRQ1 到达时，CPU 会立刻唤醒，执行 keyboard_handler()
+        __asm__ volatile("sti; hlt");
     }
 
     char c = kbd_state.buffer[kbd_state.buffer_head];

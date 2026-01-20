@@ -132,6 +132,11 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // 必须初始化 LAPIC，因为 logical_cpu_id() 依赖它
         lapicinit();
 
+        // 🔥 初始化 IOAPIC（必须在键盘初始化之前！）
+        extern void ioapicinit(void);
+        ioapicinit();
+        printf("IOAPIC initialized\n");
+
         printf("Before seginit\n");
         seginit();
         printf("After seginit\n");
@@ -156,6 +161,33 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         keyboard_init();
         printf("Keyboard driver initialized\n");
 
+        // ⚠️⚠️⚠️ 关键修复：在启用中断后重新配置PIC
+        // 原因：PIC可能在初始化过程中被重置
+        printf("Re-configuring PIC after enabling interrupts...\n");
+        unsigned char mask1_after = inb(0x21);
+        printf("PIC mask before keyboard enable: 0x%x\n", mask1_after);
+        mask1_after &= ~0x02;  // 清除bit 1 (IRQ1)
+
+        // ⚠️⚠️⚠️ 强制使用内联汇编，确保 outb 不会被优化
+        __asm__ volatile (
+            "outb %0, %1"
+            :
+            : "a" (mask1_after), "dN" ((uint16_t)0x21)
+            : "memory"
+        );
+
+        // 再次验证
+        unsigned char mask1_final = inb(0x21);
+        printf("PIC mask after keyboard enable: 0x%x (expected: 0x%x)\n", mask1_final, mask1_after);
+        printf("IRQ1 (keyboard) %s\n", (mask1_final & 0x02) ? "DISABLED ❌" : "ENABLED ✅");
+
+        // 如果还是没变，说明 outb 完全不工作
+        if (mask1_final == mask1_after && (mask1_final & 0x02)) {
+            printf("⚠️⚠️⚠️ WARNING: outb() is not working! PIC mask unchanged!\n");
+        } else if (mask1_final != mask1_after) {
+            printf("⚠️⚠️⚠️ WARNING: PIC mask changed unexpectedly!\n");
+        }
+
         // 初始化文件系统
         extern void fs_init(void);
         extern void vfs_set_root(struct super_block *sb);
@@ -165,13 +197,23 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         fs_init();  // 这会调用 ramfs_mount 并设置根文件系统
         printf("File system initialized\n");
 
+        // 初始化 PCI 总线
+        extern int pci_init(void);
+        printf("Initializing PCI...\n");
+        pci_init();
+        printf("PCI initialized\n");
+
         // 初始化网络协议栈
         extern void net_init(void);
         extern int loopback_init(void);
         extern int loopback_send_test(void);
+        extern int rtl8139_init(void);
+        extern int e1000_init(void);
 
         net_init();
         loopback_init();
+        rtl8139_init();  // 初始化 RTL8139 网卡驱动
+        e1000_init();    // 初始化 E1000 网卡驱动
         printf("Network initialized\n");
 
         // 发送网络测试包
@@ -179,25 +221,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         loopback_send_test();
         printf("=== Network Test Complete ===\n\n");
 
-        // 启用键盘中断 (IRQ1)
-        // 传统PIC方法
-        unsigned char mask1 = inb(0x21);
-        printf("PIC initial mask: 0x%x\n", mask1);
-        mask1 &= ~0x02;  // 清除bit 1 (IRQ1)
-        outb(mask1, 0x21);
-
-        // 验证是否设置成功
-        unsigned char mask1_verify = inb(0x21);
-        printf("PIC new mask: 0x%x (verified)\n", mask1_verify);
-        printf("Keyboard IRQ1 enabled via PIC (mask & 0x02 = %d)\n", mask1_verify & 0x02);
-
-        // 不再使用IOAPIC，避免冲突
-        // extern void ioapicenable(int irq, int cpunum);
-        // ioapicenable(1, 0);
-
-        // 测试：读取键盘状态
-        unsigned char kbd_status = inb(0x64);
-        printf("Keyboard status port: 0x%x\n", kbd_status);
+        // ⚠️⚠️⚠️ 注意：PIC已经在启用中断后配置完毕
+        // 不要在这里重复配置，避免覆盖之前的设置
 
         // 在VGA上显示测试消息，确认系统正常运行
         volatile uint16_t* vga = (volatile uint16_t*)0xB8000;
