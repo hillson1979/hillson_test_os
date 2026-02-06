@@ -68,11 +68,14 @@ int buddy_init_with_memory(uint32_t base_page, uint32_t total_pages,
     printf("buddy_init: skipping write test, proceeding to memset...\n");
 
     // 初始化空闲链表
-    printf("buddy_init: before memset free_lists\n");
+    printf("buddy_init: free_lists=%p, size=%u bytes\n",
+           buddy_sys.free_lists, (max_order + 1) * sizeof(uint32_t));
+
     memset(buddy_sys.free_lists, 0xFF, (max_order + 1) * sizeof(uint32_t));
-    printf("buddy_init: before memset next_free\n");
+    printf("buddy_init: memset free_lists done\n");
+
     memset(buddy_sys.next_free, 0xFF, max_blocks * sizeof(uint32_t));
-    printf("buddy_init: after memset\n");
+    printf("buddy_init: memset next_free done\n");
 
     printf("buddy_init: creating initial free blocks\n");
 

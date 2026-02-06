@@ -58,7 +58,12 @@ int loopback_init(void) {
         return -1;
     }
 
-    printf("[loopback] Loopback device ready\n");
+    // 设置loopback设备的IP为127.0.0.1
+    loopback_dev.ip_addr = 0x7F000001;  // 127.0.0.1
+    loopback_dev.netmask = 0xFF000000;   // 255.0.0.0
+    loopback_dev.gateway = 0;            // 无网关
+
+    printf("[loopback] Loopback device ready (IP: 127.0.0.1)\n");
     return 0;
 }
 

@@ -91,16 +91,16 @@ void pmm_init(void) {
     uint32_t kernel_end_phys = V2P((uint32_t)_kernel_end_virtual);
 
     // 为 Buddy System 预留空间
-    // Buddy System 数据放在 16MB，系统会按需建立页表映射
-    // 当访问 0xC1000000+ 时，map_4k_page 会自动创建页表
-    uint32_t buddy_data_phys = 0x1000000;  // 16MB
+    // Buddy System 数据放在 48MB，DMA 占用 40MB-48MB
+    // 使用物理地址（Buddy System 管理的是物理内存）
+    uint32_t buddy_data_phys = 0x03000000;  // 48MB 物理地址
     uint32_t buddy_data_reserved = 20 * 1024 * 1024;  // 20MB 预留空间
-    pmm_start = 0x2400000;  // 36MB - 从这里开始管理物理内存
+    pmm_start = buddy_data_phys + buddy_data_reserved;  // 68MB 物理地址 - Buddy 元数据之后
 
     printf("pmm_init: kernel_end_phys=0x%x\n", kernel_end_phys);
-    printf("pmm_init: placing buddy system data at 16MB (0x1000000)\n");
-    printf("pmm_init: page tables will be created on-demand when accessing 0xC1000000+\n");
-    printf("pmm_init: buddy system data size: %u MB at 0x%x-0x%x\n",
+    printf("pmm_init: placing buddy system data at 48MB physical (0x3000000)\n");
+    printf("pmm_init: buddy system virtual address: 0xC3000000\n");
+    printf("pmm_init: buddy system data size: %u MB at phys=0x%x-0x%x\n",
            buddy_data_reserved / (1024 * 1024),
            buddy_data_phys, buddy_data_phys + buddy_data_reserved);
 
@@ -135,9 +135,19 @@ void pmm_init(void) {
     printf("  max_blocks=%u, buddy_data_size=%u MB (%u bytes)\n",
            max_blocks, buddy_data_size / (1024 * 1024), buddy_data_size);
 
-    // Buddy System 数组在 16MB，通过按需映射访问
-    uint32_t buddy_data_virt = buddy_data_phys + KERNEL_VIRT_BASE;
-    printf("pmm_init: buddy_data_virt=0x%x (will be mapped on-demand)\n", buddy_data_virt);
+    // Buddy System 数组映射到虚拟地址 0xC3000000 (48MB + 0xC0000000)
+    // 需要先映射物理内存才能访问
+    uint32_t buddy_data_virt = 0xC3000000;
+
+    printf("pmm_init: mapping buddy data area: phys=0x%x -> virt=0x%x\n",
+           buddy_data_phys, buddy_data_virt);
+
+    // 映射 Buddy System 数据区域（按 4KB 页映射）
+    for (uint32_t off = 0; off < buddy_data_size; off += 4096) {
+        map_4k_page(buddy_data_phys + off, buddy_data_virt + off, 0x3);  // Present + RW
+    }
+
+    printf("pmm_init: buddy data area mapped successfully\n");
 
     printf("pmm_init: physical memory manager initialized\n");
     printf("  start: 0x%x (%u MB), end: 0x%x (%u MB)\n",
@@ -173,6 +183,14 @@ void pmm_init(void) {
         pmm_buddy_enabled = false;
         printf("pmm_init: WARNING - buddy system initialization failed\n");
     }
+
+    // 🔥 初始化 DMA Coherent 内存区域（在 paging 完成后）
+    extern void dma_map_region(void);
+    printf("pmm_init: initializing DMA coherent region...\n");
+    printf("pmm_init: dma_map_region function pointer = 0x%x\n", (uint32_t)dma_map_region);
+    printf("pmm_init: about to call dma_map_region()...\n");
+    dma_map_region();
+    printf("pmm_init: returned from dma_map_region()\n");
 }
 
 // 分配一个物理页

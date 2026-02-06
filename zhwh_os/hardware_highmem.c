@@ -4,10 +4,10 @@
 // 统一的硬件访问接口
 void* map_hardware_region(uint32_t phys_base, uint32_t size, const char* name) {
 
-    #define printf(...) 
+    #define printf(...)
     // 设备内存通常需要uncached访问
     uint32_t flags = 0x3 | 0x10; // Present + RW + Uncached
-    
+
     void* mapped_addr = map_highmem_physical(phys_base, size, flags);
     if (mapped_addr) {
         printf("%s mapped: phys 0x%x -> virt 0x%x\n", name, phys_base, mapped_addr);

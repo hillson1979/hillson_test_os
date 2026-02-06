@@ -74,14 +74,50 @@ lapicw(int index, int value)
 void
 lapicinit(void)
 {
-  if(!lapic)
-    return;
+  uint64_t lapic_addr_64 = get_apic_base_32bit();
+  uint32_t lapic_addr =  (uint32_t)(lapic_addr_64 & 0xFFFFF000);
 
-  uint64_t lapic_addr=get_apic_base_32bit();
-  printf("---lapic_addr value is 0x%x---\n",lapic_addr);
-  printf("---lapic value is 0x%x---\n",lapic);
+  printf("---lapic_addr value is 0x%x---\n", lapic_addr);
+  printf("---lapic value is 0x%x---\n", lapic);
 
-  lapic=map_hardware_region(lapic,sizeof(uint32_t),"LAPIC ...");
+  // 🔥🔥🔥 关键修复：Identity map 整个 LAPIC 窗口（64KB）
+  // 原因：MSI 写的是物理地址，必须确保该物理地址在页表中有 identity mapping
+  // MSI 地址格式：0xFEE00000 | (lapic_id << 12)
+  //   - lapic_id = 0 → 0xFEE00000
+  //   - lapic_id = 1 → 0xFEE01000
+  //   - lapic_id = 2 → 0xFEE02000
+  // 所以必须映射至少 64KB (0x10000) 才能覆盖所有可能的 lapic_id
+  //
+  // 标志位：
+  //   PAGE_PRESENT (0x001)  - 页面存在
+  //   PAGE_RW      (0x002)  - 可读写
+  //   PAGE_PCD     (0x010)  - 禁用缓存（MMIO 必须）
+  //   PAGE_PWT     (0x008)  - 写通过（可选，MMIO 推荐）
+
+  #define PAGE_PRESENT  0x001
+  #define PAGE_RW       0x002
+  #define PAGE_PCD      0x010
+  #define PAGE_PWT      0x008
+
+  printf("[lapicinit] Mapping LAPIC window: phys=0x%x -> virt=0x%x (size=64KB)\n",
+         lapic_addr, lapic_addr);
+
+  // 映射 64KB (16 个 4KB 页)
+  for (uint32_t offset = 0; offset < 0x10000; offset += 0x1000) {
+    map_4k_page(lapic_addr + offset, lapic_addr + offset,
+                PAGE_PRESENT | PAGE_RW | PAGE_PCD | PAGE_PWT);
+  }
+
+  printf("[lapicinit] LAPIC identity mapping complete\n");
+
+  // 设置 lapic 指针为物理地址（identity mapping 后可以直接使用）
+  lapic = (volatile uint32_t *)lapic_addr;
+
+  // 🔍 验证映射是否成功（测试访问）
+  printf("[lapicinit] Verifying LAPIC access... ");
+  uint32_t test_read = lapic[ID];  // 读取 LAPIC ID 寄存器
+  printf("LAPIC ID = 0x%x\n", test_read);
+
   // Enable local APIC; set spurious interrupt vector.
   lapicw(SVR, ENABLE | (T_IRQ0 + IRQ_SPURIOUS));
 
@@ -122,7 +158,9 @@ lapicinit(void)
 
   // Enable interrupts on the APIC (but not on the processor).
   lapicw(TPR, 0);
-  
+
+  printf("[lapicinit] LAPIC initialized successfully\n");
+
 }
 
 int
@@ -281,4 +319,53 @@ uint8_t get_cpu_id_from_lapic_id(uint32_t lapic_id) {
 
 uint8_t logical_cpu_id(void) {
 	return get_cpu_id_from_lapic_id(lapicid());
+}
+
+#define LAPIC_BASE 0xFEE00000
+#define LAPIC_ID   0x020
+
+// 导出版本的 lapic_read，供 e1000.c 使用
+uint32_t lapic_read(int index) {
+    return *((volatile uint32_t*)(LAPIC_BASE + index));
+}
+
+uint8_t lapicid2(void) {
+    return (uint8_t)(lapic_read(LAPIC_ID) >> 24);
+}
+
+#define LAPIC_ICRLO   0x300
+#define LAPIC_ICRHI   0x310
+#define LAPIC_EOI     0x0B0
+
+static inline void lapic_send_ipi(uint8_t apicid, uint8_t vector)
+{
+    // 等待之前的 IPI 发送完成
+    while (lapic[LAPIC_ICRLO/4] & (1 << 12)) {
+        /* DELIVS = bit12 */
+    }
+
+    // 目标 APIC ID 写到 ICRHI[31:24]
+    lapic[LAPIC_ICRHI/4] = ((uint32_t)apicid) << 24;
+
+    // ICRLO:
+    // bits 7:0   = vector
+    // bits 10:8  = delivery mode = 000 (Fixed)
+    // bit 14     = level = 1 (assert)
+    // bit 15     = trigger = 0 (edge)
+    lapic[LAPIC_ICRLO/4] = vector | (1 << 14);
+
+    // 等待发送完成
+    while (lapic[LAPIC_ICRLO/4] & (1 << 12)) {
+    }
+}
+
+void lapic_send_ipi_(uint8_t apicid, uint8_t vector){
+  printf("LAPIC ID=%d\n", lapicid2());
+  printf("ICRLO before1=0x%x\n", lapic[LAPIC_ICRLO/4]);
+
+  lapic_send_ipi(apicid, vector);
+
+  printf("LAPIC ID=%d\n", lapicid2());
+  printf("ICRLO before2=0x%x\n", lapic[LAPIC_ICRLO/4]);
+
 }

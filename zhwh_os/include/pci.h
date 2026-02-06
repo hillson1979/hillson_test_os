@@ -5,6 +5,22 @@
 
 #define PCI_SUBCLASS_IDE  0x01
 
+/* PCI configuration registers */
+#define PCI_COMMAND        0x04    /* Command register */
+#define PCI_STATUS         0x06    /* Status register */
+#define PCI_BAR0           0x10    /* Base Address Register 0 */
+#define PCI_BAR1           0x14    /* Base Address Register 1 */
+#define PCI_BAR2           0x18    /* Base Address Register 2 */
+#define PCI_BAR3           0x1C    /* Base Address Register 3 */
+#define PCI_BAR4           0x20    /* Base Address Register 4 */
+#define PCI_BAR5           0x24    /* Base Address Register 5 */
+#define PCI_INTERRUPT_LINE 0x3C    /* Interrupt line register */
+
+/* PCI command bits */
+#define PCI_COMMAND_IO      0x01   /* Enable I/O space */
+#define PCI_COMMAND_MEMORY  0x02   /* Enable Memory space */
+#define PCI_COMMAND_MASTER  0x04   /* Enable bus mastering */
+
 /* Header structure for a device with header type 0x00, which is most
    devices. */
 typedef struct pci_header_00 {
@@ -58,6 +74,17 @@ pci_dev_t **pci_get_devices();
 
 /* Prints out a PCI device descriptor in detail. */
 void pci_print_device(pci_dev_t *d);
+
+/* Get PCI vendor and device names from IDs */
+const char *pci_get_vendor_name(uint16_t vendor_id);
+const char *pci_get_device_name(uint16_t vendor_id, uint16_t device_id);
+
+/* PCI configuration space read/write functions */
+uint32_t pci_read_config_dword(unsigned bus, unsigned dev, unsigned fn, unsigned reg);
+uint16_t pci_read_config_word(unsigned bus, unsigned dev, unsigned fn, unsigned reg);
+uint8_t pci_read_config_byte(unsigned bus, unsigned dev, unsigned fn, unsigned reg);
+void pci_write_config_word(unsigned bus, unsigned dev, unsigned fn, unsigned reg, uint16_t value);
+void pci_write_config_dword(unsigned bus, unsigned dev, unsigned fn, unsigned reg, uint32_t value);
 
 int pci_init();
 

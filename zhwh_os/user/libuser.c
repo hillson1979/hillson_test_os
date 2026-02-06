@@ -1,6 +1,11 @@
 // libuser.c - 用户库实现
 #include "libuser.h"
 
+// 定义 NULL
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
 // 简单的 strlen 实现
 int strlen(const char *s) {
     int len = 0;
@@ -192,9 +197,275 @@ int lseek(int fd, int offset, int whence) {
 extern int getcwd(char *buf, int size);
 
 // 网络系统调用包装函数
-extern int syscall_net_ping(const char *ip_addr);
+extern int syscall_net_ping(const char *ip_addr, const char *dev_name);
+extern int syscall_net_ifconfig(void);
 
+// net_ping - 发送 ping（可选指定设备）
 int net_ping(const char *ip_addr) {
-    return syscall_net_ping(ip_addr);
+    return syscall_net_ping(ip_addr, NULL);
+}
+
+// net_ping_dev - 发送 ping（指定设备）
+int net_ping_dev(const char *ip_addr, const char *dev_name) {
+    return syscall_net_ping(ip_addr, dev_name);
+}
+
+int net_ifconfig(void) {
+    return syscall_net_ifconfig();
+}
+
+// 🔥 lspci - 直接使用内联汇编实现系统调用
+int lspci(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(42)  // SYS_LSPCI = 42
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 网卡初始化系统调用
+int rtl8139_init_user(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(43)  // SYS_NET_INIT_RTL8139 = 43
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 初始化 E1000 网卡（用户态包装）
+int e1000_init_user(const char *dev_name) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(44),        // SYS_NET_INIT_E1000 = 44
+          "b"(dev_name)  // 设备名称
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 UDP 发送系统调用
+int net_send_udp(const char *ip, int port, const char *data, int len) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(45),  // SYS_NET_SEND_UDP = 45
+          "b"(ip),
+          "c"(port),
+          "d"(data),
+          "S"(len)
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 设置当前使用的网络设备
+int net_set_device(const char *dev_name) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(46),  // SYS_NET_SET_DEVICE = 46
+          "b"(dev_name)
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 轮询RX系统调用
+int net_poll_rx(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(47)  // SYS_NET_POLL_RX = 47
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 转储寄存器状态系统调用
+int net_dump_regs(const char *dev_name) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(48),        // SYS_NET_DUMP_REGS = 48
+          "b"(dev_name)  // 🔥 设备名称
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 ARP 命令系统调用
+int net_arp(const char *dev_name, int scan) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(49),        // SYS_NET_ARP = 49
+          "b"(dev_name),  // 🔥 设备名称
+          "c"(scan)       // scan 参数
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 转储 RX 寄存器（详细）系统调用
+int net_dump_rx_regs(const char *dev_name) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(50),        // SYS_NET_DUMP_RX_REGS = 50
+          "b"(dev_name)  // 🔥 设备名称
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 启动网络接口系统调用
+int net_ifup(const char *dev_name) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(51),         // SYS_NET_IFUP = 51
+          "b"(dev_name)    // 设备名称
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 Raw dump RX descriptor (暂时注释掉)
+// int net_raw_dump_rx_desc(void) {
+//     int ret;
+//     __asm__ volatile (
+//         "int $0x80"
+//         : "=a"(ret)
+//         : "a"(52)         // SYS_NET_RAW_DUMP_RX_DESC = 52
+//         : "memory", "cc"
+//     );
+//     return ret;
+// }
+
+// WiFi 系统调用包装函数
+extern int syscall_wifi_init(void);
+extern int syscall_wifi_scan(void);
+extern int syscall_wifi_connect(const char *ssid, const char *password);
+extern int syscall_wifi_disconnect(void);
+extern void syscall_wifi_status(void);
+extern int syscall_wifi_load_firmware(const char *path, int fd);
+
+int wifi_init(void) {
+    return syscall_wifi_init();
+}
+
+int wifi_scan(void) {
+    return syscall_wifi_scan();
+}
+
+int wifi_connect(const char *ssid, const char *password) {
+    return syscall_wifi_connect(ssid, password);
+}
+
+int wifi_disconnect(void) {
+    return syscall_wifi_disconnect();
+}
+
+void wifi_status(void) {
+    syscall_wifi_status();
+}
+
+// WiFi 固件加载（分块安全版本）
+extern int syscall_wifi_fw_begin(uint32_t size);
+extern int syscall_wifi_fw_chunk(const void *ptr, uint32_t len, uint32_t offset);
+extern int syscall_wifi_fw_end(void);
+
+int wifi_fw_load_begin(uint32_t size) {
+    return syscall_wifi_fw_begin(size);
+}
+
+int wifi_fw_load_chunk(const void *ptr, uint32_t len, uint32_t offset) {
+    return syscall_wifi_fw_chunk(ptr, len, offset);
+}
+
+int wifi_fw_load_end(void) {
+    return syscall_wifi_fw_end();
+}
+
+// 便捷函数：一次性加载整个固件（内部使用分块）
+int wifi_fw_load(const uint8_t *fw, uint32_t size) {
+    if (size == 0 || size > FW_MAX_SIZE)
+        return -1;
+
+    // 1️⃣ 通知内核开始
+    if (wifi_fw_load_begin(size) < 0)
+        return -1;
+
+    // 2️⃣ 分块传输
+    for (uint32_t off = 0; off < size; off += FW_CHUNK_SIZE) {
+        uint32_t len = size - off;
+        if (len > FW_CHUNK_SIZE)
+            len = FW_CHUNK_SIZE;
+
+        int ret = wifi_fw_load_chunk(fw + off, len, off);
+        if (ret < 0)
+            return -1;
+    }
+
+    // 3️⃣ 通知结束 + 校验
+    return wifi_fw_load_end();
+}
+
+// 进程控制系统调用包装函数
+extern int syscall_execv(const char *path, char *const argv[]);
+
+int execv(const char *path, char *const argv[]) {
+    return syscall_execv(path, argv);
+}
+
+// 🔥 MSI 测试系统调用包装
+int msi_test(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(60)  // SYS_MSI_TEST = 60
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 E1000 硬件 loopback 测试（轮询版本）
+int e1000_loopback_test(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(61)  // SYS_NET_LOOPBACK_TEST = 61
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+// 🔥 E1000 硬件 loopback 测试（中断版本）
+int e1000_loopback_test_interrupt(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(62)  // SYS_NET_LOOPBACK_TEST_INT = 62
+        : "memory", "cc"
+    );
+    return ret;
 }
 

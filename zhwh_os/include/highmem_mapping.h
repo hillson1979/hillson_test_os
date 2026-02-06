@@ -10,7 +10,7 @@
 
 // 动态映射窗口（在恒等映射区域之后）
 #define DYNAMIC_MAP_WINDOW_BASE (KERNEL_VIRT_BASE + IDENTITY_MAP_SIZE)  // 0xC0800000
-#define DYNAMIC_MAP_WINDOW_SIZE 0x00400000  // 4MB窗口 (足够用于设备映射)
+#define DYNAMIC_MAP_WINDOW_SIZE 0x08000000  // 128MB窗口 (足够用于用户进程加载)
 
 // 硬件物理地址
 #define APIC_PHYS_BASE     0xFEE00000
