@@ -18,6 +18,9 @@
 static net_device_t rtl8139_dev;
 static rtl8139_priv_t rtl8139_priv;
 
+// 🔥 保存设备名称（用于提示等）
+static char rtl8139_dev_name[16] = "eth0";
+
 // I/O 操作宏
 #define rtl8139_read8(reg)      inb(rtl8139_priv.io_base + (reg))
 #define rtl8139_read16(reg)     inw(rtl8139_priv.io_base + (reg))
@@ -281,20 +284,24 @@ int rtl8139_probe(pci_dev_t **devices, unsigned num_devices) {
 
             // 注册网络设备
             memset(&rtl8139_dev, 0, sizeof(rtl8139_dev));
-            strcpy(rtl8139_dev.name, "eth0");
+            // 🔥 动态命名：eth0, eth1, eth2...
+            extern int net_get_device_count(void);
+            int dev_num = net_get_device_count();
+            snprintf(rtl8139_dev.name, sizeof(rtl8139_dev.name), "eth%d", dev_num);
             memcpy(rtl8139_dev.mac_addr, rtl8139_priv.mac_addr, ETH_ALEN);
             rtl8139_dev.mtu = ETH_MTU;
             rtl8139_dev.send = rtl8139_send;
             rtl8139_dev.recv = NULL;
             rtl8139_dev.ioctl = NULL;
             rtl8139_dev.priv = &rtl8139_priv;
+            rtl8139_dev.pci_dev = dev;  // 保存 PCI 设备指针
 
             if (net_device_register(&rtl8139_dev) < 0) {
                 printf("[rtl8139] Failed to register device\n");
                 return -1;
             }
 
-            printf("[rtl8139] Device registered successfully\n");
+            printf("[rtl8139] Device registered as %s\n", rtl8139_dev.name);
             return 0;
         }
     }

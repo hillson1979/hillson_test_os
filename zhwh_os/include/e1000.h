@@ -6,7 +6,8 @@
 #ifndef E1000_H
 #define E1000_H
 
-#include "types.h"
+//#include "types.h"
+#include "stdint.h"
 #include "net.h"
 
 // 前向声明
@@ -17,6 +18,7 @@ typedef struct pci_dev pci_dev_t;
 #define E1000_DEVICE_ID       0x100E  // 82540EM (QEMU default)
 #define E1000_DEVICE_ID_I82545 0x1004 // 82545EM
 #define E1000_DEVICE_ID_I82546 0x1010 // 82546EB
+#define E1000_DEVICE_ID_I82579LM 0x1502  // 🔥 新增：82579LM Gigabit Network Connection
 
 // E1000 寄存器偏移（基于内存映射 I/O）
 #define E1000_CTRL            0x00000  // Device Control
@@ -47,8 +49,10 @@ typedef struct pci_dev pci_dev_t;
 #define E1000_TDT             0x03818  // TX Descriptor Tail
 #define E1000_TIDV            0x03820  // TX Interrupt Delay Value
 #define E1000_TXDCTL          0x03828  // TX Descriptor Control
-#define E1000_RAL             0x05400  // Receive Address Low
-#define E1000_RAH             0x05404  // Receive Address High
+//#define E1000_RAL             0x05400  // Receive Address Low
+//#define E1000_RAH             0x05404  // Receive Address High
+#define E1000_RAL(n)   (0x05400 + (n) * 8)
+#define E1000_RAH(n)   (0x05404 + (n) * 8)
 #define E1000_MTA             0x05200  // Multicast Table Array
 #define E1000_CRCERRS         0x04000  // CRC Error Count
 #define E1000_ALGNERRC        0x04004  // Alignment Error Count
@@ -133,6 +137,21 @@ typedef struct pci_dev pci_dev_t;
 #define E1000_STATUS_SPEED_10 0x00000000  // 10 Mbps
 #define E1000_STATUS_SPEED_100 0x00000080 // 100 Mbps
 #define E1000_STATUS_SPEED_1000 0x00000100 // 1000 Mbps
+#define E1000_STATUS_NVM_DONE 0x00080000  // NVM auto-load done (82579LM需要等待此位)
+
+// EEPROM 寄存器位
+#define E1000_EECD_SK        0x00000001  // EEPROM Clock
+#define E1000_EECD_CS        0x00000002  // EEPROM Chip Select
+#define E1000_EECD_DI        0x00000004  // EEPROM Data In
+#define E1000_EECD_DO        0x00000008  // EEPROM Data Out
+
+// EERD 寄存器位（EEPROM Read）
+#define E1000_EERD_START     0x00000001  // Start EEPROM read
+#define E1000_EERD_DONE      0x00000010  // Read done
+#define E1000_EERD_ADDR_SHIFT 8          // Address offset
+#define E1000_EERD_ADDR_MASK  0x0000FF00 // Address mask
+#define E1000_EERD_DATA_SHIFT 16         // Data offset
+#define E1000_EERD_DATA_MASK  0xFFFF0000 // Data mask
 
 // RCTL 寄存器位
 #define E1000_RCTL_RST        0x00000001  // Receiver Reset
@@ -196,6 +215,7 @@ typedef struct pci_dev pci_dev_t;
 #define E1000_NUM_TX_DESC     64
 #define E1000_RX_BUF_SIZE     2048
 #define E1000_TX_BUF_SIZE     2048
+#define E1000_RCTL_BSIZE_2048   0x00000000
 
 // TX 描述符状态位
 #define E1000_TXD_STAT_DD     0x00000001  // Descriptor Done
@@ -204,35 +224,43 @@ typedef struct pci_dev pci_dev_t;
 #define E1000_RXD_STAT_DD     0x00000001  // Descriptor Done
 #define E1000_RXD_STAT_EOP    0x00000002  // End of Packet
 
-// E1000 RX 描述符
-typedef struct {
-    uint64_t buffer_addr;     // Buffer address
-    uint16_t length;          // Packet length
-    uint16_t csum;            // Checksum
-    uint8_t  status;          // Status
-    uint8_t  errors;          // Errors
-    uint16_t vlan;            // VLAN tag
-} __attribute__((packed)) e1000_rx_desc_t;
+// E1000 RX 描述符（Legacy 格式，32位系统专用）
+//
+// 🔥 32位系统优化：buffer_addr 改为 32 位
+typedef struct __attribute__((packed)) {
+    uint32_t buffer_addr;     // Bytes 0-3:  Buffer 物理地址（32位）
+    uint32_t padding;         // Bytes 4-7:  填充（保持16字节对齐）
+    uint16_t length;          // Bytes 8-9:  包长度
+    uint16_t csum;            // Bytes 10-11: 校验和
+    uint8_t  status;          // Byte 12:    状态 (DD, EOP)
+    uint8_t  errors;          // Byte 13:    错误标志
+    uint16_t special;         // Bytes 14-15: VLAN/特殊
+} e1000_rx_desc_t;
 
-// E1000 TX 描述符
-typedef struct {
-    uint64_t buffer_addr;     // Buffer address
-    uint16_t length;          // Packet length
-    uint8_t  cso;             // Checksum offset
-    uint8_t  cmd;             // Command
-    uint8_t  status;          // Status
-    uint8_t  css;             // Checksum start
-    uint16_t vlan;            // VLAN tag
-} __attribute__((packed)) e1000_tx_desc_t;
+// E1000 TX 描述符（32位系统专用）
+typedef struct __attribute__((packed)) {
+    uint32_t buffer_addr;     // Bytes 0-3:  Buffer 物理地址（32位）
+    uint32_t padding;         // Bytes 4-7:  填充
+    uint16_t length;          // Bytes 8-9:  包长度
+    uint8_t  cso;             // Byte 10:    校验和偏移
+    uint8_t  cmd;             // Byte 11:    命令
+    uint8_t  status;          // Byte 12:    状态
+    uint8_t  css;             // Byte 13:    校验和起始
+    uint16_t vlan;            // Bytes 14-15: VLAN 标签
+} e1000_tx_desc_t;
 
-// TX 命令位
-#define E1000_TXD_CMD_EOP     0x01000000  // End of Packet
-#define E1000_TXD_CMD_IFCS    0x02000000  // Insert FCS
-#define E1000_TXD_CMD_IC      0x04000000  // Insert Checksum
-#define E1000_TXD_CMD_RS      0x08000000  // Report Status
-#define E1000_TXD_CMD_RPS     0x10000000  // Report Packet Sent
-#define E1000_TXD_CMD_VLE     0x40000000  // VLAN Packet Enable
-#define E1000_TXD_CMD_IDE     0x80000000  // Interrupt Delay Enable
+// 🔥 静态断言：确保大小为 16 字节
+_Static_assert(sizeof(e1000_rx_desc_t) == 16, "e1000_rx_desc_t must be 16 bytes");
+_Static_assert(sizeof(e1000_tx_desc_t) == 16, "e1000_tx_desc_t must be 16 bytes");
+
+// TX 命令位（用于 cmd 字段，uint8_t）
+#define E1000_TXD_CMD_EOP     0x01  // End of Packet
+#define E1000_TXD_CMD_IFCS    0x02  // Insert FCS
+#define E1000_TXD_CMD_IC      0x04  // Insert Checksum
+#define E1000_TXD_CMD_RS      0x08  // Report Status
+#define E1000_TXD_CMD_RPS     0x10  // Report Packet Sent
+#define E1000_TXD_CMD_VLE     0x40  // VLAN Packet Enable
+#define E1000_TXD_CMD_IDE     0x80  // Interrupt Delay Enable
 
 // E1000 私有数据结构
 typedef struct {
@@ -241,21 +269,39 @@ typedef struct {
     uint32_t irq;              // IRQ 号
 
     e1000_rx_desc_t *rx_desc;  // RX 描述符数组
+    uint32_t rx_desc_phys;     // 🔥 RX 描述符物理地址（必须保存!）
     uint8_t *rx_buffers[E1000_NUM_RX_DESC];  // RX 缓冲区
     uint16_t rx_cur;           // 当前 RX 描述符索引
 
     e1000_tx_desc_t *tx_desc;  // TX 描述符数组
+    uint32_t tx_desc_phys;     // 🔥 TX 描述符物理地址
     uint8_t *tx_buffers[E1000_NUM_TX_DESC];  // TX 缓冲区
+    uint32_t tx_buffers_dma[E1000_NUM_TX_DESC]; // 🔥 TX 缓冲区 DMA 物理地址
     uint16_t tx_cur;           // 当前 TX 描述符索引
     uint16_t tx_tail;          // TX tail 指针
 
     uint8_t mac_addr[ETH_ALEN]; // MAC 地址
+
+    // 🔥 调试统计（用于 dump_rx 显示）
+    uint32_t intr_count;       // 中断触发次数
+    uint32_t recv_call_count;  // e1000_recv 调用次数
+    uint32_t empty_recv_count; // 空接收次数（cur == RDH）
+    uint32_t packets_processed;// 实际处理的包数
 } e1000_priv_t;
 
 // 函数声明
-int e1000_init(void);
-int e1000_probe(pci_dev_t **devices, unsigned num_devices);
-int e1000_init_dev(pci_dev_t *pci_dev);
+int e1000_init(const char *dev_name);
+int e1000_probe(pci_dev_t **devices, unsigned num_devices, const char *dev_name);
+int e1000_init_dev(pci_dev_t *pci_dev, const char *dev_name);
 void e1000_isr(void);
+void e1000_poll_rx(net_device_t *dev);
+void e1000_dump_regs(void);
+void e1000_dump_rx_regs(void);
+int e1000_ifup(const char *dev_name);
+int e1000_loopback_test(void);  // 🔥 硬件 loopback 测试（轮询版本）
+int e1000_loopback_test_interrupt(void);  // 🔥 硬件 loopback 测试（中断版本）
+
+// 导出 IRQ 号
+extern int e1000_irq;
 
 #endif // E1000_H

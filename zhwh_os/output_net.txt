@@ -1,840 +1,0 @@
-c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
-
-
-iPXE (https://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+1EFCAF60+1EF0AF60 CA00
-Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
-
-
-Booting from Hard Disk...
-GRUB [01;01H[2J[02;30HGNU GRUB  version[02;46H[02;47H 2.12[04;02H┌─────────────[04;15H[04;16H──────────────────────[04;37H[04;38H───────────────────────[04;60H[04;61H──────────────────┐[05;02H│[05;02H[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[09;79H[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;02H[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[14;79H[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└───────────────────────────[18;29H[18;30H─────────────────────[18;50H[18;51H────────────────────[18;70H[18;71H────────┘[20;02H     Use the [20;14H[20;15H↑ and ↓ keys to select which en[20;45H[20;46Htry is highlighted.          
- [21;02H     Press enter to boot the sel[21;33H[21;34Hected OS, `e' to edit the[21;58H[21;59H commands       
-      before booting or `c' for a command-line.     [22;52H[22;53H                      [05;80H [05;03H [05;03H[05;04HMy OS - 5 Process Test         [05;34H[05;35H                                [05;66H[05;67H            [06;03H My OS - shell_[06;17H[06;18Hdemo Test                      [06;48H[06;49H                              [07;03H [07;03H[07;04HMy OS - File System Test                                                   [08;03H My OS - Network Test              [08;37H[08;38H                   [08;56H[08;57H          [08;66H[08;67H         [08;75H[08;76H [08;76H[08;77H [08;77H[08;78H [09;03H[0;30;47m*My OS - [09;11H[09;12HNetwork Shell (Intera[09;32H[09;33Hctive)                                        [10;03H[0m                [10;18H[10;19H                 [10;35H[10;36H                    [10;55H[10;56H [10;56H[10;57H                      [11;03H                                                                            [12;03H            [12;14H[12;15H                                                                [13;03H    [13;06H[13;07H                      [13;28H[13;29H                                    [13;64H[13;65H              [14;03H                  [14;20H[14;21H                            [14;48H[14;49H                              [15;03H [15;03H[15;04H                                                                        [15;75H[15;76H   [16;03H                              [16;32H[16;33H                         [16;57H[16;58H [16;58H[16;59H                  [16;76H[16;77H  [17;03H                                   [17;37H[17;38H                                         [17;80H 
-
-
-
-
-
-   The highlighted entry will be exe[23;36H[23;37Hcuted automaticall[23;54H[23;55Hy in 5s.               [23;77H[23;78H  [09;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
- [23;02H  The highlighted [23;19H[23;20Hentry will be exec[23;37H[23;38Huted automatically in 4s.         [23;71H[23;72H        [23;79H[09;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed aut[23;45H[23;46Homatically in 3s.                 [09;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlig[23;14H[23;15Hhted entry will be executed automatically in [23;59H[23;60H2s.                 [09;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted entry will be executed automatically in 1s.          [23;72H[23;73H       [09;78H
-
-
-
-
-
-
-
-
-
-
-
-
-
-   The highlighted[23;18H[23;19H entry will be executed automatically in 0s.                [23;78H[23;79H [01;01H[2J[2J[kernel_main] Saved kernel CR3 phys=0x101000
-=== Serial initialized ===
-Kernel Booted with Multiboot 2!
-Magic: 0x36D76289
-Info addr: 0x106010
-cpuid is 0 
-lapicid is 0 
- ---IOAPIC ---
-ioapicid is 0 
-ioapic addr is is 0xFEC00000 
-Highmem mapping initialized
-Identity mapped: 0xC0000000-0xC03FFFFF
-Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...
-Allocating new page table for directory entry 772
-alloc_page_table: virt=0xC1000000, phys=0x1000000, pd_idx=772
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
-  Allocated PT at phys=0x200000
-  Writing PDE: pd[772] = 0x200003
-  pd[772] now = 0x200003
-  pt_virt = 0xC0200000 (from pd[772]=0x200003)
-  Clearing page table...
-  Filling PTEs: phys=0x1000000 -> virt=0xC1000000
-  Flushing TLB for virt=0xC1000000
-  Done!
-Allocated new page table for directory entry 0xC1000000
-Allocated new page table for directory entry 0xC1000000
-phys_addr is 0x1000000
-virt_addr is 0xC1000000
-pte is 0x0
-  Mapped 0xC1000000 (phys 0x1000000)
-  Mapped 0xC1100000 (phys 0x1100000)
-  Mapped 0xC1200000 (phys 0x1200000)
-  Mapped 0xC1300000 (phys 0x1300000)
-Allocating new page table for directory entry 773
-alloc_page_table: virt=0xC1400000, phys=0x1400000, pd_idx=773
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
-  Allocated PT at phys=0x201000
-  Writing PDE: pd[773] = 0x201003
-  pd[773] now = 0x201003
-  pt_virt = 0xC0201000 (from pd[773]=0x201003)
-  Clearing page table...
-  Filling PTEs: phys=0x1400000 -> virt=0xC1400000
-  Flushing TLB for virt=0xC1400000
-  Done!
-Allocated new page table for directory entry 0xC1400000
-Allocated new page table for directory entry 0xC1400000
-phys_addr is 0x1400000
-virt_addr is 0xC1400000
-pte is 0x0
-  Mapped 0xC1400000 (phys 0x1400000)
-  Mapped 0xC1500000 (phys 0x1500000)
-  Mapped 0xC1600000 (phys 0x1600000)
-  Mapped 0xC1700000 (phys 0x1700000)
-Allocating new page table for directory entry 774
-alloc_page_table: virt=0xC1800000, phys=0x1800000, pd_idx=774
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
-  Allocated PT at phys=0x202000
-  Writing PDE: pd[774] = 0x202003
-  pd[774] now = 0x202003
-  pt_virt = 0xC0202000 (from pd[774]=0x202003)
-  Clearing page table...
-  Filling PTEs: phys=0x1800000 -> virt=0xC1800000
-  Flushing TLB for virt=0xC1800000
-  Done!
-Allocated new page table for directory entry 0xC1800000
-Allocated new page table for directory entry 0xC1800000
-phys_addr is 0x1800000
-virt_addr is 0xC1800000
-pte is 0x0
-  Mapped 0xC1800000 (phys 0x1800000)
-  Mapped 0xC1900000 (phys 0x1900000)
-  Mapped 0xC1A00000 (phys 0x1A00000)
-  Mapped 0xC1B00000 (phys 0x1B00000)
-Allocating new page table for directory entry 775
-alloc_page_table: virt=0xC1C00000, phys=0x1C00000, pd_idx=775
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
-  Allocated PT at phys=0x203000
-  Writing PDE: pd[775] = 0x203003
-  pd[775] now = 0x203003
-  pt_virt = 0xC0203000 (from pd[775]=0x203003)
-  Clearing page table...
-  Filling PTEs: phys=0x1C00000 -> virt=0xC1C00000
-  Flushing TLB for virt=0xC1C00000
-  Done!
-Allocated new page table for directory entry 0xC1C00000
-Allocated new page table for directory entry 0xC1C00000
-phys_addr is 0x1C00000
-virt_addr is 0xC1C00000
-pte is 0x0
-  Mapped 0xC1C00000 (phys 0x1C00000)
-  Mapped 0xC1D00000 (phys 0x1D00000)
-  Mapped 0xC1E00000 (phys 0x1E00000)
-  Mapped 0xC1F00000 (phys 0x1F00000)
-Allocating new page table for directory entry 776
-alloc_page_table: virt=0xC2000000, phys=0x2000000, pd_idx=776
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
-  Allocated PT at phys=0x204000
-  Writing PDE: pd[776] = 0x204003
-  pd[776] now = 0x204003
-  pt_virt = 0xC0204000 (from pd[776]=0x204003)
-  Clearing page table...
-  Filling PTEs: phys=0x2000000 -> virt=0xC2000000
-  Flushing TLB for virt=0xC2000000
-  Done!
-Allocated new page table for directory entry 0xC2000000
-Allocated new page table for directory entry 0xC2000000
-phys_addr is 0x2000000
-virt_addr is 0xC2000000
-pte is 0x0
-  Mapped 0xC2000000 (phys 0x2000000)
-  Mapped 0xC2100000 (phys 0x2100000)
-  Mapped 0xC2200000 (phys 0x2200000)
-  Mapped 0xC2300000 (phys 0x2300000)
-Allocating new page table for directory entry 777
-alloc_page_table: virt=0xC2400000, phys=0x2400000, pd_idx=777
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
-  Allocated PT at phys=0x205000
-  Writing PDE: pd[777] = 0x205003
-  pd[777] now = 0x205003
-  pt_virt = 0xC0205000 (from pd[777]=0x205003)
-  Clearing page table...
-  Filling PTEs: phys=0x2400000 -> virt=0xC2400000
-  Flushing TLB for virt=0xC2400000
-  Done!
-Allocated new page table for directory entry 0xC2400000
-Allocated new page table for directory entry 0xC2400000
-phys_addr is 0x2400000
-virt_addr is 0xC2400000
-pte is 0x0
-  Mapped 0xC2400000 (phys 0x2400000)
-  Mapped 0xC2500000 (phys 0x2500000)
-  Mapped 0xC2600000 (phys 0x2600000)
-  Mapped 0xC2700000 (phys 0x2700000)
-Allocating new page table for directory entry 778
-alloc_page_table: virt=0xC2800000, phys=0x2800000, pd_idx=778
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
-  Allocated PT at phys=0x206000
-  Writing PDE: pd[778] = 0x206003
-  pd[778] now = 0x206003
-  pt_virt = 0xC0206000 (from pd[778]=0x206003)
-  Clearing page table...
-  Filling PTEs: phys=0x2800000 -> virt=0xC2800000
-  Flushing TLB for virt=0xC2800000
-  Done!
-Allocated new page table for directory entry 0xC2800000
-Allocated new page table for directory entry 0xC2800000
-phys_addr is 0x2800000
-virt_addr is 0xC2800000
-pte is 0x0
-  Mapped 0xC2800000 (phys 0x2800000)
-  Mapped 0xC2900000 (phys 0x2900000)
-  Mapped 0xC2A00000 (phys 0x2A00000)
-  Mapped 0xC2B00000 (phys 0x2B00000)
-Allocating new page table for directory entry 779
-alloc_page_table: virt=0xC2C00000, phys=0x2C00000, pd_idx=779
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x207000, virt=0xC0207000
-  Allocated PT at phys=0x207000
-  Writing PDE: pd[779] = 0x207003
-  pd[779] now = 0x207003
-  pt_virt = 0xC0207000 (from pd[779]=0x207003)
-  Clearing page table...
-  Filling PTEs: phys=0x2C00000 -> virt=0xC2C00000
-  Flushing TLB for virt=0xC2C00000
-  Done!
-Allocated new page table for directory entry 0xC2C00000
-Allocated new page table for directory entry 0xC2C00000
-phys_addr is 0x2C00000
-virt_addr is 0xC2C00000
-pte is 0x0
-  Mapped 0xC2C00000 (phys 0x2C00000)
-  Mapped 0xC2D00000 (phys 0x2D00000)
-  Mapped 0xC2E00000 (phys 0x2E00000)
-  Mapped 0xC2F00000 (phys 0x2F00000)
-Buddy system data area mapped successfully
-Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
-Virtual address layout:
-  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
-  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
-    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
-    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
-Multiboot2 info: mem_lower=639 KB, mem_upper=523136 KB
-Initializing memory management...
-mm_init: starting memory management initialization
-mm_init: detected 510 MB physical memory (mem_upper=523136 KB)
-mm_init: initializing physical memory manager...
-pmm_init: kernel_end_phys=0x3B6000
-pmm_init: placing buddy system data at 16MB (0x1000000)
-pmm_init: page tables will be created on-demand when accessing 0xC1000000+
-pmm_init: buddy system data size: 20 MB at 0x1000000-0x2400000
-pmm_init: buddy system data structures for 475 MB:
-  max_blocks=121748, buddy_data_size=1 MB (1949696 bytes)
-pmm_init: buddy_data_virt=0xC1000000 (will be mapped on-demand)
-pmm_init: physical memory manager initialized
-  start: 0x2400000 (36 MB), end: 0x1FF7FFFF (511 MB)
-  total pages: 121728 (475 MB)
-pmm_init: initializing buddy system...
-  base_page=9216, managed_pages=121728, max_order=16
-pmm_init: reserving 512 MB for kernel (pages 9216-140287)
-buddy_init: base_page=9216, total_pages=121728, max_order=16
-buddy_init: kernel_reserved_pages=131072 (512 MB)
-buddy_init: using pre-allocated memory at 0xC1000000
-buddy_init: max_blocks=121744, sizeof(buddy_block_t)=12
-buddy_init: blocks_size=1460928, freelists_size=68, nextfree_size=486976
-buddy_init: buddy_blocks_array=?
-buddy_init: free_lists_array=?
-buddy_init: next_free_array=?
-buddy_init: skipping write test, proceeding to memset...
-buddy_init: before memset free_lists
-buddy_init: before memset next_free
-buddy_init: after memset
-buddy_init: creating initial free blocks
-buddy_init: initialized 1 block (order 16 = 65536 pages)
-buddy_init: SUCCESS - buddy system ready
-pmm_init: buddy system enabled successfully
-mm_init: basic memory detection complete (buddy system disabled)
-mm_init: memory management initialization complete
-Memory management initialized
-After mm_init, before hardware init
----lapic_addr value is 0xFEE00000---
----lapic value is 0xFEE00000---
-no Identity mapped---------
-Allocating new page table for directory entry 770
-alloc_page_table: virt=0xC0800000, phys=0xFEE00000, pd_idx=770
-  pd[pd_idx]=0x0
-  Page table not present, allocating...
-alloc_early_page_table: allocated phys=0x208000, virt=0xC0208000
-  Allocated PT at phys=0x208000
-  Writing PDE: pd[770] = 0x208003
-  pd[770] now = 0x208003
-  pt_virt = 0xC0208000 (from pd[770]=0x208003)
-  Clearing page table...
-  Filling PTEs: phys=0xFEE00000 -> virt=0xC0800000
-  Flushing TLB for virt=0xC0800000
-  Done!
-Allocated new page table for directory entry 0xC0800000
-Allocated new page table for directory entry 0xC0800000
-phys_addr is 0xFEE00000
-virt_addr is 0xC0800000
-pte is 0x0
-Mapped highmem: phys 0xFEE00000 -> virt 0xC0800000 (size: 4)
-phys_addr IOAPIC is : 0xFEC00000
-no Identity mapped---------
-Mapped highmem: phys 0xFEC00000 -> virt 0xC0801000 (size: 20)
-IOAPIC mapped at: 0xC0801000
-I/O APIC Version: 32
-===id value is 0===
-===ioapicid  value is 0===
-IOAPIC initialized
-Before seginit
-After seginit
-Before tss_init
-tss_init: starting
-tss address: 0xC0109B50, sizeof(tss): 108
-tss_init: before memset, will write 108 bytes
-tss_init: after memset
-TSS init: addr=0xC0109B50, ESP0=0xC03B5F88
-TSS init:selector=0x28 
-TSS loaded into task register
-After tss_init
-Before tvinit
-[tvinit] System call gate (IDT[128]):
-  offset=0xC010748F, seg=0x8, type=15, dpl=3, present=1
-  vector128 address=0x?
-After tvinit
-segment idt init is ok
-Global interrupts enabled
-[KBD] ===== Starting strict PS/2 initialization =====
-[KBD] Step 1: Disabling keyboard port...
-[KBD] Step 2: Flushing output buffer...
-[KBD] Step 3: Reading controller config...
-[KBD]   Config read: 0x71
-[KBD] Step 4: Enabling IRQ1 in config...
-[KBD]   New config: 0x71
-[KBD] Step 5: Writing config back...
-[KBD] Step 6: Enabling keyboard port...
-[KBD] Step 7: Testing keyboard with echo (0xEE)...
-[KBD]   Echo response: 0xEE (OK ✅)
-[KBD] Step 8: 🔥🔥 ENABLING SCANNING (0xF4) 🔥🔥
-[KBD]   IBF cleared, sending 0xF4 to data port...
-[KBD] Step 9: Waiting for ACK (0xFA)...
-[KBD]   ACK received: 0xFA ✅ SUCCESS - Keyboard should be scanning now!
-[KBD] Step 10: Final status check...
-[KBD]   Final status: 0x1C (OBF=0, IBF=0)
-[KBD] ===== Enabling IRQ1 in IOAPIC =====
-[ioapicenable] Enabling IRQ1 on CPU0
-[ioapicenable] Writing to REG_TABLE+2 (0x12)
-[ioapicenable] Vector = 33 (0x21)
-[ioapicenable] Before: low=0x10021 high=0x0
-[ioapicenable] After: low=0x21 high=0x0
-[ioapicenable] Done!
-[KBD] IRQ1 enabled in IOAPIC ✅
-[KBD] ===== Initialization complete =====
-[KBD] ⚠️⚠️⚠️ Press any key now - should trigger IRQ1!
-Keyboard driver initialized
-Re-configuring PIC after enabling interrupts...
-PIC mask before keyboard enable: 0xB8
-PIC mask after keyboard enable: 0xB8 (expected: 0xB8)
-IRQ1 (keyboard) ENABLED ✅
-Initializing file system...
-[fs] Initializing file system...
-[ramfs] Mounting ramfs...
-[ramfs] Allocated inode: ino=1, mode=0x41C0
-[ramfs] Mounted successfully, root_ino=1
-[vfs] Root super block set: sb=0xC02AA160, root_ino=1
-[fs] File system initialized
-[fs] Creating test files...
-[ramfs] create: dir_ino=1, name='test.txt', mode=0x81A4
-[ramfs] lookup: dir_ino=1, name='test.txt'
-[ramfs] lookup: not found
-[ramfs] Allocated inode: ino=2, mode=0x81A4
-[ramfs] create: success, inode=2
-[fs] Created /test.txt
-[fs] Written 39 bytes to /test.txt
-[ramfs] create: dir_ino=1, name='fstest.txt', mode=0x81A4
-[ramfs] lookup: dir_ino=1, name='fstest.txt'
-[ramfs] lookup: not found
-[ramfs] Allocated inode: ino=3, mode=0x81A4
-[ramfs] create: success, inode=3
-[fs] Created /fstest.txt
-[fs] Written 142 bytes to /fstest.txt
-[fs] Test files ready
-
-[fs] === Kernel-level File Read Test ===
-[fs] Attempting to read /test.txt...
-[ramfs] read: inode=2, size=255, pos=?lu
-[ramfs] read: read 39 bytes
-[fs] ramfs_read returned: 39 bytes
-[fs] Content of /test.txt:
-[fs] >>>Hello from ramfs!
-This is a test file.
-<<<
-
-[fs] Attempting to read /fstest.txt...
-[ramfs] read: inode=3, size=255, pos=?lu
-[ramfs] read: read 142 bytes
-[fs] ramfs_read returned: 142 bytes
-[fs] Content of /fstest.txt:
-[fs] >>>File System Test File
-=====================
-This file was created during kernel initialization.
-You can read it using the read() system call.
-<<<
-[fs] === Kernel Test Complete ===
-
-File system initialized
-Initializing PCI...
-Input device ,440FX - 82441FX PMC [Natoma] ===.Input device ,82371SB PIIX3 ISA [Natoma/Triton II] ===.Mass storage controller ,82371SB PIIX3 IDE [Natoma/Triton II] ===.Input device ,82371AB/EB/MB PIIX4 ACPI ===.Display controller , ===.Network controller ,82540EM Gigabit Ethernet Controller ===.PCI initialized
-[net] Initializing network stack...
-[net] Network stack initialized
-[net] Local IP: 192.168.1.123
-[loopback] Initializing loopback device...
-[net] Registered device: lo
-[net]   MAC: 00:00:00:00:00:01
-[loopback] Loopback device ready
-[rtl8139] RTL8139 driver init
-[rtl8139] Found 6 PCI devices
-[rtl8139] Probing for RTL8139...
-[rtl8139] No RTL8139 device found
-[e1000] E1000 driver init
-[e1000] Found 6 PCI devices
-[e1000] Probing for E1000...
-[e1000] Found E1000 device!
-[e1000]   Bus: 0, Device: 3, Function: 0
-[e1000]   Vendor: 0x8086, Device: 0x100E
-[e1000] Initializing E1000...
-[e1000] MMIO base (phys): 0xFEB80000
-no Identity mapped---------
-Mapped highmem: phys 0xFEB80000 -> virt 0xC0802000 (size: 131072)
-[e1000] MMIO base (virt): 0xC0802000
-[e1000] IRQ: 11
-[e1000] Resetting...
-[e1000] Reset complete
-[e1000] MAC: 52:54:00:12:34:56
-[e1000] RX descriptors: 0xC02AA690 (virt: 0xC02AA690)
-[e1000] TX descriptors: 0xC02CA9A0 (virt: 0xC02CA9A0)
-[e1000] E1000 initialized
-[net] Registered device: eth0
-[net]   MAC: 52:54:00:12:34:56
-[e1000] Device registered successfully
-Network initialized
-
-=== Network Test ===
-[loopback] Sending test packet...
-[loopback] Sending 62 bytes test packet
-[loopback] Sending 62 bytes
-[net] Eth frame: type=0x800, len=62
-[net] IP packet: proto=1, src=1.1.168.192, dst=1.1.168.192
-[net] IP not for us, dropping
-kfree: freeing 62 bytes (0 pages) at virt=0xC02EACB0, phys=0x0
-=== Network Test Complete ===
-
-VGA test: wrote TEST to screen at position 10-13
-
-=== VBE/Framebuffer Detection (Multiboot2) ===
-✓ Framebuffer info available!
-  framebuffer_addr:   0x?lx
-  framebuffer_pitch:  0
-  framebuffer_width:  160
-  framebuffer_height: 80
-  framebuffer_bpp:    25
-  framebuffer_type:   0
-=============================================
-
-task init
-[init_task] kstack virt=0xC02EBCF0
-[task_load] user task: cr3=NULL (will be set by task_prepare_pde)
-start user task 
-Tag 0: type=21, size=12
-Tag 1: type=1, size=9
-Tag 2: type=2, size=29
-Tag 3: type=10, size=28
-Tag 4: type=3, size=17
-mod 0: start=0x3DC000 end=0x3E0EC0 cmdline=
-Tag 5: type=6, size=160
-Tag 6: type=9, size=780
-Tag 7: type=4, size=16
-Tag 8: type=5, size=20
-Tag 9: type=8, size=32
-Tag 10: type=14, size=28
-[user_task_main] START: th=0xC02EACF0
-User task started (task=0xC02EACF0)
-[user_task_main] Calling task_prepare_pde for th=0xC02EACF0
-[task_prepare_pde] START for task=0xC02EACF0
-[task_prepare_pde] User task using kernel CR3: 0x101000 (shared with all)
-[task_prepare_pde] task->pde=0x101000 (kernel page directory)
-[task_prepare_pde] Calling load_module_to_user...
-[load_module_to_user] Starting...
-[load_module_to_user] Module: start=0x3DC000 end=0x3E0EC0 size=0x4EC0 cmdline=
-[load_module_to_user] Raw physical bytes at 0x3DC000: 7F 45 4C 46
-[load_module_to_user] ELF header at virtual 0xC03DC000
-[load_module_to_user] First 4 bytes: 0x7F 0x45 0x4C 0x46
-[load_module_to_user] ELF file validated!
-[load_module_to_user] e_entry=0x8000024, e_phoff=52, e_phnum=3
-[load_module_to_user] Program Header 0: p_type=0x1
-[load_module_to_user] PT_LOAD: va=0x8000000, file_pa=0x3DD000, memsz=0x1B00, filesz=0x19F8
-[load_module_to_user] Starting page mapping loop...
-[load_module_to_user] Loop: off=0, dst_va=0x8000000
-[load_module_to_user] Copied 0x1000 bytes from ELF to new page
-[load_module_to_user] Calling map_page: dst_va=0x8000000 dst_pa=0x2401000
-[map_page] vaddr=0x8000000 new PT at phys=0x2402000
-[map_page] Set pd_user[32]=0x2402007
-[map_page] Set pt[0]=0x2401007 (vaddr=0x8000000 -> paddr=0x2401000)
-[load_module_to_user] Loop: off=4096, dst_va=0x8001000
-[load_module_to_user] Copied 0x9F8 bytes from ELF to new page
-[load_module_to_user] Calling map_page: dst_va=0x8001000 dst_pa=0x2403000
-[map_page] vaddr=0x8001000 reusing existing pd_user[32]=0x2402007
-[map_page] Set pt[1]=0x2403007 (vaddr=0x8001000 -> paddr=0x2403000)
-[load_module_to_user] Page mapping loop done.
-[load_module_to_user] Program Header 1: p_type=0x4
-[load_module_to_user] Program Header 2: p_type=0x6474E551
-[load_module_to_user] Set tf->eip = 0x8000024 (from ELF entry)
-[load_module_to_user] Set segment registers: CS=0x1B, DS/ES/FS/GS/SS=0x23
-[load_module_to_user] Set tf->eflags = 0x200
-[load_module_to_user] Mapping user stack (4 pages)...
-[load_module_to_user] Allocated stack page 0: phys=0x2404000
-[load_module_to_user] Mapping stack page: va=0xBFFFF000 -> pa=0x2404000
-[map_page] vaddr=0xBFFFF000 new PT at phys=0x2405000
-[map_page] Set pd_user[767]=0x2405007
-[map_page] Set pt[1023]=0x2404007 (vaddr=0xBFFFF000 -> paddr=0x2404000)
-[load_module_to_user] Allocated stack page 1: phys=0x2406000
-[load_module_to_user] Mapping stack page: va=0xBFFFE000 -> pa=0x2406000
-[map_page] vaddr=0xBFFFE000 reusing existing pd_user[767]=0x2405007
-[map_page] Set pt[1022]=0x2406007 (vaddr=0xBFFFE000 -> paddr=0x2406000)
-[load_module_to_user] Allocated stack page 2: phys=0x2407000
-[load_module_to_user] Mapping stack page: va=0xBFFFD000 -> pa=0x2407000
-[map_page] vaddr=0xBFFFD000 reusing existing pd_user[767]=0x2405007
-[map_page] Set pt[1021]=0x2407007 (vaddr=0xBFFFD000 -> paddr=0x2407000)
-[load_module_to_user] Allocated stack page 3: phys=0x2408000
-[load_module_to_user] Mapping stack page: va=0xBFFFC000 -> pa=0x2408000
-[map_page] vaddr=0xBFFFC000 reusing existing pd_user[767]=0x2405007
-[map_page] Set pt[1020]=0x2408007 (vaddr=0xBFFFC000 -> paddr=0x2408000)
-[load_module_to_user] User stack mapping complete.
-[load_module_to_user] Set task->user_stack = 0x2404000 (physical address of stack top)
-[load_module_to_user] Set up user stack ABI (Linux standard):
-  argc=0 at [ESP]=0xBFFFEFFC
-  argv[0]=NULL at [ESP+4]=0xBFFFF000
-  Stack protected with 32 NULL dwords (128 bytes) below stack_top
-[load_module_to_user] Trapframe setup:
-  eip=0x8000024, esp=0xBFFFEFFC
-  cs=0x1B, ss=0x23, ds=0x23, eflags=0x200
-[task_prepare_pde] load_module_to_user returned, checking EIP...
-[task_prepare_pde] task->tf=0xC02EBCA4, task->tf->eip=0x8000024
-[task_prepare_pde] Verifying trapframe:
-  eip=0x8000024, cs=0x1B, eflags=0x200, esp=0xBFFFEFFC
-[task_prepare_pde] User stack already mapped by load_module_to_user (4 pages = 16KB)
-[task_prepare_pde] User stack VA range: 0xBFFFB000 - 0xBFFFF000
-[task_prepare_pde] Keeping tf->esp=0xBFFFEFFC (set by load_module_to_user)
-[task_prepare_pde] This ESP points to argc, following Linux ABI standard
-[user_task_main] Initialization complete, returning to scheduler
-[start_task] DEBUG: pid=1, first_task=0xC02EACF0, current_task[0]=0xC02EACF0
-[start_task] Added task pid=1 to chain: prev->pid=1, next->pid=1
-[kernel_main] User task initialized, state=PS_CREATED
-user task 0xC02EACF0 kernel task 0x0
-Starting scheduler with multiple tasks...
-[schedule] ENTRY - schedule() called!
-[schedule] Initialized schedule_switch_to_return_addr=0xC0112C34
-[schedule] cpu_id=0
-[schedule] Before inline asm
-[schedule] After inline asm, flags=0x282
-[pick_next_task_cfs] current: pid=1, state=64, user_stack=0x2404000
-[pick_next_task_cfs] current->next=0xC02EACF0
-[pick_next_task_cfs] no other task, keeping current: pid=1
-[schedule] first_time_user=1, switch_to_user=0 (user_stack=0x2404000, state=64)
-[schedule] First time entering user mode for pid=1
-[schedule] About to call task_to_user_mode_with_task, next=0xC02EACF0
-[task_to_user_mode_wrapper] ENTRY: task=0xC02EACF0
-[task_to_user_mode_wrapper] task=0xC02EACF0, pid=1
-[task_to_user_mode_wrapper] task->tf=0xC02EBCA4
-[task_to_user_mode_wrapper] trapframe content:
-  eip=0x8000024, cs=0x1B, eflags=0x200
-  esp=0xBFFFEFFC, ss=0x23
-  eax=0x0 (should be 0 for child)
-[task_to_user_mode_wrapper] task_volatile = 0xC02EACF0 (about to call task_to_user_mode_with_task)
-[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC02EACF0
-[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0x2B ('+')
-+[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2B ('+')
-+[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0x7C ('|')
-|[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x49 ('I')
-I[syscall] SYS_PUTCHAR: char=0x6E ('n')
-n[syscall] SYS_PUTCHAR: char=0x74 ('t')
-t[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x72 ('r')
-r[syscall] SYS_PUTCHAR: char=0x61 ('a')
-a[syscall] SYS_PUTCHAR: char=0x63 ('c')
-c[syscall] SYS_PUTCHAR: char=0x74 ('t')
-t[syscall] SYS_PUTCHAR: char=0x69 ('i')
-i[syscall] SYS_PUTCHAR: char=0x76 ('v')
-v[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x4E ('N')
-N[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x74 ('t')
-t[syscall] SYS_PUTCHAR: char=0x77 ('w')
-w[syscall] SYS_PUTCHAR: char=0x6F ('o')
-o[syscall] SYS_PUTCHAR: char=0x72 ('r')
-r[syscall] SYS_PUTCHAR: char=0x6B ('k')
-k[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x53 ('S')
-S[syscall] SYS_PUTCHAR: char=0x68 ('h')
-h[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x6C ('l')
-l[syscall] SYS_PUTCHAR: char=0x6C ('l')
-l[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x76 ('v')
-v[syscall] SYS_PUTCHAR: char=0x31 ('1')
-1[syscall] SYS_PUTCHAR: char=0x2E ('.')
-.[syscall] SYS_PUTCHAR: char=0x30 ('0')
-0[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x7C ('|')
-|[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0x7C ('|')
-|[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x3D ('=')
-=[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x7C ('|')
-|[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0x7C ('|')
-|[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x54 ('T')
-T[syscall] SYS_PUTCHAR: char=0x79 ('y')
-y[syscall] SYS_PUTCHAR: char=0x70 ('p')
-p[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x27 (''')
-'[syscall] SYS_PUTCHAR: char=0x68 ('h')
-h[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x6C ('l')
-l[syscall] SYS_PUTCHAR: char=0x70 ('p')
-p[syscall] SYS_PUTCHAR: char=0x27 (''')
-'[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x66 ('f')
-f[syscall] SYS_PUTCHAR: char=0x6F ('o')
-o[syscall] SYS_PUTCHAR: char=0x72 ('r')
-r[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x61 ('a')
-a[syscall] SYS_PUTCHAR: char=0x76 ('v')
-v[syscall] SYS_PUTCHAR: char=0x61 ('a')
-a[syscall] SYS_PUTCHAR: char=0x69 ('i')
-i[syscall] SYS_PUTCHAR: char=0x6C ('l')
-l[syscall] SYS_PUTCHAR: char=0x61 ('a')
-a[syscall] SYS_PUTCHAR: char=0x62 ('b')
-b[syscall] SYS_PUTCHAR: char=0x6C ('l')
-l[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x63 ('c')
-c[syscall] SYS_PUTCHAR: char=0x6F ('o')
-o[syscall] SYS_PUTCHAR: char=0x6D ('m')
-m[syscall] SYS_PUTCHAR: char=0x6D ('m')
-m[syscall] SYS_PUTCHAR: char=0x61 ('a')
-a[syscall] SYS_PUTCHAR: char=0x6E ('n')
-n[syscall] SYS_PUTCHAR: char=0x64 ('d')
-d[syscall] SYS_PUTCHAR: char=0x73 ('s')
-s[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_PUTCHAR: char=0x7C ('|')
-|[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0x2B ('+')
-+[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2D ('-')
--[syscall] SYS_PUTCHAR: char=0x2B ('+')
-+[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0xA ('?')
-
-[syscall] SYS_PUTCHAR: char=0x6E ('n')
-n[syscall] SYS_PUTCHAR: char=0x65 ('e')
-e[syscall] SYS_PUTCHAR: char=0x74 ('t')
-t[syscall] SYS_PUTCHAR: char=0x3E ('>')
->[syscall] SYS_PUTCHAR: char=0x20 (' ')
- [syscall] SYS_GETCHAR: called
-[kbd] keyboard_getchar() called
-[kbd] EFLAGS on entry: 0x286 (IF=1)
-

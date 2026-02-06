@@ -59,14 +59,125 @@ const char *class_code_strs[NUM_CLASS_CODE_STRS] = {
 
 /* Reads a 32-bit value from the PCI configuration space. */
 static uint32_t pci_read32(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
-  uint32_t addr = ((bus&BUS_M) << BUS_S) |
-    ((dev&DEV_M) << DEV_S) |
-    ((fn&FN_M) << FN_S) |
-    ((reg&REG_M) << REG_S) |
-    ENABLE_BIT;
+  // 🔥 修复：按照 PCI 规范构造 CONFIG_ADDRESS
+  uint32_t addr =
+    0x80000000 |                    // Enable bit
+    ((bus & 0xFF) << 16) |         // Bus number
+    ((dev & 0x1F) << 11) |         // Device number
+    ((fn & 0x7) << 8) |            // Function number
+    (reg & 0xFC);                  // Register (aligned to 4-byte boundary)
 
   outl(CONFIG_ADDRESS, addr);
   return inl(CONFIG_DATA);
+}
+
+/* Reads a 16-bit value from the PCI configuration space. */
+static uint16_t pci_read16(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
+  uint32_t addr =
+    0x80000000 |
+    ((bus & 0xFF) << 16) |
+    ((dev & 0x1F) << 11) |
+    ((fn & 0x7) << 8) |
+    (reg & 0xFC);
+
+  outl(CONFIG_ADDRESS, addr);
+  return inw(CONFIG_DATA + (reg & 2));
+}
+
+/* Reads an 8-bit value from the PCI configuration space. */
+static uint8_t pci_read8_bak(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
+    uint32_t aligned_reg = reg & ~0x3;         // 32-bit 对齐
+    uint32_t addr = 0x80000000 |
+                    ((bus & 0xFF) << 16) |
+                    ((dev & 0x1F) << 11) |
+                    ((fn & 0x7) << 8) |
+                    (aligned_reg & 0xFC);
+
+    outl(CONFIG_ADDRESS, addr);
+    uint32_t val = inl(CONFIG_DATA);           // 32-bit 读取
+    return (val >> ((reg & 3) * 8)) & 0xFF;    // 取对应 byte
+}
+
+static uint8_t pci_read8(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
+  uint32_t addr =
+    0x80000000 |
+    ((bus & 0xFF) << 16) |
+    ((dev & 0x1F) << 11) |
+    ((fn & 0x7) << 8) |
+    (reg & 0xFC);
+
+  outl(CONFIG_ADDRESS, addr);
+  return inb(CONFIG_DATA + (reg & 3));
+}
+
+/* Writes a 16-bit value to the PCI configuration space. */
+static void pci_write16(unsigned bus, unsigned dev, unsigned fn, unsigned reg, uint16_t value) {
+  uint32_t addr =
+    0x80000000 |
+    ((bus & 0xFF) << 16) |
+    ((dev & 0x1F) << 11) |
+    ((fn & 0x7) << 8) |
+    (reg & 0xFC);
+
+  outl(CONFIG_ADDRESS, addr);
+  outw(CONFIG_DATA + (reg & 2), value);
+
+  // 🔥 调试输出（仅用于 Command 寄存器）
+  if (reg == 0x04) {
+    printf("[pci] write16: bus=%d dev=%d fn=%d reg=0x%02x value=0x%04x addr=0x%08x\n",
+           bus, dev, fn, reg, value, addr);
+
+    // 验证写入
+    uint16_t verify = pci_read16(bus, dev, fn, reg);
+
+    // 🔍 详细分析：检查重要的位
+    int write_io = (value & 0x0001) ? 1 : 0;
+    int write_mem = (value & 0x0002) ? 1 : 0;
+    int write_bm = (value & 0x0004) ? 1 : 0;
+
+    int read_io = (verify & 0x0001) ? 1 : 0;
+    int read_mem = (verify & 0x0002) ? 1 : 0;
+    int read_bm = (verify & 0x0004) ? 1 : 0;
+
+    printf("[pci] verify: wrote=0x%04x (I/O=%d,MEM=%d,BM=%d) read=0x%04x (I/O=%d,MEM=%d,BM=%d) %s\n",
+           value, write_io, write_mem, write_bm,
+           verify, read_io, read_mem, read_bm,
+           (read_io == write_io && read_mem == write_mem && read_bm == write_bm) ? "OK" : "FAILED");
+  }
+}
+
+/* Public wrapper functions for E1000 driver */
+uint32_t pci_read_config_dword(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
+  return pci_read32(bus, dev, fn, reg);
+}
+
+uint16_t pci_read_config_word(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
+  return pci_read16(bus, dev, fn, reg);
+}
+
+uint8_t pci_read_config_byte(unsigned bus, unsigned dev, unsigned fn, unsigned reg) {
+  return pci_read8(bus, dev, fn, reg);
+}
+
+/* Writes a 32-bit value to the PCI configuration space. */
+static void pci_write32(unsigned bus, unsigned dev, unsigned fn, unsigned reg, uint32_t value) {
+  uint32_t addr =
+    0x80000000 |
+    ((bus & 0xFF) << 16) |
+    ((dev & 0x1F) << 11) |
+    ((fn & 0x7) << 8) |
+    (reg & 0xFC);
+
+  outl(CONFIG_ADDRESS, addr);
+  outl(CONFIG_DATA, value);
+}
+
+void pci_write_config_word(unsigned bus, unsigned dev, unsigned fn, unsigned reg, uint16_t value) {
+  pci_write16(bus, dev, fn, reg, value);
+}
+
+void pci_write_config_dword(unsigned bus, unsigned dev, unsigned fn, unsigned reg, uint32_t value) {
+  pci_write32(bus, dev, fn, reg, value);
 }
 
 #define MAX_PCI_DEVICES 64
@@ -76,12 +187,17 @@ static unsigned num_devices = 0;
 static const char *get_vendor_name(uint16_t id, unsigned verbose) {
   //printf("PCI_VENTABLE_LEN is %u\n",PCI_VENTABLE_LEN);
 
-  //printf("in get_vendor_name %u:---:\n", id); 
+  //printf("in get_vendor_name %u:---:\n", id);
   for (unsigned i = 0; i < PCI_VENTABLE_LEN; ++i) {
     if (PciVenTable[i].VenId == id)
       return verbose ? PciVenTable[i].VenFull : PciVenTable[i].VenShort;
   }
   return NULL;
+}
+
+// 公共接口
+const char *pci_get_vendor_name(uint16_t vendor_id) {
+  return get_vendor_name(vendor_id, 1);  // 返回完整名称
 }
 
 static const char *get_device_name(uint16_t vendor_id, uint16_t id,
@@ -123,6 +239,11 @@ static const char *get_device_name(uint16_t vendor_id, uint16_t id,
   return NULL;
 }
 
+// 公共接口
+const char *pci_get_device_name(uint16_t vendor_id, uint16_t device_id) {
+  return get_device_name(vendor_id, device_id, 1);  // 返回完整描述
+}
+
 static const char *get_class_code(uint8_t class) {
   if (class >= NUM_CLASS_CODE_STRS)
     return NULL;
@@ -130,16 +251,16 @@ static const char *get_class_code(uint8_t class) {
 }
 
 static void print_device_brief(pci_header_t *h) {
-  /*printf("0x%04x:0x%04x:%s: %s %s\n", h->vendor_id, h->device_id,
+  printf("0x%04x:0x%04x:%s: %s %s\n", h->vendor_id, h->device_id,
           get_class_code(h->class),
           get_vendor_name(h->vendor_id, 1),
-          get_device_name(h->vendor_id, h->device_id, 1));*/
+          get_device_name(h->vendor_id, h->device_id, 1));
   //printf("brief %u:---%u:\n", h->vendor_id, h->device_id);
-  printf("%s ,",get_class_code(h->class));
+  //printf("%s ,",get_class_code(h->class));
   //printf("%s ,",get_vendor_name(h->vendor_id, 1));
-  char* i=get_device_name(h->vendor_id, h->device_id, 1);
-  printf("%s ===.",i);
-  //printf("\n");
+  //char* i=get_device_name(h->vendor_id, h->device_id, 1);
+  //printf("%s ===.",i);
+  printf("\n");
 }
 
 void pci_print_device(pci_dev_t *d) {
@@ -221,3 +342,29 @@ static module_t x run_on_startup = {
   .init = &pci_init,
   .fini = NULL
 };
+
+// 打印 PCI Command 寄存器状态
+void pci_print_command(unsigned bus, unsigned dev, unsigned fn) {
+    uint16_t cmd = pci_read16(bus, dev, fn, 0x04);
+
+    int io_en  = (cmd >> 0) & 1;
+    int mem_en = (cmd >> 1) & 1;
+    int bm_en  = (cmd >> 2) & 1;
+    int intx_dis = (cmd >> 10) & 1;
+
+    printf("[pci] Command Register: 0x%04x\n", cmd);
+    printf("[pci]   I/O Enable      : %d\n", io_en);
+    printf("[pci]   Memory Enable   : %d\n", mem_en);
+    printf("[pci]   Bus Master Enable: %d\n", bm_en);
+    printf("[pci]   INTx Disabled   : %d\n", intx_dis);
+
+    if (bm_en && mem_en) {
+        printf("[pci]  PCI device can DMA and memory-mapped access OK\n");
+    } else {
+        printf("[pci]  PCI device may fail DMA or MMIO access\n");
+    }
+
+    if (!intx_dis) {
+        printf("[pci]  INTx not disabled, MSI may conflict\n");
+    }
+}

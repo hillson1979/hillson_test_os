@@ -1,5 +1,7 @@
 #include "vga.h"
 #include "printf.h"
+#include "uart.h"
+#include "netdebug.h"
 #include "pci.h"
 #include "multiboot2.h"
 #include "highmem_mapping.h"
@@ -15,6 +17,7 @@
 //#include "task.h"
 #include "sched.h"
 #include "x86/io.h"
+#include "net/wifi/atheros.h"
 
 // Forward declarations for task types
 typedef struct {
@@ -71,23 +74,54 @@ void dump_multiboot2_modules(uint32_t mb_info_addr) {
 int
 kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 {
+        
+        
+        // 🔥 内核栈溢出检测：在栈底设置哨兵
+        extern uint32_t stack_base;
+        extern uint32_t stack_top;
+        uint32_t *stack_sentinel = &stack_base;
+        *stack_sentinel = 0xDEADBEEF;  // 哨兵值
+
         // ⚠️ 保存内核页目录物理地址（在切换到用户进程之前）
         extern uint32_t kernel_page_directory_phys;
         uint32_t cr3_value;
         __asm__ volatile("movl %%cr3, %0" : "=r"(cr3_value));
         kernel_page_directory_phys = cr3_value & ~0xFFF;
-        printf("[kernel_main] Saved kernel CR3 phys=0x%x\n", kernel_page_directory_phys);
+
+
+        //printf("[kernel_main] Saved kernel CR3 phys=0x%x\n", kernel_page_directory_phys);
+
+
+        // 显示内核栈信息
+        printf("[kernel_main] Stack: base=0x%x top=0x%x size=%u KB\n",
+               (uint32_t)&stack_base, (uint32_t)&stack_top,
+               ((uint32_t)&stack_top - (uint32_t)&stack_base) / 1024);
+
+        // 🔥 临时禁用所有 UART 和复杂初始化，测试最小启动
+        // uart_init();
+        // uart_puts("[UART] Serial port initialized at 115200 baud\n");
+
+        // 🔥 初始化以太网调试接口
+        //netdebug_init();
+
+        
 
         vga_init();
         //disable_cursor();
         vga_setcolor(COLOR_GREEN, COLOR_BLACK);
         printf("Kernel Booted with Multiboot 2!\n");
+
+        
+
+        // uart_puts("[KERNEL] Booted with Multiboot 2!\n");
         printf("Magic: 0x%x\n", mb_magic);
         printf("Info addr: 0x%x\n", mb_info_addr);
+        // uart_debug("[KERNEL] Magic: 0x%x, Info: 0x%x\n", mb_magic, mb_info_addr);
 
         // 验证 multiboot2 魔数
         if (mb_magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
             printf("ERROR: Invalid multiboot2 magic: 0x%x\n", mb_magic);
+            // uart_panic("ERROR: Invalid multiboot2 magic!");  // 🔥 注释掉，避免未初始化的串口访问导致重启
             return -1;
         }
 
@@ -148,13 +182,31 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("Before tvinit\n");
         tvinit();
         printf("After tvinit\n");
-
-        printf("segment idt init is ok\n");
+        
         idtinit();
+        printf("segment idt init is ok\n");
 
+        // 🔥🔥 在开中断前再次确保 FPU 已初始化（防止 Trap 19）
+        __asm__ volatile("fninit");
+        __asm__ volatile("fnclex");
+        uint32_t cr0_check;
+        __asm__ volatile("movl %%cr0, %0" : "=r"(cr0_check));
+        cr0_check &= ~(1 << 3);  // 清除 TS
+        cr0_check &= ~(1 << 2);  // 清除 EM
+        __asm__ volatile("movl %0, %%cr0" : : "r"(cr0_check));
+
+        // 🔥 调试：打印当前栈指针
+        uint32_t current_esp;
+        uint32_t current_ebp;
+        __asm__ volatile("movl %%esp, %0" : "=r"(current_esp));
+        __asm__ volatile("movl %%ebp, %0" : "=r"(current_ebp));
+        printf("[DEBUG] Current ESP=0x%x, EBP=0x%x\n", current_esp, current_ebp);
+        printf("[FPU] Re-initialized before STI\n");
+
+        // ⚠️ 暂时注释掉 STI，避免中断处理程序的问题导致系统崩溃
         // 启用全局中断（重要！）
-        __asm__ volatile("sti");
-        printf("Global interrupts enabled\n");
+        //__asm__ volatile("sti");
+        printf("Global interrupts DISABLED (sti commented out for debugging)\n");
 
         // 在启用中断后初始化键盘驱动
         extern void keyboard_init(void);
@@ -212,14 +264,49 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         net_init();
         loopback_init();
-        rtl8139_init();  // 初始化 RTL8139 网卡驱动
-        e1000_init();    // 初始化 E1000 网卡驱动
-        printf("Network initialized\n");
+        // 🔥 网卡驱动移到用户空间命令手动初始化（通过系统调用）
+        // rtl8139_init();  // 初始化 RTL8139 网卡驱动
+        // e1000_init();    // 初始化 E1000 网卡驱动
+        printf("Network stack initialized\n");
+        printf("Use 'net init' command to initialize network cards\n");
+
+        // 🔥 启用以太网调试接口（网络初始化后）
+        printf("Enabling network debug interface...\n");
+        netdebug_enable(1);
+        netdebug_set_level(2);  // 设置为 INFO 级别 (2=INFO, 1=WARN, 0=ERROR)
+        // 🔥 替换 netdebug_info 为 printf，避免发送 UDP 包
+        printf("[KERNEL] Network debug interface enabled\n");
+        printf("[KERNEL] All firmware loading messages will be sent to network\n");
+        printf("Network debug enabled on UDP port 9999\n");
+        netdebug_stats();  // 显示调试接口统计信息
 
         // 发送网络测试包
         printf("\n=== Network Test ===\n");
+
+        // 🔥 检查内核栈溢出
+        extern uint32_t stack_base;
+        if (*(uint32_t*)&stack_base != 0xDEADBEEF) {
+            printf("⚠️⚠️⚠️ WARNING: Stack overflow detected! Sentinel corrupted!\n");
+            printf("Expected 0xDEADBEEF, got 0x%x\n", *(uint32_t*)&stack_base);
+        } else {
+            printf("✓ Stack sentinel OK\n");
+        }
+
         loopback_send_test();
         printf("=== Network Test Complete ===\n\n");
+
+        // ⚠️⚠️⚠️ 注释掉 WiFi 自动测试，避免未初始化访问导致重启
+        // WiFi 初始化必须由用户程序通过 syscall 手动触发
+        /*
+        // WiFi 数据包测试
+        extern int wifi_send_test_packet(void);
+        extern void wifi_show_stats(void);
+        printf("\n=== WiFi Data Packet Test ===\n");
+        wifi_show_stats();
+        printf("\nSending test packet...\n");
+        wifi_send_test_packet();
+        printf("=== WiFi Test Complete ===\n\n");
+        */
 
         // ⚠️⚠️⚠️ 注意：PIC已经在启用中断后配置完毕
         // 不要在这里重复配置，避免覆盖之前的设置
@@ -332,6 +419,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         // 启动用户进程
         printf("start user task \n");
+        // 屏蔽之后的日志
+        #if 0
 
         // 调试：输出multiboot2模块信息
         dump_multiboot2_modules(mb_info_addr);
@@ -349,10 +438,12 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("[kernel_main] User task initialized, state=PS_CREATED\n");
 
         printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
+        #endif
 
-        // 注意：第二个用户进程现在通过 fork() 系统调用来创建
-        // 不再在这里手动创建
-        // 用户进程在运行时会调用 sys_fork() 来创建子进程
+        // 实际需要的代码（不打印日志）
+        user_task_main(th_u);
+        start_task(th_u, user_task_main);
+        th_u->state = PS_CREATED;
 
         /*
         // 创建第二个用户进程（测试调度）- 已弃用
@@ -436,8 +527,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         */
 
         // 启动调度器
-        printf("Starting scheduler with multiple tasks...\n");
+        // printf("Starting scheduler with multiple tasks...\n");
         efficient_scheduler_loop();
-        printf("Kernel main completed successfully!\n");
+        // printf("Kernel main completed successfully!\n");
 	return (42);
 }

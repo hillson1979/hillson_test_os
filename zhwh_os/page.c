@@ -311,40 +311,48 @@ void map_4k_page(uint32_t phys_addr, uint32_t virt_addr, uint32_t flags) {
     uint32_t pd_index = (virt_addr >> 22) & 0x3FF;
     uint32_t pt_index = (virt_addr >> 12) & 0x3FF;
     uint32_t* high_page_directory = (uint32_t*)pd;
-    
+
     // 确保页目录项存在
     if (!(high_page_directory[pd_index] & 0x1)) {
         // 分配新页表（在above 8MB）
         printf("Allocating new page table for directory entry %u\n", pd_index);
-        
-        uint32_t* new_pt = alloc_page_table(virt_addr, phys_addr,flags);
-        printf("Allocated new page table for directory entry 0x%x\n", new_pt);
-        if (!new_pt) {
+
+        uint32_t pt_phys = alloc_early_page_table();
+        if (pt_phys == 0) {
             printf("ERROR: Failed to allocate page table!\n");
             return;
         }
-        //new_pt[pt_index] = (phys_addr & ~0xFFF)| flags;//phys_addr| 0x3;  // 现在可以通过虚拟地址访问原数据
-        //high_page_directory[pd_index] = (uint32_t)new_pt | 0x3;
-        // 刷新TLB
 
-        printf("Allocated new page table for directory entry 0x%x\n", new_pt);
-        printf("phys_addr is 0x%x\n", phys_addr);        
-        printf("virt_addr is 0x%x\n", virt_addr);       
-        printf("pte is 0x%x\n", new_pt[pt_index]);         
+        // 清零新页表
+        uint32_t* new_pt = (uint32_t*)phys_to_virt(pt_phys);
+        for (int i = 0; i < 1024; i++) {
+            new_pt[i] = 0;
+        }
+
+        // 设置单个页表项（只映射当前页，不是整个4MB）
+        new_pt[pt_index] = (phys_addr & ~0xFFF) | flags;
+
+        // 填写页目录项
+        high_page_directory[pd_index] = pt_phys | 0x3;
+
+        printf("Allocated new page table for pd_idx=%u: pt_phys=0x%x, mapped virt=0x%x -> phys=0x%x\n",
+               pd_index, pt_phys, virt_addr, phys_addr);
+        printf("  PTE[%u] = 0x%x\n", pt_index, new_pt[pt_index]);
+
+        // 刷新TLB
         __asm__ volatile ("invlpg (%0)" : : "r" (virt_addr) : "memory");
         return;
     }
-    
-    // 获取页表
-    uint32_t* page_table =(uint32_t*)(high_page_directory[pd_index] & ~0xFFF);//high_page_directory[pd_index];//
-    
+
+    // 获取已存在的页表（需要转换为虚拟地址）
+    uint32_t pt_phys = high_page_directory[pd_index] & ~0xFFF;
+    uint32_t* page_table = (uint32_t*)phys_to_virt(pt_phys);
+
     // 设置页表项
-    page_table[pt_index] = (phys_addr & ~0xFFF)| flags;//phys_addr | flags;
-    
+    page_table[pt_index] = (phys_addr & ~0xFFF) | flags;
+
     // 刷新TLB
     __asm__ volatile ("invlpg (%0)" : : "r" (virt_addr) : "memory");
-
-    //printf("virt_addr is %x\n",virt_addr);
 }
 
 
@@ -416,5 +424,91 @@ void free_phys_page(void *page_phys) {
 
     // 4. 标记该页为空闲
     page_used[page_idx] = 0;
+}
+
+// ==================== DMA Coherent 内存管理（Linux 风格）====================
+// 预映射的 DMA 区域：在 boot 阶段建立，运行时只分配，不改页表
+//
+// 设计原则：
+// 1. 预留专用物理内存区域作为 DMA 池
+// 2. 在 paging 初始化时一次性映射为 uncached
+// 3. 运行时只做简单的 bump allocator 分配
+// 4. 绝不在运行时修改页表（避免 triple fault）
+
+#define DMA_PHYS_BASE   0x02800000   // 40MB 物理地址开始
+#define DMA_SIZE        (8 * 1024 * 1024)  // 8MB DMA 区域 (40-48MB)
+#define DMA_VIRT_BASE   (0xC2800000) // 映射到内核虚拟地址 0xC1000000
+
+static uint32_t dma_alloc_ptr = 0;  // Bump allocator 指针
+
+/**
+ * @brief 在分页初始化时建立 DMA 区域的 uncached 映射
+ * @note 必须在 paging_init() 后、驱动初始化前调用一次
+ */
+void dma_map_region(void) {
+    uint32_t phys = DMA_PHYS_BASE;
+    uint32_t virt = DMA_VIRT_BASE;
+
+    printf("[dma] Mapping DMA region: phys=0x%x -> virt=0x%x (size=%d MB)\n",
+           phys, virt, DMA_SIZE / (1024 * 1024));
+
+    // 按 4KB 页映射整个 DMA 区域
+    for (uint32_t off = 0; off < DMA_SIZE; off += 4096) {
+        // PTE_P | PTE_RW | PTE_PCD | PTE_PWT = Present + RW + Uncached
+        uint32_t flags = 0x3 | 0x10;  // 0x3 = Present+RW, 0x10 = PCD (cache disable)
+        map_4k_page(phys + off, virt + off, flags);
+    }
+
+    printf("[dma] DMA region mapped as uncached\n");
+}
+
+/**
+ * @brief 从 DMA 区域分配 coherent 内存（Linux dma_alloc_coherent 风格）
+ * @param size 需要分配的大小
+ * @param dma_handle 输出参数：返回物理地址供设备使用
+ * @return CPU 可访问的虚拟地址，失败返回 NULL
+ *
+ * @note 这是 bump allocator，不支持释放
+ * @note 内存自动 64 字节对齐（cache line 对齐）
+ * @note 分配的内存是 uncached 的，CPU 和设备都能看到最新数据
+ */
+void *dma_alloc_coherent(size_t size, uint32_t *dma_handle) {
+    // 64 字节对齐（cache line 对齐）
+    size = (size + 63) & ~63;
+
+    // 检查是否超出 DMA 区域
+    if (dma_alloc_ptr + size > DMA_SIZE) {
+        printf("[dma] ERROR: Out of DMA memory (requested=%u, used=%u, total=%u)\n",
+               (uint32_t)size, dma_alloc_ptr, DMA_SIZE);
+        return NULL;
+    }
+
+    // 计算虚拟和物理地址
+    void *vaddr = (void *)(DMA_VIRT_BASE + dma_alloc_ptr);
+    uint32_t paddr = DMA_PHYS_BASE + dma_alloc_ptr;
+
+    printf("[dma] alloc: size=%u, virt=0x%x, phys=0x%x\n",
+           (uint32_t)size, (uint32_t)vaddr, paddr);
+
+    // 更新分配指针
+    dma_alloc_ptr += size;
+
+    // 内存屏障（确保 DMA 操作可见）
+    asm volatile("mfence" ::: "memory");
+
+    // 返回物理地址
+    if (dma_handle) {
+        *dma_handle = paddr;
+    }
+
+    return vaddr;
+}
+
+/**
+ * @brief 释放 DMA coherent 内存（bump allocator 不支持释放）
+ * @note 这是 stub 实现，仅打印警告
+ */
+void dma_free_coherent(void *cpu_addr, size_t size) {
+    printf("[dma] WARNING: dma_free_coherent not supported (bump allocator)\n");
 }
 

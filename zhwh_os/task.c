@@ -232,6 +232,16 @@ void task_prepare_pde(struct task_t *task){
            printf("[task_prepare_pde] Verifying trapframe:\n");
            printf("  eip=0x%x, cs=0x%x, eflags=0x%x, esp=0x%x\n",
                   task->tf->eip, task->tf->cs, task->tf->eflags, task->tf->esp);
+
+           // 🔥 检查 EIP 是否为 0（说明用户模块加载失败）
+           if (task->tf->eip == 0) {
+               printf("[task_prepare_pde] ERROR: EIP is 0! User module failed to load!\n");
+               printf("[task_prepare_pde] Cannot enter user mode with EIP=0, system halted.\n");
+               printf("[task_prepare_pde] Please check if the user module is a valid ELF file.\n");
+               while(1) {
+                   asm volatile("hlt");
+               }
+           }
        }
 
        // ⚠️⚠️⚠️ 用户栈已经在 load_module_to_user 中映射了（4页 = 16KB）

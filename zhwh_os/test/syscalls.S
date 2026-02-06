@@ -121,11 +121,117 @@ syscall_lseek:
     # 返回值在EAX中：新的文件位置
     ret
 
-# SYS_NET_PING系统调用 (参数: const char *ip_addr)
+# SYS_NET_PING系统调用 (参数: const char *ip_addr, const char *dev_name)
 .global syscall_net_ping
 syscall_net_ping:
     movl $30, %eax         # 系统调用号 SYS_NET_PING
     movl 4(%esp), %ebx     # 参数1: ip_addr 字符串指针
+    movl 8(%esp), %ecx     # 参数2: dev_name 字符串指针（可选）
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_NET_IFCONFIG系统调用 (无参数)
+.global syscall_net_ifconfig
+syscall_net_ifconfig:
+    movl $31, %eax         # 系统调用号 SYS_NET_IFCONFIG
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_WIFI_INIT系统调用 (无参数)
+.global syscall_wifi_init
+syscall_wifi_init:
+    movl $36, %eax         # 系统调用号 SYS_WIFI_INIT
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_WIFI_SCAN系统调用 (无参数)
+.global syscall_wifi_scan
+syscall_wifi_scan:
+    movl $32, %eax         # 系统调用号 SYS_WIFI_SCAN
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：扫描到的网络数量
+    ret
+
+# SYS_WIFI_CONNECT系统调用 (参数: const char *ssid, const char *password)
+.global syscall_wifi_connect
+syscall_wifi_connect:
+    movl $33, %eax         # 系统调用号 SYS_WIFI_CONNECT
+    movl 4(%esp), %ebx     # 参数1: ssid
+    movl 8(%esp), %ecx     # 参数2: password
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_WIFI_DISCONNECT系统调用 (无参数)
+.global syscall_wifi_disconnect
+syscall_wifi_disconnect:
+    movl $34, %eax         # 系统调用号 SYS_WIFI_DISCONNECT
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_WIFI_STATUS系统调用 (无参数)
+.global syscall_wifi_status
+syscall_wifi_status:
+    movl $35, %eax         # 系统调用号 SYS_WIFI_STATUS
+    int $0x80              # 触发系统调用
+    ret
+
+# SYS_WIFI_FW_BEGIN系统调用 (参数: uint32_t size)
+.global syscall_wifi_fw_begin
+syscall_wifi_fw_begin:
+    movl $37, %eax         # SYS_WIFI_FW_BEGIN
+    movl 4(%esp), %ebx     # 参数1: size
+    int $0x80
+    ret
+
+# SYS_WIFI_FW_CHUNK系统调用 (参数: const void *ptr, uint32_t len, uint32_t offset)
+.global syscall_wifi_fw_chunk
+syscall_wifi_fw_chunk:
+    movl $38, %eax         # SYS_WIFI_FW_CHUNK
+    movl 4(%esp), %ebx     # 参数1: ptr
+    movl 8(%esp), %ecx     # 参数2: len
+    movl 12(%esp), %edx    # 参数3: offset
+    int $0x80
+    ret
+
+# SYS_WIFI_FW_END系统调用 (无参数)
+.global syscall_wifi_fw_end
+syscall_wifi_fw_end:
+    movl $39, %eax         # SYS_WIFI_FW_END
+    int $0x80
+    ret
+
+# SYS_WIFI_LOAD_FIRMWARE系统调用 (参数: const char *path, int fd)
+.global syscall_wifi_load_firmware
+syscall_wifi_load_firmware:
+    movl $40, %eax         # 系统调用号 SYS_WIFI_LOAD_FIRMWARE
+    movl 4(%esp), %ebx     # 参数1: path (NULL 如果 fd 有效)
+    movl 8(%esp), %ecx     # 参数2: fd (-1 表示需要打开文件)
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_WIFI_LOAD_FIRMWARE_FROM_BUFFER系统调用 (参数: const struct user_buf *ubuf)
+# 复用系统调用号 40，但传递 ubuf 指针作为 arg1
+.global syscall_wifi_load_firmware_from_buffer
+syscall_wifi_load_firmware_from_buffer:
+    movl $40, %eax         # 复用 SYS_WIFI_LOAD_FIRMWARE 系统调用号
+    movl 4(%esp), %ebx     # 参数1: ubuf 指针
+    movl $-2, %ecx         # 特殊标记：-2 表示从缓冲区加载
+    int $0x80              # 触发系统调用
+    # 返回值在EAX中：0表示成功，-1表示失败
+    ret
+
+# SYS_EXECV系统调用 (参数: const char *path, char *const argv[])
+.global syscall_execv
+syscall_execv:
+    movl $41, %eax         # 系统调用号 SYS_EXECV
+    movl 4(%esp), %ebx     # 参数1: path
+    movl 8(%esp), %ecx     # 参数2: argv
     int $0x80              # 触发系统调用
     # 返回值在EAX中：0表示成功，-1表示失败
     ret

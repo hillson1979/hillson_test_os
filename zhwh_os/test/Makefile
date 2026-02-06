@@ -81,15 +81,20 @@ net_test.elf: net_test.o syscalls.o libuser.o ts.ld
 
 # net_shell 编译规则
 net_shell.o: $(NET_SHELL_SOURCE) ts.ld
-	$(CC) $(CFLAGS) -I../user -c $(NET_SHELL_SOURCE) -o net_shell.o
+	$(CC) $(CFLAGS) -I../user -I../include -c $(NET_SHELL_SOURCE) -o net_shell.o
 	@echo "Compiled: $(NET_SHELL_SOURCE)"
 
-net_shell.elf: net_shell.o syscalls.o libuser.o ts.ld
-	$(LD) $(LDFLAGS) -o $@ net_shell.o syscalls.o libuser.o
-	@echo "Built: $@"
+# WiFi 固件对象文件
+../driver/net/wifi/intel/iwlwifi_6000g2a_fw.o:
+	$(CC) $(CFLAGS) -I../include -c ../driver/net/wifi/intel/iwlwifi_6000g2a_fw.c -o ../driver/net/wifi/intel/iwlwifi_6000g2a_fw.o
+	@echo "Compiled: iwlwifi_6000g2a_fw.c"
+
+net_shell.elf: net_shell.o syscalls.o libuser.o ../driver/net/wifi/intel/iwlwifi_6000g2a_fw.o ts.ld
+	$(LD) $(LDFLAGS) -o $@ net_shell.o syscalls.o libuser.o ../driver/net/wifi/intel/iwlwifi_6000g2a_fw.o
+	@echo "Built: $@ (with embedded 677KB firmware)"
 
 %.o: %.c
-	$(CC) $(CFLAGS) -I../user -c $< -o $@
+	$(CC) $(CFLAGS) -I../user -I../include -c $< -o $@
 	@echo "Compiled: $<"
 
 %.o: %.S
@@ -97,7 +102,7 @@ net_shell.elf: net_shell.o syscalls.o libuser.o ts.ld
 	@echo "Assembled: $<"
 
 clean:
-	rm -f *.o $(TARGETS) libuser.o *~
+	rm -f *.o $(TARGETS) libuser.o *~ ../driver/net/wifi/intel/iwlwifi_6000g2a_fw.o
 	@echo "Cleaned"
 
 .PHONY: all clean

@@ -7,7 +7,7 @@
 // 外部函数声明
 extern void identity_map_8m_4k(uint32_t addr);
 
-static struct highmem_mapping mappings[64];
+static struct highmem_mapping mappings[512];  // Increased from 64 to 512 for large ELF files
 static uint32_t next_virt_addr = DYNAMIC_MAP_WINDOW_BASE;
 
 static inline void x86_refresh_tlb(void)
@@ -35,26 +35,16 @@ void init_highmem_mapping(void) {
     printf("Identity mapped: 0x%x-0x%x\n",
            KERNEL_VIRT_BASE, KERNEL_VIRT_BASE + 0x400000 - 1);
 
-    // 为 Buddy System 数据区域建立页表映射（16MB-48MB）
-    // Buddy System 数据结构在物理 16MB (0x1000000)，虚拟地址 0xC1000000
-    // 只需要映射 Buddy System 的元数据，不需要映射它管理的所有物理页
-    printf("Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...\n");
-
-    uint32_t buddy_phys_start = 0x1000000;  // 16MB
-    uint32_t buddy_phys_end = 0x3000000;    // 48MB (Buddy System 元数据)
-    uint32_t buddy_virt_start = 0xC1000000;  // 虚拟地址
-
-    for (uint32_t phys = buddy_phys_start; phys < buddy_phys_end; phys += 0x1000) {
-        uint32_t virt = buddy_virt_start + (phys - buddy_phys_start);
-        map_4k_page(phys, virt, 0x3);  // Present + RW
-
-        // 每映射 1MB 打印一次进度
-        if ((phys & 0xFFFFF) == 0) {
-            printf("  Mapped 0x%x (phys 0x%x)\n", virt, phys);
-        }
-    }
-
-    printf("Buddy system data area mapped successfully\n");
+    // 🔥 不再预映射 Buddy System 区域！使用直接映射 (PHYS_TO_VIRT)
+    // 预映射会破坏内存布局，导致系统崩溃
+    //
+    // 旧的代码（已禁用）：
+    // // 为 Buddy System 数据区域建立页表映射（16MB-48MB）
+    // printf("Mapping buddy system metadata area (phys 16MB-48MB, 32MB total)...\n");
+    // for (uint32_t phys = 0x1000000; phys < 0x3000000; phys += 0x1000) {
+    //     uint32_t virt = 0xC1000000 + (phys - 0x1000000);
+    //     map_4k_page(phys, virt, 0x3);
+    // }
 
     // 不再预映射整个 4GB 地址空间（这需要约 1GB 页表内存，会导致实体机闪退）
     // 改为按需映射：Buddy System 只维护物理页的链表，不需要预先映射
@@ -95,7 +85,7 @@ void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags) {
     
     // 查找空闲映射槽
     int free_slot = -1;
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 512; i++) {
         if (!mappings[i].in_use) {
             free_slot = i;
             break;
@@ -157,9 +147,9 @@ void* get_mapped_address(uint32_t phys_addr) {
     if (IS_IDENTITY_MAPPED(phys_addr)) {
         return PHYS_TO_VIRT(phys_addr);
     }
-    
-    for (int i = 0; i < 64; i++) {
-        if (mappings[i].in_use && 
+
+    for (int i = 0; i < 512; i++) {
+        if (mappings[i].in_use &&
             phys_addr >= mappings[i].phys_addr &&
             phys_addr < mappings[i].phys_addr + mappings[i].size) {
             uint32_t offset = phys_addr - mappings[i].phys_addr;

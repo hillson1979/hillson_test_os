@@ -24,7 +24,7 @@ extern uint32_t multiboot2_info_addr;
 #define USER_PTE_FLAGS (PTE_P|PTE_W|PTE_U)
 
 //#define USER_STACK_TOP  0xBFFFF000   // 用户栈顶（示例）
-#define USER_STACK_SIZE PAGE_SIZE
+#define USER_STACK_SIZE PAGE_SIZE * 2
 
 int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     printf("[load_module_to_user] Starting...\n");
@@ -62,8 +62,21 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     printf("[load_module_to_user] Module: start=0x%x end=0x%x size=0x%x cmdline=%s\n",
            mod_start, mod_end, mod_end - mod_start, cmdline);
 
+    // 🔥 临时映射用户模块所在的物理内存（68MB+ 超出恒等映射）
+    uint32_t mod_size = mod_end - mod_start;
+    uint32_t mod_virt = phys_to_virt(mod_start);
+
+    printf("[load_module_to_user] Mapping module: phys=0x%x -> virt=0x%x (size=%u)\n",
+           mod_start, mod_virt, mod_size);
+
+    // 按 4KB 页映射整个模块
+    for (uint32_t off = 0; off < mod_size; off += 4096) {
+        map_4k_page(mod_start + off, mod_virt + off, 0x3);  // Present + RW
+    }
+    printf("[load_module_to_user] Module mapped successfully\n");
+
     // 先直接读取物理内存，看看原始数据
-    uint8_t *raw_phys = (uint8_t *)mod_start;
+    uint8_t *raw_phys = (uint8_t *)mod_virt;
     printf("[load_module_to_user] Raw physical bytes at 0x%x: %02x %02x %02x %02x\n",
            mod_start, raw_phys[0], raw_phys[1], raw_phys[2], raw_phys[3]);
 
@@ -103,7 +116,7 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
             uint32_t dst_va = va + off;
             uint32_t dst_pa;
 
-            printf("[load_module_to_user] Loop: off=%u, dst_va=0x%x\n", off, dst_va);
+            //printf("[load_module_to_user] Loop: off=%u, dst_va=0x%x\n", off, dst_va);
 
             // ========== 关键修复：分配新的物理页，而不是直接使用ELF文件所在的物理内存 ==========
             // 原因：multiboot模块的物理内存是内核临时使用的，可能被覆盖
@@ -116,30 +129,55 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
                 return -6;
             }
 
-            // 2. 清零整个页
-            uint8_t *dst_virt = (uint8_t*)phys_to_virt(dst_pa);
+            // 2. 🔥 动态映射物理页到内核空间（如果 > 8MB）
+            uint8_t *dst_virt;
+            if (dst_pa >= 0x800000) {
+                dst_virt = (uint8_t*)map_highmem_physical(dst_pa, PAGE_SIZE, 0x3);
+                if (!dst_virt) {
+                    printf("[load_module_to_user] FATAL: failed to map physical page 0x%x!\n", dst_pa);
+                    return -7;
+                }
+            } else {
+                dst_virt = (uint8_t*)phys_to_virt(dst_pa);
+            }
+
+            // 3. 清零整个页
             for (int j = 0; j < PAGE_SIZE; j++) {
                 dst_virt[j] = 0;
             }
 
-            // 3. 如果这是文件数据部分，从ELF复制
+            // 4. 如果这是文件数据部分，从ELF复制
             if (off < filesz) {
                 uint32_t copy_size = PAGE_SIZE;
                 if (off + copy_size > filesz) {
                     copy_size = filesz - off;
                 }
 
-                uint8_t *src_virt = (uint8_t*)phys_to_virt(file_pa + off);
+                // 🔥 动态映射源物理页（ELF文件）
+                uint8_t *src_virt;
+                uint32_t src_pa = file_pa + off;
+                if (src_pa >= 0x800000) {
+                    src_virt = (uint8_t*)map_highmem_physical(src_pa, PAGE_SIZE, 0x3);
+                    if (!src_virt) {
+                        printf("[load_module_to_user] FATAL: failed to map source page 0x%x!\n", src_pa);
+                        return -7;
+                    }
+                } else {
+                    src_virt = (uint8_t*)phys_to_virt(src_pa);
+                }
+
                 for (uint32_t j = 0; j < copy_size; j++) {
                     dst_virt[j] = src_virt[j];
                 }
-                printf("[load_module_to_user] Copied 0x%x bytes from ELF to new page\n", copy_size);
+                //printf("[load_module_to_user] Copied 0x%x bytes from ELF to new page\n", copy_size);
             } else {
-                printf("[load_module_to_user] BSS: allocated and zeroed new page\n");
+                //printf("[load_module_to_user] BSS: allocated and zeroed new page\n");
             }
 
-            printf("[load_module_to_user] Calling map_page: dst_va=0x%x dst_pa=0x%x\n", dst_va, dst_pa);
-            map_page(pd_user, dst_va, dst_pa, USER_PTE_FLAGS);
+            printf("[load_module_to_user] Calling map_page: dst_va=0x%x dst_pa=0x%x flags=0x%x\n", dst_va, dst_pa, USER_PTE_FLAGS);
+            // 🔥 使用内核页目录物理地址（共享 CR3）
+            extern uint32_t kernel_page_directory_phys;
+            map_page(kernel_page_directory_phys, dst_va, dst_pa, USER_PTE_FLAGS);
 
             // ⚠️⚠️⚠️ 关键修复：同时映射到内核页目录！
             // 原因：现在使用共享 CR3（kernel CR3），所有进程都使用同一个内核页目录
@@ -187,38 +225,33 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
 
     printf("[load_module_to_user] Mapping user stack (%u pages)...\n", USER_STACK_PAGES);
 
-    uint32_t last_stack_pa = 0;  // 保存最后一页(最高地址)的物理地址
+    uint32_t last_stack_va = 0;  // 🔥 保存最后一页(最高地址)的**虚拟地址**
     for (int i = 0; i < USER_STACK_PAGES; i++) {
         uint32_t stack_pa = pmm_alloc_page();
         printf("[load_module_to_user] Allocated stack page %u: phys=0x%x\n", i, stack_pa);
 
-        // 映射栈页：从 VIRT_USER_STACK_TOP - i*PAGE_SIZE 开始
-        // 第一页(i=0)应该映射到 VIRT_USER_STACK_TOP
-        uint32_t stack_va = VIRT_USER_STACK_TOP - i * PAGE_SIZE;
+        // 🔥 修复：栈页映射应该从 VIRT_USER_STACK_TOP - (i+1)*PAGE_SIZE 开始
+        // 这样第一页(i=0)映射到 VIRT_USER_STACK_TOP - PAGE_SIZE
+        // 栈顶(VIRT_USER_STACK_TOP)在第一页的页尾
+        uint32_t stack_va = VIRT_USER_STACK_TOP - (i + 1) * PAGE_SIZE;
         printf("[load_module_to_user] Mapping stack page: va=0x%x -> pa=0x%x\n", stack_va, stack_pa);
 
-        map_page(pd_user, stack_va, stack_pa, USER_PTE_FLAGS);
+        // 🔥 使用内核页目录物理地址（共享 CR3）
+        extern uint32_t kernel_page_directory_phys;
+        map_page(kernel_page_directory_phys, stack_va, stack_pa, USER_PTE_FLAGS);
 
-        // 保存最后一页的物理地址(最高地址)
+        // 保存最后一页的虚拟地址(最高地址页)
         if (i == 0) {
-            last_stack_pa = stack_pa;
+            last_stack_va = stack_va;  // 🔥 保存虚拟地址！
         }
-
-        // ⚠️⚠️⚠️ 关键修复：同时映射到内核页目录！
-        // 原因：现在使用共享 CR3（kernel CR3），所有进程都使用同一个内核页目录
-        //       用户栈必须在内核页目录中也能访问
-        //extern uint32_t pd[];
-       // map_page(pd, stack_va, stack_pa, USER_PTE_FLAGS);
-       // printf("[load_module_to_user] Also mapped stack page to kernel page table\n");
     }
     printf("[load_module_to_user] User stack mapping complete.\n");
 
-    // ⚠️⚠️⚠️ 关键修复：保存用户栈的物理地址到 task->user_stack
-    // 原因：task_to_user_mode_with_task 会检查 task->user_stack 是否为 0
-    //      如果为 0，会跳转到 hlt 死循环（认为是内核任务）
-    //      必须设置为非零值，才能正确进入用户态
-    task->user_stack = last_stack_pa;
-    printf("[load_module_to_user] Set task->user_stack = 0x%x (physical address of stack top)\n", task->user_stack);
+    // 🔥🔥🔥 关键修复：保存用户栈的**虚拟地址**到 task->user_stack
+    // 用户栈虚拟地址范围：0xBFFFC000 - 0xBFFFF000
+    // 栈顶（最高地址）：VIRT_USER_STACK_TOP = 0xBFFFF000
+    task->user_stack = VIRT_USER_STACK_TOP;
+    printf("[load_module_to_user] Set task->user_stack = 0x%x (virtual address of stack top)\n", task->user_stack);
 
     // ⚠️ 删除 BRUTE FORCE 映射代码！
     // 原因：它会覆盖 ELF 加载时正确设置的映射，导致用户代码无法执行
@@ -242,20 +275,20 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     // 原因：fault_addr=0xFFFFFFE8说明代码在访问NULL-0x18，很可能是
     //       C运行时代码试图访问argv/envp指针数组时越界
 
-    // 获取用户栈最高页的虚拟地址,并映射到内核空间访问
-    uint32_t stack_top_va = VIRT_USER_STACK_TOP;
-    uint32_t *stack_top_virt = (uint32_t *)phys_to_virt(last_stack_pa);
+    // 🔥 使用虚拟地址直接访问用户栈（通过用户页表映射）
+    // last_stack_va 是第一页的虚拟地址（0xBFFFE000）
+    uint32_t *stack_top_virt = (uint32_t *)last_stack_va;
 
     // ⚠️⚠️⚠️ 关键修复：在栈顶填充大量NULL，防止越界访问
     // 原因：C运行时代码可能会访问argv[argc]、envp[0]等
     // 如果这些位置是未初始化的垃圾数据，会导致崩溃
     for (int i = 1; i <= 32; i++) {
-        stack_top_virt[-i] = 0;  // 填充32个NULL（128字节）
+        stack_top_virt[PAGE_SIZE/4 - i] = 0;  // 🔥 从页尾向前填充32个NULL
     }
 
-    // ESP指向argc（按照Linux标准，argc在栈顶最低位置）
+    // ESP指向argc（栈顶往下4字节，在第一页的页尾）
     // 布局：[ESP]=argc, [ESP+4]=argv[0], [ESP+8]=argv[1], ...
-    tf->esp = stack_top_va - 1 * sizeof(uint32_t);
+    tf->esp = VIRT_USER_STACK_TOP - 1 * sizeof(uint32_t);
 
     printf("[load_module_to_user] Set up user stack ABI (Linux standard):\n");
     printf("  argc=0 at [ESP]=0x%x\n", tf->esp);

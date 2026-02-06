@@ -1,15 +1,69 @@
 // syscall.c
 #include "vga.h"
 #include "interrupt.h"
-#include "printf.h"   // 需要一个 console_write(buf,len) 或 putchar
-#include "task.h"      // do_exit(), current task, etc (task.h 已经包含了 mm.h)
-#include "multiboot2.h" // multiboot2_info_addr
+#include "printf.h"
+#include "task.h"
+#include "multiboot2.h"
 #include "highmem_mapping.h"
-#include "page.h"      // phys_to_virt 宏
-#include "lapic.h"     // logical_cpu_id()
+#include "page.h"
+#include "lapic.h"
+#include "net.h"
+#include "pci.h"
+#include "x86/io.h"  // 🔥 添加：引入 outl/inl 函数
 
-// 声明当前任务数组
+// PCI 配置空间 I/O 端口
+#define CONFIG_ADDRESS 0xCF8
+#define CONFIG_DATA    0xCFC
+
+// 系统调用号定义
+#define SYS_NET_PING 30
+#define SYS_NET_IFCONFIG 31
+#define SYS_WIFI_SCAN 32
+#define SYS_WIFI_CONNECT 33
+#define SYS_WIFI_DISCONNECT 34
+#define SYS_WIFI_STATUS 35
+#define SYS_WIFI_INIT 36
+#define SYS_WIFI_FW_BEGIN 37
+#define SYS_WIFI_FW_CHUNK 38
+#define SYS_WIFI_FW_END 39
+#define SYS_WIFI_LOAD_FIRMWARE 40
+//#define SYS_EXECV 41  // 暂时禁用
+#define SYS_LSPCI 42  // 🔥 新增：列出 PCI 设备
+#define SYS_NET_INIT_RTL8139 43  // 🔥 新增：初始化 RTL8139
+#define SYS_NET_INIT_E1000 44   // 🔥 新增：初始化 E1000
+#define SYS_NET_SEND_UDP 45     // 🔥 新增：发送 UDP 包
+#define SYS_NET_SET_DEVICE 46   // 🔥 设置当前使用的网卡
+#define SYS_NET_POLL_RX 47      // 🔥 轮询RX（调试用）
+#define SYS_NET_DUMP_REGS 48     // 🔥 转储网卡寄存器状态
+#define SYS_NET_ARP 49           // 🔥 ARP 命令（显示/扫描 ARP 缓存）
+#define SYS_NET_DUMP_RX_REGS 50 // 🔥 转储 RX 寄存器（详细）
+#define SYS_NET_IFUP 51        // 🔥 启动网络接口
+//#define SYS_NET_RAW_DUMP_RX_DESC 52  // 🔥 暂时注释掉
+#define SYS_MSI_TEST 60        // 🔥 MSI 测试
+#define SYS_NET_LOOPBACK_TEST 61  // 🔥 E1000 硬件 loopback 测试（轮询）
+#define SYS_NET_LOOPBACK_TEST_INT 62  // 🔥 E1000 硬件 loopback 测试（中断）
+
+// WiFi
+static uint8_t  *fw_buf      = NULL;
+static uint32_t  fw_size     = 0;
+static uint32_t  fw_received = 0;
+static uint32_t  fw_checksum = 0;
+
+// 🔥 当前选择的网络设备名称（空字符串表示自动选择）
+// 🔥 改为非 static，以便网络模块可以访问
+char current_net_device[16] = {0};
+
+
+#define FW_CHUNK_SIZE   4096
+#define FW_MAX_SIZE     (2 * 1024 * 1024)  // 2MB，支持大容量固件（Intel 677KB + Atheros等）
+
+// 
 extern task_t *current_task[];
+
+// 
+extern void *kmalloc(uint32_t size);
+extern void kfree(void *ptr);
+extern void *memcpy(void *dst, const void *src, int n);
 
 /*
 typedef struct trapframe {
@@ -38,9 +92,9 @@ typedef struct trapframe {
 } trapframe_t;
 */
 
-/* 简单的 copy_from_user（不做边界检查，适合测试） */
+/*  copy_from_user */
 int copy_from_user(char *dst, const char *src, uint32_t n) {
-    // 假设内核/页表设置允许直接从用户空间读取
+    // /
     for (uint32_t i = 0; i < n; ++i) dst[i] = src[i];
     return 0;
 }
@@ -48,16 +102,16 @@ int copy_from_user(char *dst, const char *src, uint32_t n) {
 /* sys_write(fd, buf, len) */
 static int sys_write(uint32_t fd, const char *buf, uint32_t len) {
     if (fd != 1) return -1;
-    // 为了简单，分配一个小内核缓冲（或逐字输出）
-    // 这里逐字打印到 console（假设 console_putc 可用）
+    // 
+    //  console console_putc 
     for (uint32_t i = 0; i < len; ++i) {
-        char c = buf[i];      // 直接读用户地址（因为现在内核映射在位）
+        char c = buf[i];      // 
         vga_putc(c);
     }
     return (int)len;
 }
 
-/* 进程退出实现 */
+/*  */
 void do_exit(int code) {
     extern task_t *current_task[];
     extern int need_resched;
@@ -70,50 +124,50 @@ void do_exit(int code) {
 
     printf("[do_exit] Task %d exiting with code %d\n", task->pid, code);
 
-    // 1. 标记任务为终止状态
+    // 1. 
     task->state = PS_TERMNAT;
 
-    // 2. 回收用户栈内存（如果有）
-    // 注意：task->user_stack 是虚拟地址，需要转换为物理地址
+    // 2. 
+    // task->user_stack 
     if (task->user_stack != 0) {
         printf("[do_exit] Freeing user stack at 0x%x (virt)\n", (uint32_t)task->user_stack);
-        // 假设 user_stack 存储的是物理地址（根据 do_fork 的实现）
+        //  user_stack  do_fork 
         pmm_free_page((uint32_t)task->user_stack);
         task->user_stack = 0;
     }
 
-    // 3. 回收页表和用户空间内存（除了内核映射）
-    // 注意：task->pde 也是虚拟地址，需要转换为物理地址
+    // 3. 
+    // task->pde 
     if (task->pde != 0 && task->pde != (uint32_t*)0x101000) {
         printf("[do_exit] Freeing user page directory at 0x%x (virt)\n", (uint32_t)task->pde);
-        // TODO: 遍历并释放用户空间的页表和页面
-        // 这里暂时只释放页目录本身
-        // pmm_free_page 需要物理地址，但我们这里只有虚拟地址
-        // 暂时跳过，需要实现 virt_to_phys 转换
+        // TODO: 
+        // 
+        // pmm_free_page 
+        //  virt_to_phys 
         printf("[do_exit] TODO: Need virt_to_phys conversion for PDE\n");
         task->pde = 0;
     }
 
-    // 4. 回收 trapframe（如果在内核栈中）
+    // 4.  trapframe
     if (task->tf != 0) {
         printf("[do_exit] Trapframe was at 0x%x (will be freed with kstack)\n", (uint32_t)task->tf);
         task->tf = 0;
     }
 
-    // 5. 注意：内核栈 (kstack) 暂时不释放
-    // 原因：我们还在内核栈上运行！
-    // 这个内存会在进程被完全清理时回收
+    // 5.  (kstack) 
+    // 
+    // 
     printf("[do_exit] Kernel stack at 0x%x (keeping for now)\n", task->kstack);
 
-    // 6. 从调度链表中移除任务
-    // TODO: 实现双向链表的删除操作
+    // 6. 
+    // TODO: 
     printf("[do_exit] Task %d marked as terminated\n", task->pid);
 
-    // 7. 触发重新调度，让其他任务运行
+    // 7. 
     need_resched = 1;
 
-    // 8. 如果这是唯一的活动任务，进入空闲循环
-    // 检查是否还有其他可运行的任务
+    // 8. 
+    // 
     task_t *next = task->next;
     if (next == task || next->state == PS_TERMNAT || next->state == PS_DESTROY) {
         printf("[do_exit] No more runnable tasks, halting...\n");
@@ -123,16 +177,16 @@ void do_exit(int code) {
         }
     }
 
-    // 注意：这里不应该直接返回到用户空间
-    // 调度器会选择下一个任务运行
+    // 
+    // 
 }
 
 /* sys_exit(code) */
 static void sys_exit(int code) {
     do_exit(code);
 
-    // 永远不会到达这里，因为 do_exit 会触发调度
-    // 但为了安全起见，进入死循环
+    //  do_exit 
+    // 
     while (1) {
         __asm__ volatile("hlt");
     }
@@ -145,21 +199,22 @@ enum {
     SYS_GET_MEM_STATS,
     SYS_READ_MEM,
     SYS_GET_MEM_USAGE,
-    SYS_GETCHAR,      // = 7 新增：读取单个字符
-    SYS_PUTCHAR,      // = 8 新增：输出单个字符(用于显示提示符)
-    SYS_GET_FRAMEBUFFER,  // 新增：获取 framebuffer 信息
-    SYS_GETCWD,       // 新增：获取当前工作目录
-    SYS_WRITE,        // 占位符，使 SYS_FORK = 11
-    SYS_FORK,         // fork 系统调用 (11)
-    SYS_OPEN = 20,    // open 系统调用
-    SYS_CLOSE,        // close 系统调用
-    SYS_READ,         // read 系统调用
-    SYS_LSEEK,        // lseek 系统调用
-    SYS_NET_PING = 30, // 网络_ping 系统调用
+    SYS_GETCHAR,      // = 7 
+    SYS_PUTCHAR,      // = 8 ()
+    SYS_GET_FRAMEBUFFER,  //  framebuffer
+    SYS_GETCWD,       //
+    SYS_WRITE,        //  SYS_FORK = 11
+    SYS_FORK,         // fork  (11)
+    SYS_OPEN = 20,    // open
+    SYS_CLOSE,        // close
+    SYS_READ,         // read
+    SYS_LSEEK,        // lseek
+    // 网络和 WiFi 系统调用使用宏定义（见上方）
+    SYS_EXECV = 41,    // execv
 };
 
 void syscall_dispatch(struct trapframe *tf) {
-    // ⚠️ 临时禁用调试输出，减少串口输出量
+    //  
     // printf("[syscall_dispatch] ENTER: tf=%p\n", tf);
     // printf("  eax=%d (syscall num), ebx=0x%x (arg1), ecx=0x%x (arg2), edx=0x%x (arg3)\n",
     //        tf->eax, tf->ebx, tf->ecx, tf->edx);
@@ -172,25 +227,25 @@ void syscall_dispatch(struct trapframe *tf) {
 
     switch (num) {
         case SYS_PRINTF: {
-            // 兼容旧CPU的方法:使用pushf/popf设置EFLAGS.AC位
+            // CPU:pushf/popfEFLAGS.AC
             const char *user_fmt = (const char*)arg1;
             char kbuf[512];
             int i = 0;
 
-            // 直接用汇编拷贝,避免编译器优化和SMAP问题
+            // ,SMAP
             for (i = 0; i < 511; i++) {
                 char c;
-                // 使用pushf/popf临时设置EFLAGS.AC位
+                // pushf/popfEFLAGS.AC
                 __asm__ volatile (
-                    "pushfl\n"                    // 保存EFLAGS
-                    "orl $0x40000, (%%esp)\n"    // 设置AC位(bit 18)
-                    "popfl\n"                     // 恢复EFLAGS(现在AC=1)
+                    "pushfl\n"                    // EFLAGS
+                    "orl $0x40000, (%%esp)\n"    // AC(bit 18)
+                    "popfl\n"                     // EFLAGS(AC=1)
 
-                    "movb (%1), %0\n"             // 读取用户空间字符
+                    "movb (%1), %0\n"             // 
 
                     "pushfl\n"
-                    "andl $~0x40000, (%%esp)\n"  // 清除AC位
-                    "popfl\n"                     // 恢复EFLAGS
+                    "andl $~0x40000, (%%esp)\n"  // AC
+                    "popfl\n"                     // EFLAGS
 
                     : "=&r"(c)
                     : "r"(user_fmt + i)
@@ -201,30 +256,30 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             kbuf[i] = '\0';
 
-            // ⚠️⚠️⚠️ 启用输出：直接使用 vga_putc 输出每个字符
+            //   vga_putc 
             for (int j = 0; j < i; j++) {
                 vga_putc(kbuf[j]);
             }
-            tf->eax = i;  // 返回输出的字符数
+            tf->eax = i;  // 
             break;
         }
         case SYS_EXIT:
-            // ⚠️ 暂时禁用 printf，避免破坏 ES 寄存器
+            //   printf ES 
             // printf("[user] exit code=%d\n", arg1);
             do_exit(arg1);
-            // do_exit() 会触发调度，不会返回到这里
-            // 但为了安全，添加死循环
+            // do_exit() 
+            // 
             tf->eax = 0;
             break;
         case SYS_YIELD: {
-            // 让出CPU,调度其他任务
+            // CPU,
             extern int need_resched;
             need_resched = 1;
             tf->eax = 0;
             break;
         }
         case SYS_GET_MEM_STATS: {
-            // 获取内存统计
+            // 
             extern uint32_t buddy_get_total_pages(void);
             extern uint32_t buddy_get_free_pages(void);
             extern uint32_t buddy_get_used_pages(void);
@@ -246,7 +301,7 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_READ_MEM: {
-            // 读取内存地址
+            // 
             uint32_t addr = arg1;
             uint32_t *value = (uint32_t*)arg2;
 
@@ -259,14 +314,14 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_GETCHAR: {
-            // 从键盘读取一个字符
+            // 
             extern int keyboard_getchar(void);
             int c = keyboard_getchar();
             tf->eax = c;
             break;
         }
         case SYS_PUTCHAR: {
-            // 输出单个字符(字符在EBX中)
+            // (EBX)
             uint8_t ch = (uint8_t)(arg1 & 0xFF);
             extern void vga_putc(char);
             vga_putc((char)ch);
@@ -274,7 +329,7 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_GET_FRAMEBUFFER: {
-            // 获取 framebuffer 信息
+            //  framebuffer 
             struct framebuffer_info {
                 uint32_t addr;
                 uint32_t width;
@@ -284,7 +339,7 @@ void syscall_dispatch(struct trapframe *tf) {
             } *fb = (struct framebuffer_info*)arg1;
 
             if (fb && multiboot2_info_addr) {
-                // 遍历 multiboot2 标签查找 framebuffer 信息
+                //  multiboot2  framebuffer 
                 // Multiboot 2 info: [0-3] size, [4-7] reserved, [8+] tags
                 uint32_t *mb_info_ptr = (uint32_t *)phys_to_virt(multiboot2_info_addr);
                 multiboot_tag_t *tag = (multiboot_tag_t *)((uint8_t *)mb_info_ptr + 8);
@@ -310,17 +365,17 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_GETCWD: {
-            // getcwd(buf, size) - 获取当前工作目录
+            // getcwd(buf, size) - 
             char *buf = (char*)arg1;
             uint32_t size = arg2;
 
             if (buf && size >= 2) {
-                // 简化版：所有进程的当前工作目录都是根目录
+                // 
                 buf[0] = '/';
                 buf[1] = '\0';
-                tf->eax = 1;  // 返回长度（不包括null）
+                tf->eax = 1;  // null
             } else {
-                tf->eax = -1;  // 错误：缓冲区太小或为NULL
+                tf->eax = -1;  // NULL
             }
             break;
         }
@@ -330,23 +385,23 @@ void syscall_dispatch(struct trapframe *tf) {
             const char *user_buf = (const char*)arg2;
             uint32_t len = arg3;
 
-            if (fd == 1 && len < 512) {  // stdout，限制长度
-                // 先从用户空间拷贝到内核缓冲区
+            if (fd == 1 && len < 512) {  // stdout
+                // 
                 char kbuf[512];
                 int copied = 0;
 
-                // 使用汇编拷贝，避免SMAP问题
+                // SMAP
                 for (uint32_t i = 0; i < len; i++) {
                     char c;
                     __asm__ volatile (
-                        "pushfl\n"                    // 保存EFLAGS
-                        "orl $0x40000, (%%esp)\n"    // 设置AC位
+                        "pushfl\n"                    // EFLAGS
+                        "orl $0x40000, (%%esp)\n"    // AC
                         "popfl\n"
 
-                        "movb (%1), %0\n"             // 读取用户空间字符
+                        "movb (%1), %0\n"             // 
 
                         "pushfl\n"
-                        "andl $~0x40000, (%%esp)\n"  // 清除AC位
+                        "andl $~0x40000, (%%esp)\n"  // AC
                         "popfl\n"
 
                         : "=&r"(c)
@@ -357,7 +412,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     copied++;
                 }
 
-                // 输出到 VGA
+                //  VGA
                 for (int i = 0; i < copied; i++) {
                     vga_putc(kbuf[i]);
                 }
@@ -368,17 +423,17 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_FORK: {
-            // fork() 系统调用 - 创建子进程
-            // 返回值：父进程返回子进程PID，子进程返回0
+            // fork()  - 
+            // PID0
             extern task_t* do_fork(void);
             task_t *child = do_fork();
             if (child) {
-                // 父进程：返回子进程的 PID
+                //  PID
                 tf->eax = child->pid;
-                // ⚠️ 暂时禁用 printf，避免破坏 ES 寄存器
+                //   printf ES 
                 // printf("[fork] Parent PID=%d, Child PID=%d\n", current_task[logical_cpu_id()]->pid, child->pid);
             } else {
-                // 子进程或失败：返回 0
+                //  0
                 tf->eax = 0;
             }
             break;
@@ -390,24 +445,24 @@ void syscall_dispatch(struct trapframe *tf) {
 
             printf("[syscall] SYS_OPEN: pathname=0x%x, flags=%d\n", (uint32_t)pathname, flags);
 
-            // 从用户空间拷贝路径名
-            // 使用页表遍历获取用户地址的物理地址
+            // 
+            // 
             char kpath[256];
             int i = 0;
 
             printf("[syscall] Reading from user address 0x%x\n", (uint32_t)pathname);
 
-            // 手动实现页表遍历，避免调用 get_physical_address 导致的页错误
+            //  get_physical_address 
             extern uint32_t kernel_page_directory_phys;
             uint32_t *pd_virt = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
 
-            // 检查是否在用户空间范围
+            // 
             printf("[syscall] DEBUG: pathname=0x%x, 0xC0000000=%d\n",
                    (uint32_t)pathname, ((uint32_t)pathname < 0xC0000000));
             if ((uint32_t)pathname < 0xC0000000) {
                 printf("[syscall] User space address, attempting page table walk...\n");
 
-                // 手动遍历页表获取物理地址
+                // 
                 uint32_t str_virt = (uint32_t)pathname;
                 uint32_t pd_idx = (str_virt >> 22) & 0x3FF;
                 uint32_t pt_idx = (str_virt >> 12) & 0x3FF;
@@ -415,7 +470,7 @@ void syscall_dispatch(struct trapframe *tf) {
 
                 printf("[syscall] pd_idx=%d, pt_idx=%d, offset=0x%x\n", pd_idx, pt_idx, page_offset);
 
-                // 检查 PDE
+                //  PDE
                 uint32_t pde_entry = pd_virt[pd_idx];
                 printf("[syscall] pde_entry=0x%x\n", pde_entry);
 
@@ -423,12 +478,12 @@ void syscall_dispatch(struct trapframe *tf) {
                     printf("[syscall] ERROR: PDE not present!\n");
                     kpath[0] = '\0';
                 } else {
-                    // 获取页表物理地址
+                    // 
                     uint32_t pt_phys = pde_entry & ~0xFFF;
 
                     printf("[syscall] Page table at phys=0x%x\n", pt_phys);
 
-                    // 使用 map_highmem_physical 映射页表
+                    //  map_highmem_physical 
                     extern void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags);
                     uint32_t *pt_virt = (uint32_t*)map_highmem_physical(pt_phys, 4096, 0);
 
@@ -440,25 +495,25 @@ void syscall_dispatch(struct trapframe *tf) {
                             uint32_t phys_page = pte & ~0xFFF;
                             printf("[syscall] phys_page=0x%x\n", phys_page);
 
-                            // 使用 map_highmem_physical 动态映射用户物理页
+                            //  map_highmem_physical 
                             uint8_t *user_page_virt = (uint8_t*)map_highmem_physical(phys_page, 4096, 0);
 
                             printf("[syscall] user_page_virt=0x%x\n", (uint32_t)user_page_virt);
 
                             if (user_page_virt != NULL) {
-                                // 验证映射：尝试直接读取映射地址的字符串位置（page_offset）
+                                // page_offset
                                 printf("[syscall] Test read: user_page_virt[%d]=0x%x\n", page_offset, user_page_virt[page_offset]);
                                 printf("[syscall] Test read: user_page_virt[%d]=0x%x\n", page_offset+1, user_page_virt[page_offset+1]);
                                 printf("[syscall] Test read: user_page_virt[%d]=0x%x\n", page_offset+2, user_page_virt[page_offset+2]);
 
-                                // 打印前16字节
+                                // 16
                                 printf("[syscall] Raw data: ");
                                 for (int j = 0; j < 16; j++) {
                                     printf("%02x ", user_page_virt[page_offset + j]);
                                 }
                                 printf("\n");
 
-                                // 复制字符串
+                                // 
                                 int i;
                                 for (i = 0; i < 255; i++) {
                                     kpath[i] = user_page_virt[page_offset + i];
@@ -485,7 +540,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 }
             } else {
                 printf("[syscall] Kernel space address, copying directly\n");
-                // 内核空间地址，直接复制
+                // 
                 for (i = 0; i < 255; i++) {
                     kpath[i] = pathname[i];
                     if (kpath[i] == '\0') break;
@@ -494,12 +549,12 @@ void syscall_dispatch(struct trapframe *tf) {
                 printf("[syscall] Copied path: '%s' (len=%d)\n", kpath, i);
             }
 
-            // 调用 VFS 层
+            //  VFS 
             extern struct file *filp_open(const char *, int);
             struct file *file = filp_open(kpath, flags);
             if (file) {
-                // ⚠️ 简化版：使用文件指针作为 fd
-                // 后续需要实现 fd 表
+                //   fd
+                //  fd 
                 tf->eax = (int)file;
             } else {
                 tf->eax = -1;
@@ -511,7 +566,7 @@ void syscall_dispatch(struct trapframe *tf) {
             int fd = (int)arg1;
             struct file *file = (struct file*)fd;
 
-            // 调用 VFS 层
+            //  VFS 
             extern int filp_close(struct file *);
             int ret = filp_close(file);
             tf->eax = ret;
@@ -524,14 +579,14 @@ void syscall_dispatch(struct trapframe *tf) {
             uint32_t len = arg3;
             struct file *file = (struct file*)fd;
 
-            // 调用 VFS 层（先读入内核缓冲区）
+            //  VFS 
             extern int filp_read(struct file *, char *, uint32_t);
             char kbuf[512];
             uint32_t to_read = (len < 512) ? len : 512;
             int ret = filp_read(file, kbuf, to_read);
 
             if (ret > 0) {
-                // 拷贝到用户空间
+                // 
                 for (int i = 0; i < ret; i++) {
                     char c = kbuf[i];
                     __asm__ volatile (
@@ -558,18 +613,30 @@ void syscall_dispatch(struct trapframe *tf) {
             int whence = (int)arg3;
             struct file *file = (struct file*)fd;
 
-            // 调用 VFS 层
+            //  VFS 
             extern int filp_lseek(struct file *, int64_t, int);
             int ret = filp_lseek(file, (int64_t)offset, whence);
             tf->eax = ret;
             break;
         }
         case SYS_NET_PING: {
-            // net_ping(ip_addr)
-            // arg1 是 IP 地址字符串指针
+            // net_ping(ip_addr, device)
+            // arg1: IP 地址字符串
+            // arg2: 设备名称（可选，NULL表示使用默认设备）
             const char *ip_str = (const char *)arg1;
+            const char *dev_name = (const char *)arg2;
 
-            // 简单的 IP 地址解析 (a.b.c.d)
+            // 临时覆盖 current_net_device（如果提供了设备名）
+            char old_device[32] = {0};
+            if (dev_name != NULL && dev_name[0] != '\0') {
+                // 保存旧设备名
+                strncpy(old_device, current_net_device, sizeof(old_device) - 1);
+                // 设置新设备名
+                strncpy(current_net_device, dev_name, sizeof(current_net_device) - 1);
+                printf("[syscall] Temporarily setting device to: %s\n", current_net_device);
+            }
+
+            // 解析 IP  (a.b.c.d)
             uint32_t ip = 0;
             int parts[4];
             int part_count = 0;
@@ -591,37 +658,908 @@ void syscall_dispatch(struct trapframe *tf) {
             parts[part_count] = current;
 
             if (part_count == 3) {
-                // 组合成 32 位 IP
+                // 组装 32 位 IP（主机字节序）
                 ip = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
 
-                // 调用网络层发送 ping
-                extern int icmp_send_echo(void *dev, uint32_t dst_ip, uint16_t id, uint16_t seq);
-                extern void *net_device_get_default(void);
+                // 🔍 调试：打印解析出的 IP
+                printf("[syscall] Parsed IP: 0x%x (%d.%d.%d.%d)\n", ip,
+                       parts[0], parts[1], parts[2], parts[3]);
 
-                void *dev = net_device_get_default();
-                if (dev) {
-                    // 发送 4 个 ping 包
-                    int i;
-                    for (i = 0; i < 4; i++) {
-                        icmp_send_echo(dev, ip, 0x1234, i + 1);
+                //  ping
+                // 🔥 使用与 UDP 相同的设备选择逻辑
+                extern net_device_t *net_device_get_default(void);
+                extern int net_get_device_count(void);
+                extern net_device_t **net_get_all_devices(void);
+
+                net_device_t *dev = NULL;
+                int count = net_get_device_count();
+                net_device_t **devices = net_get_all_devices();
+
+                // 如果用户指定了网卡，查找指定的网卡
+                if (current_net_device[0] != '\0') {
+                    printf("[syscall] Looking for device: %s\n", current_net_device);
+                    for (int i = 0; i < count; i++) {
+                        if (devices[i] && strcmp(devices[i]->name, current_net_device) == 0) {
+                            dev = devices[i];
+                            printf("[syscall] Using specified device: %s\n", dev->name);
+                            break;
+                        }
                     }
-                    tf->eax = 0;  // 成功
+                    if (!dev) {
+                        printf("[syscall] ERROR: Device '%s' not found\n", current_net_device);
+                        tf->eax = -3;
+                        break;
+                    }
                 } else {
-                    tf->eax = -1;  // 失败：没有网络设备
+                    // 自动选择：查找第一个非loopback设备（以太网设备）
+                    for (int i = 0; i < count; i++) {
+                        if (devices[i] && devices[i]->send != NULL) {
+                            // 检查设备名称，跳过loopback
+                            if (strcmp(devices[i]->name, "lo") != 0) {
+                                dev = devices[i];
+                                printf("[syscall] Auto-selected device: %s\n", dev->name);
+                                break;
+                            }
+                        }
+                    }
                 }
+
+                if (!dev) {
+                    printf("[syscall] No network device available\n");
+                    tf->eax = -1;
+                    break;
+                }
+
+                // icmp_send_echo 已在 net.h 中声明
+                //  发送 4 个 ping 包
+                int i;
+                for (i = 0; i < 4; i++) {
+                    icmp_send_echo(dev, ip, 0x1234, i + 1);
+                }
+
+                // 恢复旧的设备名（如果之前保存了）
+                if (old_device[0] != '\0') {
+                    strncpy(current_net_device, old_device, sizeof(current_net_device) - 1);
+                    printf("[syscall] Restored device to: %s\n", current_net_device);
+                }
+
+                tf->eax = 0;  // 成功
             } else {
-                tf->eax = -2;  // 失败：无效的 IP 地址
+                // 恢复旧的设备名（即使IP无效也要恢复）
+                if (old_device[0] != '\0') {
+                    strncpy(current_net_device, old_device, sizeof(current_net_device) - 1);
+                    printf("[syscall] Restored device to: %s\n", current_net_device);
+                }
+                tf->eax = -2;  // IP 地址无效
             }
             break;
         }
+        case SYS_NET_IFCONFIG: {
+            // net_ifconfig() - 显示网卡接口配置
+            // 🔥 修复：显示所有注册的网络设备，而不只是第一个
+            extern int net_get_device_count(void);
+            extern net_device_t *net_device_get_default();
+
+            int count = net_get_device_count();
+            printf("\n=== Network Interface Configuration ===\n");
+            printf("Total devices: %d\n\n", count);
+
+            if (count == 0) {
+                printf("No network device found\n");
+                tf->eax = -1;
+                break;
+            }
+
+            // 显示所有设备
+            extern net_device_t **net_get_all_devices(void);
+            net_device_t **devices = net_get_all_devices();
+
+            for (int i = 0; i < count && devices[i]; i++) {
+                net_device_t *dev = devices[i];
+
+                printf("--- Device %d ---\n", i);
+                printf("Name:       %s\n", dev->name);
+
+                // MAC 地址
+                printf("MAC:        %02x:%02x:%02x:%02x:%02x:%02x\n",
+                       dev->mac_addr[0], dev->mac_addr[1],
+                       dev->mac_addr[2], dev->mac_addr[3],
+                       dev->mac_addr[4], dev->mac_addr[5]);
+
+                // IP 地址
+                printf("IP:         %d.%d.%d.%d\n",
+                       (dev->ip_addr >> 24) & 0xFF,
+                       (dev->ip_addr >> 16) & 0xFF,
+                       (dev->ip_addr >> 8) & 0xFF,
+                       dev->ip_addr & 0xFF);
+
+                // 子网掩码
+                printf("Netmask:    %d.%d.%d.%d\n",
+                       (dev->netmask >> 24) & 0xFF,
+                       (dev->netmask >> 16) & 0xFF,
+                       (dev->netmask >> 8) & 0xFF,
+                       dev->netmask & 0xFF);
+
+                // MTU
+                printf("MTU:        %d bytes\n", dev->mtu);
+
+                // 状态
+                printf("Status:     UP\n");
+
+                // 设备类型
+                printf("Type:       ");
+                if (dev->name[0] == 'l' && dev->name[1] == 'o') {
+                    printf("Loopback\n");
+                } else if (dev->name[0] == 'e' && dev->name[1] == 't' && dev->name[2] == 'h') {
+                    // 以太网设备，尝试从 PCI 获取更多信息
+                    int eth_num = dev->name[3] - '0';
+                    if (eth_num >= 0) {
+                        // 遍历 PCI 设备，查找第 eth_num 个网络设备
+                        pci_dev_t **pci_devices = pci_get_devices();
+                        int net_count = 0;
+                        int found = 0;
+
+                        for (int j = 0; pci_devices[j] != NULL && !found; j++) {
+                            pci_dev_t *pci = pci_devices[j];
+                            if (pci->header.class == 0x02) {  // 网络设备
+                                if (net_count == eth_num) {
+                                    const char *vendor = pci_get_vendor_name(pci->header.vendor_id);
+                                    const char *device = pci_get_device_name(pci->header.vendor_id, pci->header.device_id);
+                                    if (vendor && device) {
+                                        printf("%s %s\n", vendor, device);
+                                        found = 1;
+                                    }
+                                }
+                                net_count++;
+                            }
+                        }
+
+                        if (!found) {
+                            printf("Ethernet\n");
+                        }
+                    } else {
+                        printf("Ethernet\n");
+                    }
+                } else {
+                    printf("Unknown\n");
+                }
+
+                // 🔥 显示 E1000 的 IRQ 信息
+                extern int e1000_irq;
+                if (e1000_irq != -1) {
+                    printf("IRQ:        %d\n", e1000_irq);
+                }
+
+                printf("\n");
+            }
+
+            tf->eax = 0;  // 成功
+            break;
+        }
+        case SYS_WIFI_INIT: {
+            // wifi_init() - WiFi 
+            extern int atheros_init(void);
+            int ret = atheros_init();
+            tf->eax = ret;  // 0-1
+            break;
+        }
+        case SYS_WIFI_SCAN: {
+            // wifi_scan() - WiFi 
+            extern int wifi_scan(void);
+            int ret = wifi_scan();
+            tf->eax = ret;  // 
+            break;
+        }
+        case SYS_WIFI_CONNECT: {
+            // wifi_connect(ssid, password) - WiFi 
+            const char *ssid = (const char *)arg1;
+            const char *password = (const char *)arg2;
+
+            // 
+            char kssid[32];
+            char kpassword[64];
+
+            int i;
+            for (i = 0; i < 31 && ssid[i] != '\0'; i++) {
+                __asm__ volatile (
+                    "pushfl\n"
+                    "orl $0x40000, (%%esp)\n"
+                    "popfl\n"
+                    "movb (%1), %0\n"
+                    "pushfl\n"
+                    "andl $~0x40000, (%%esp)\n"
+                    "popfl\n"
+                    : "=r"(kssid[i])
+                    : "r"(&ssid[i])
+                    : "memory", "cc"
+                );
+            }
+            kssid[i] = '\0';
+
+            for (i = 0; i < 63 && password[i] != '\0'; i++) {
+                __asm__ volatile (
+                    "pushfl\n"
+                    "orl $0x40000, (%%esp)\n"
+                    "popfl\n"
+                    "movb (%1), %0\n"
+                    "pushfl\n"
+                    "andl $~0x40000, (%%esp)\n"
+                    "popfl\n"
+                    : "=r"(kpassword[i])
+                    : "r"(&password[i])
+                    : "memory", "cc"
+                );
+            }
+            kpassword[i] = '\0';
+
+            extern int wifi_connect(const char *, const char *);
+            int ret = wifi_connect(kssid, kpassword);
+            tf->eax = ret;
+            break;
+        }
+        case SYS_WIFI_DISCONNECT: {
+            // wifi_disconnect() - WiFi 
+            extern int wifi_disconnect(void);
+            int ret = wifi_disconnect();
+            tf->eax = ret;
+            break;
+        }
+        case SYS_WIFI_STATUS: {
+            // wifi_status() - WiFi 
+            extern void wifi_status(void);
+            wifi_status();
+            tf->eax = 0;
+            break;
+        }
+        case SYS_WIFI_LOAD_FIRMWARE: {
+            //  
+            // arg1 = &struct user_buf ()
+
+            struct user_buf {
+                const void *ptr;
+                uint32_t len;
+            } ubuf;
+
+            //  
+            const struct user_buf *user_ubuf = (const struct user_buf *)arg1;
+
+            //  memcpy 
+            memcpy(&ubuf, user_ubuf, sizeof(ubuf));
+
+            //  
+            if (ubuf.len == 0 || ubuf.len > (2 * 1024 * 1024)) {  //  2MB
+                tf->eax = -1;  // -EINVAL
+                break;
+            }
+
+            //  
+            uint8_t *fw_buffer = (uint8_t *)kmalloc(ubuf.len);
+            if (!fw_buffer) {
+                tf->eax = -2;  // -ENOMEM
+                break;
+            }
+
+            //    memcpy 
+            memcpy(fw_buffer, ubuf.ptr, ubuf.len);
+
+            //   fw_buffer 
+            extern uint32_t atheros_wifi_mem_base;
+            extern int intel_fw_load_from_buffer(uint32_t mem_base, const uint8_t *fw_data, uint32_t fw_size);
+            int ret = intel_fw_load_from_buffer(atheros_wifi_mem_base, fw_buffer, ubuf.len);
+
+            tf->eax = ret;  // 0
+            break;
+        }
+        // ==================== WiFi ====================
+        case SYS_WIFI_FW_BEGIN: {
+            // arg1 = uint32_t size
+            uint32_t size = arg1;
+
+            // 
+            if (size == 0 || size > FW_MAX_SIZE) {
+                tf->eax = -1;  // -EINVAL
+                break;
+            }
+
+            // 
+            if (fw_buf) {
+                tf->eax = -2;  // -EBUSY
+                break;
+            }
+
+            // 
+            fw_buf = (uint8_t *)kmalloc(size);
+            if (!fw_buf) {
+                tf->eax = -3;  // -ENOMEM
+                break;
+            }
+
+            fw_size = size;
+            fw_received = 0;
+            fw_checksum = 0;
+
+            printf("[syscall] WiFi FW BEGIN: allocated %u bytes at 0x%x\n",
+                   size, (uint32_t)fw_buf);
+
+            tf->eax = 0;  // 
+            break;
+        }
+        case SYS_WIFI_FW_CHUNK: {
+            // arg1 = const void *ptr
+            // arg2 = uint32_t len
+            // arg3 = uint32_t offset
+
+            const uint8_t *user_ptr = (const uint8_t *)arg1;
+            uint32_t len = arg2;
+            uint32_t offset = arg3;
+
+            // 
+            if (!fw_buf) {
+                tf->eax = -1;  // -EINVAL
+                break;
+            }
+
+            // 
+            if (offset + len > fw_size) {
+                printf("[syscall] WiFi FW CHUNK: offset=%u len=%u exceeds size=%u\n",
+                       offset, len, fw_size);
+                tf->eax = -1;
+                break;
+            }
+
+            if (!user_ptr || len == 0 || len > FW_CHUNK_SIZE) {
+                tf->eax = -1;
+                break;
+            }
+
+            //  memcpy len  4KB
+            memcpy(fw_buf + offset, user_ptr, len);
+
+            //  checksum
+            for (uint32_t i = 0; i < len; i++) {
+                fw_checksum += fw_buf[offset + i];
+            }
+
+            fw_received += len;
+
+            tf->eax = 0;  // 
+            break;
+        }
+        case SYS_WIFI_FW_END: {
+            // 
+
+            // 
+            if (!fw_buf) {
+                tf->eax = -1;  // -EINVAL
+                break;
+            }
+
+            // 
+            if (fw_received != fw_size) {
+                printf("[syscall] WiFi FW END: incomplete! received=%u expected=%u\n",
+                       fw_received, fw_size);
+                kfree(fw_buf);
+                fw_buf = NULL;
+                tf->eax = -1;
+                break;
+            }
+
+            printf("[syscall] WiFi FW END: complete! size=%u checksum=0x%x\n",
+                   fw_size, fw_checksum);
+
+            //   magic
+            if (fw_size < 4) {
+                printf("[syscall] WiFi FW END: firmware too small!\n");
+                kfree(fw_buf);
+                fw_buf = NULL;
+                tf->eax = -1;
+                break;
+            }
+
+            // Intel  magic: 0x000000004
+            //  size 
+
+            //  WiFi 
+            extern uint32_t atheros_wifi_mem_base;
+            extern int intel_fw_load_from_buffer(uint32_t mem_base, const uint8_t *fw_data, uint32_t fw_size);
+            int ret = intel_fw_load_from_buffer(atheros_wifi_mem_base, fw_buf, fw_size);
+
+            // 
+            kfree(fw_buf);
+            fw_buf = NULL;
+
+            tf->eax = ret;  // 
+            break;
+        }
+        case SYS_EXECV: {
+            // execv(path, argv) - 
+            //  execv 
+            // 
+            const char *path = (const char *)arg1;
+            char *const *argv = (char *const *)arg2;
+
+            // 
+            // 
+            // 1.  ELF 
+            // 2. 
+            // 3. 
+            // 4.  trapframe 
+
+            tf->eax = -1;  //
+            break;
+        }
+        case SYS_LSPCI: {
+            // 🔥 lspci - 列出所有 PCI 设备（网络设备放最后）
+            printf("\n=== PCI Device List ===\n\n");
+
+            pci_dev_t **pci_devices = pci_get_devices();
+            pci_dev_t *network_devices[16];  // 保存网络设备
+            int net_count = 0;
+            int total_count = 0;
+
+            // 第一遍：收集所有设备
+            for (int i = 0; pci_devices[i] != NULL; i++) {
+                total_count++;
+            }
+
+            // 第二遍：先显示非网络设备，收集网络设备
+            printf("[Non-Network Devices]\n");
+            for (int i = 0; pci_devices[i] != NULL; i++) {
+                pci_dev_t *pci = pci_devices[i];
+
+                // 🔍 调试：打印完整的 class code 信息
+                // PCI Class Code 位于 offset 0x08-0x0B
+                // 直接读取配置空间的 dword
+                uint32_t addr =
+                    0x80000000 |
+                    ((pci->bus_id & 0xFF) << 16) |
+                    ((pci->dev_id & 0x1F) << 11) |
+                    ((pci->fn_id & 0x7) << 8) |
+                    0x08;  // offset 0x08
+
+                outl(CONFIG_ADDRESS, addr);
+                uint32_t raw_class_dword = inl(CONFIG_DATA);
+
+                uint8_t base_class = pci->header.class;
+                uint8_t subclass = pci->header.subclass;
+                uint8_t prog_if = pci->header.prog_if;
+                uint8_t revision = pci->header.revision_id;
+
+                // 检查是否是网络设备 (Base Class = 0x02)
+                // 尝试多种可能的字节序解释
+                int is_network_v1 = (base_class == 0x02);  // 结构体中的 class 字段
+                int is_network_v2 = ((raw_class_dword >> 24) == 0x02);  // 最高字节
+                int is_network_v3 = ((raw_class_dword >> 16) == 0x02);  // 第三字节
+                int is_network_v4 = ((raw_class_dword >> 8) == 0x02);   // 第二字节
+
+                int is_network = is_network_v1 || is_network_v2 || is_network_v3 || is_network_v4;
+
+                // 🔍 调试输出（只打印前几个设备）
+                static int debug_shown = 0;
+                if (!debug_shown && i < 3) {
+                    printf("[DEBUG] Device[%d]: raw_dword=0x%08x rev=0x%02x class=0x%02x sub=0x%02x prog=0x%02x\n",
+                           i, raw_class_dword, revision, base_class, subclass, prog_if);
+                    printf("[DEBUG]   Network checks: v1=%d v2=%d v3=%d v4=%d final=%d\n",
+                           is_network_v1, is_network_v2, is_network_v3, is_network_v4, is_network);
+                    if (i == 2) debug_shown = 1;
+                }
+
+                // 如果是网络设备，保存起来稍后显示
+                if (is_network) {
+                    if (net_count < 16) {
+                        network_devices[net_count++] = pci;
+                    }
+                    continue;
+                }
+
+                // 显示非网络设备
+                const char *vendor = pci_get_vendor_name(pci->header.vendor_id);
+                const char *device = pci_get_device_name(pci->header.vendor_id, pci->header.device_id);
+
+                printf("  [%02d] %04x:%04x %s %s\n",
+                       i,
+                       pci->header.vendor_id,
+                       pci->header.device_id,
+                       vendor ? vendor : "Unknown",
+                       device ? device : "Device");
+                printf("       Class: 0x%02x, IRQ: %d\n",
+                       pci->header.class,
+                       pci->header.u.h00.interrupt_line);
+            }
+
+            // 最后显示网络设备
+            if (net_count > 0) {
+                printf("\n[Network Devices]\n");
+                for (int i = 0; i < net_count; i++) {
+                    pci_dev_t *pci = network_devices[i];
+                    const char *vendor = pci_get_vendor_name(pci->header.vendor_id);
+                    const char *device = pci_get_device_name(pci->header.vendor_id, pci->header.device_id);
+
+                    printf("  [%02d] %04x:%04x %s %s\n",
+                           i,
+                           pci->header.vendor_id,
+                       pci->header.device_id,
+                           vendor ? vendor : "Unknown",
+                           device ? device : "Device");
+                    printf("       Class: 0x%02x (Network), IRQ: %d\n",
+                           pci->header.class,
+                           pci->header.u.h00.interrupt_line);
+
+                    // 🔥 手动注册 E1000 中断处理函数（已移到 e1000_init_dev 中）
+                    // if (pci->header.vendor_id == 0x8086 && pci->header.device_id == 0x1502) {
+                    //     printf("[lspci] E1000 82579LM detected!\n");
+                    //
+                    //     // 🔥 使用 pci_read_config_dword 读取 IRQ（offset 0x3C）
+                    //     extern uint32_t pci_read_config_dword(unsigned bus, unsigned dev, unsigned fn, unsigned reg);
+                    //     uint32_t irq_value = pci_read_config_dword(pci->bus_id, pci->dev_id, pci->fn_id, 0x3C);
+                    //     uint8_t irq = irq_value & 0xFF;  // 取最低字节
+                    //
+                    //     printf("[lspci] E1000 IRQ from PCI (offset 0x3C): %d\n", irq);
+                    //
+                    //     // 🔥 如果 IRQ 为 0 或 0xFF，使用默认值 11
+                    //     if (irq == 0 || irq == 0xFF) {
+                    //         irq = 11;
+                    //         printf("[lspci] IRQ not configured, using default: %d\n", irq);
+                    //     }
+                    //
+                    //     // 注册中断处理函数到 IOAPIC
+                    //     extern void ioapicenable(int irq, int cpu);
+                    //     printf("[lspci] Registering IRQ %d to IOAPIC...\n", irq);
+                    //     ioapicenable(irq, 0);
+                    //     printf("[lspci] E1000 IRQ %d registered!\n", irq);
+                    // }
+                }
+            }
+
+            printf("\nTotal: %d PCI devices (%d network)\n", total_count, net_count);
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_INIT_RTL8139: {
+            // 🔥 初始化 RTL8139 网卡
+            extern int rtl8139_init(void);
+            int ret = rtl8139_init();
+            tf->eax = ret;
+            break;
+        }
+        case SYS_NET_INIT_E1000: {
+            // 🔥 初始化 E1000 网卡
+            // 参数: tf->ebx = 设备名称（如 "eth0", "eth1"）
+            const char *dev_name_user = (const char *)tf->ebx;
+
+            if (dev_name_user == NULL) {
+                printf("[syscall] ERROR: Device name is NULL\n");
+                tf->eax = -1;
+                break;
+            }
+
+            // 🔥 将设备名称从用户空间复制到内核空间
+            static char dev_name_kernel[16];
+            copy_from_user(dev_name_kernel, dev_name_user, 16);
+            dev_name_kernel[15] = '\0';  // 确保以 null 结尾
+
+            printf("[syscall] E1000 init: device=%s\n", dev_name_kernel);
+
+            extern int e1000_init(const char *dev_name);
+            int ret = e1000_init(dev_name_kernel);
+            tf->eax = ret;
+            break;
+        }
+        case SYS_NET_SEND_UDP: {
+            // 🔥 发送 UDP 包
+            // 参数: tf->ebx = IP字符串指针, tf->ecx = 端口, tf->edx = 数据指针, tf->esi = 数据长度
+            const char *ip_str = (const char *)tf->ebx;
+            int port = (int)tf->ecx;
+            const char *data = (const char *)tf->edx;
+            int len = (int)tf->esi;
+
+            printf("[syscall] Send UDP: %s:%d, len=%d\n", ip_str, port, len);
+
+            // 1. 解析 IP 地址字符串为 32 位整数
+            uint32_t dst_ip = 0;
+            uint8_t octets[4];
+            int octet_idx = 0;
+            uint32_t current = 0;
+
+            for (const char *p = ip_str; *p != '\0'; p++) {
+                if (*p == '.') {
+                    octets[octet_idx++] = (uint8_t)current;
+                    current = 0;
+                } else if (*p >= '0' && *p <= '9') {
+                    current = current * 10 + (*p - '0');
+                }
+            }
+            octets[octet_idx] = (uint8_t)current;
+
+            dst_ip = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+
+            // 2. 获取网络设备
+            extern net_device_t *net_device_get_default(void);
+            extern int net_get_device_count(void);
+            extern net_device_t **net_get_all_devices(void);
+
+            net_device_t *dev = NULL;
+            int count = net_get_device_count();
+            net_device_t **devices = net_get_all_devices();
+
+            // 如果用户指定了网卡，查找指定的网卡
+            if (current_net_device[0] != '\0') {
+                printf("[syscall] Looking for device: %s\n", current_net_device);
+                for (int i = 0; i < count; i++) {
+                    if (devices[i] && strcmp(devices[i]->name, current_net_device) == 0) {
+                        dev = devices[i];
+                        printf("[syscall] Using specified device: %s\n", dev->name);
+                        break;
+                    }
+                }
+                if (!dev) {
+                    printf("[syscall] ERROR: Device '%s' not found\n", current_net_device);
+                    tf->eax = -3;
+                    break;
+                }
+            } else {
+                // 自动选择：查找第一个非loopback设备（以太网设备）
+                for (int i = 0; i < count; i++) {
+                    if (devices[i] && devices[i]->send != NULL) {
+                        // 检查设备名称，跳过loopback
+                        if (strcmp(devices[i]->name, "lo") != 0) {
+                            dev = devices[i];
+                            printf("[syscall] Auto-selected device: %s\n", dev->name);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!dev) {
+                printf("[syscall] No network device available\n");
+                tf->eax = -2;
+                break;
+            }
+
+            // 3. 调用 UDP 输出函数
+            extern int udp_output(net_device_t *dev, uint32_t dst_ip, uint16_t src_port,
+                                 uint16_t dst_port, uint8_t *data, uint32_t len);
+
+            // 🔥 使用动态源端口
+            // 策略：使用动态端口范围 (49152-65535)
+            // 端口计算：基础端口 + (目标端口的哈希)
+            // 这样同一目标端口会使用相同的源端口，便于 NAT 穿透
+            static uint16_t udp_src_port_counter = 0;
+            uint16_t src_port = 49152 + ((udp_src_port_counter++ + port) % 16384);
+
+            printf("[syscall] Using src port=%d, dst port=%d\n", src_port, port);
+
+            int ret = udp_output(dev, dst_ip, src_port, port, (uint8_t *)data, len);
+            tf->eax = ret;
+            break;
+        }
+        case SYS_NET_SET_DEVICE: {
+            // 🔥 设置当前使用的网络设备
+            // 参数: tf->ebx = 设备名称字符串指针
+            const char *dev_name = (const char *)tf->ebx;
+
+            if (dev_name == NULL || strcmp(dev_name, "auto") == 0) {
+                // 设置为空字符串表示自动选择
+                current_net_device[0] = '\0';
+                printf("[syscall] Device selection: auto\n");
+                tf->eax = 0;
+            } else {
+                // 🔥 将设备名称复制到内核缓冲区（而不是保存用户空间指针）
+                int i;
+                for (i = 0; i < 15 && dev_name[i] != '\0'; i++) {
+                    current_net_device[i] = dev_name[i];
+                }
+                current_net_device[i] = '\0';
+                printf("[syscall] Device selection: %s (copied to kernel)\n", current_net_device);
+                tf->eax = 0;
+            }
+            break;
+        }
+        case SYS_NET_POLL_RX: {
+            // 🔥 轮询RX（通用接口）
+            // TODO: 需要添加设备名称参数
+            printf("[syscall] POLL_RX called (TODO: needs device parameter)\n");
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_DUMP_REGS: {
+            // 🔥 转储网卡寄存器状态
+            // 参数: tf->ebx = 设备名称（如 "eth0", "eth1"）
+            const char *dev_name = (const char *)tf->ebx;
+
+            if (dev_name == NULL) {
+                printf("[syscall] ERROR: Device name is NULL\n");
+                tf->eax = -1;
+                break;
+            }
+
+            printf("[syscall] Dumping registers for device: %s\n", dev_name);
+
+            // 根据设备名称判断类型并调用相应的 dump 函数
+            // 目前只支持 E1000（eth0, eth1 等）
+            if (strncmp(dev_name, "eth", 3) == 0) {
+                extern void e1000_dump_regs(void);
+                e1000_dump_regs();
+            } else {
+                printf("[syscall] ERROR: Unsupported device type: %s\n", dev_name);
+                tf->eax = -1;
+                break;
+            }
+
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_ARP: {
+            // 🔥 ARP 命令 - 显示/扫描 ARP 缓存
+            // arg1 (ebx) = 设备名称
+            // arg2 (ecx) = scan 标志 (1=扫描并更新, 0=仅显示)
+            const char *dev_name = (const char *)tf->ebx;
+            int scan = (int)tf->ecx;
+
+            if (dev_name == NULL) {
+                printf("[syscall] ERROR: Device name is NULL\n");
+                tf->eax = -1;
+                break;
+            }
+
+            // 查找设备
+            extern net_device_t **net_get_all_devices(void);
+            extern int net_get_device_count(void);
+            net_device_t **devices = net_get_all_devices();
+            int count = net_get_device_count();
+
+            net_device_t *dev = NULL;
+            for (int i = 0; i < count; i++) {
+                if (devices[i] && strcmp(devices[i]->name, dev_name) == 0) {
+                    dev = devices[i];
+                    break;
+                }
+            }
+
+            if (!dev) {
+                printf("[syscall] ERROR: Device '%s' not found\n", dev_name);
+                tf->eax = -1;
+                break;
+            }
+
+            extern void arp_show_cache(net_device_t *dev, int scan);
+            arp_show_cache(dev, scan);
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_DUMP_RX_REGS: {
+            // 🔥 转储 RX 寄存器（详细）
+            // 参数: tf->ebx = 设备名称（如 "eth0", "eth1"）
+            const char *dev_name = (const char *)tf->ebx;
+
+            if (dev_name == NULL) {
+                printf("[syscall] ERROR: Device name is NULL\n");
+                tf->eax = -1;
+                break;
+            }
+
+            printf("[syscall] Dumping RX registers for device: %s\n", dev_name);
+
+            // 查找设备
+            extern net_device_t **net_get_all_devices(void);
+            extern int net_get_device_count(void);
+            net_device_t **devices = net_get_all_devices();
+            int count = net_get_device_count();
+
+            net_device_t *dev = NULL;
+            for (int i = 0; i < count; i++) {
+                if (devices[i] && strcmp(devices[i]->name, dev_name) == 0) {
+                    dev = devices[i];
+                    break;
+                }
+            }
+
+            if (!dev) {
+                printf("[syscall] ERROR: Device '%s' not found\n", dev_name);
+                tf->eax = -1;
+                break;
+            }
+
+            // 🔥 调用 net_dump_rx_regs，它会显示统计信息和 ARP 表
+            extern void net_dump_rx_regs(net_device_t *dev);
+            net_dump_rx_regs(dev);
+
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_IFUP: {
+            // 🔥 启动网络接口
+            // arg1 (ebx) = 设备名称字符串指针
+            const char *dev_name = (const char *)tf->ebx;
+
+            if (dev_name == NULL) {
+                printf("[syscall] ERROR: Device name is NULL\n");
+                tf->eax = -1;
+                break;
+            }
+
+            printf("[syscall] IFUP: device=%s\n", dev_name);
+
+            // 调用 e1000_ifup
+            extern int e1000_ifup(const char *dev_name);
+            int ret = e1000_ifup(dev_name);
+            tf->eax = ret;
+            break;
+        }
+        case SYS_MSI_TEST: {
+            // 🔥 MSI 测试 - 手动触发 MSI 来验证中断路径
+            extern void msi_test_full_path(void);
+            msi_test_full_path();
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_LOOPBACK_TEST: {
+            // 🔥 E1000 硬件 loopback 测试 - 测试 TX/RX/DMA（轮询版本）
+            extern int e1000_loopback_test(void);
+            int ret = e1000_loopback_test();
+            tf->eax = ret;
+            break;
+        }
+        case SYS_NET_LOOPBACK_TEST_INT: {
+            // 🔥 E1000 硬件 loopback 测试 - 测试 TX/RX/MSI/DMA（中断版本）
+            extern int e1000_loopback_test_interrupt(void);
+            int ret = e1000_loopback_test_interrupt();
+            tf->eax = ret;
+            break;
+        }
         default:
-            // ⚠️ 暂时禁用 printf，避免破坏 ES 寄存器
+            //   printf ES 
             // printf("[syscall] unknown num=%d\n", num);
             tf->eax = -1;
             break;
     }
 
-    // 不要在这里切换CR3!
-    // CR3应该只在任务切换时切换,不应该在每次系统调用时切换
-    // Linux 0.11也是在系统调用返回时不切换CR3的
+    // CR3!
+    // CR3,
+    // Linux 0.11CR3
+}
+
+// ==================== 系统调用包装函数 ====================
+
+/**
+ * @brief syscall_net_ifconfig() - 获取网卡接口配置
+ */
+int syscall_net_ifconfig(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_NET_IFCONFIG)
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+/**
+ * @brief syscall_lspci() - 列出所有 PCI 设备
+ */
+int syscall_lspci(void) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_LSPCI)
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+/**
+ * @brief net_send_udp() - 发送 UDP 包
+ */
+int net_send_udp(const char *ip, int port, const char *data, int len) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_NET_SEND_UDP), "b"(ip), "c"(port), "d"(data), "S"(len)
+        : "memory", "cc"
+    );
+    return ret;
 }

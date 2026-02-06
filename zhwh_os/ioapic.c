@@ -170,12 +170,28 @@ ioapicenable(int irq, int cpunum)
   uint32_t high_before = ioapicread(REG_TABLE+2*irq+1);
   printf("[ioapicenable] Before: low=0x%x high=0x%x\n", low_before, high_before);
 
-  ioapicwrite(REG_TABLE+2*irq, T_IRQ0 + irq);
+  // 🔥 关键：设置中断模式
+  // Bit 16: Mask (0 = enabled, 1 = masked)
+  // Bit 15: Trigger mode (0 = edge, 1 = level)
+  // Bit 13: Polarity (0 = active high, 1 = active low)
+  // PCI 中断应该是：edge-triggered, active high
+  uint32_t low = T_IRQ0 + irq;  // Vector
+  low &= ~(1 << 16);             // Unmask
+  // low &= ~(1 << 15);           // Edge triggered (默认)
+  // low &= ~(1 << 13);           // Active high (默认)
+
+  ioapicwrite(REG_TABLE+2*irq, low);
   ioapicwrite(REG_TABLE+2*irq+1, cpunum << 24);
 
   uint32_t low_after = ioapicread(REG_TABLE+2*irq);
   uint32_t high_after = ioapicread(REG_TABLE+2*irq+1);
   printf("[ioapicenable] After: low=0x%x high=0x%x\n", low_after, high_after);
+
+  // 🔥 检查是否被 mask
+  if (low_after & (1 << 16)) {
+    printf("[ioapicenable] ⚠️  WARNING: IRQ %d is still MASKED!\n", irq);
+  }
+
   printf("[ioapicenable] Done!\n");
 }
 

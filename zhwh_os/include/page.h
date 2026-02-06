@@ -1,5 +1,10 @@
 #include "types.h"
 
+// 类型定义
+#ifndef size_t
+typedef uint32_t size_t;
+#endif
+
 
 #define PAGE_SIZE       4096
 #define PAGE_PRESENT    (1 << 0)
@@ -96,3 +101,12 @@ void *get_free_phys_page(void);
 //void* alloc_user_page_table(uint32_t virt_addr, uint32_t phys_addr, uint32_t flags, bool map_kernel_space);
 
 pde_user_t * mappages_multi( uint32_t va, uint32_t pa, int len, uint32_t perm) ;
+
+// ==================== DMA Coherent 内存管理（Linux 风格）===================
+// 预映射的 DMA 区域：在 boot 阶段建立，运行时只分配，不改页表
+
+void dma_map_region(void);  // 在 paging 初始化时调用，建立 DMA 区域映射
+void *dma_alloc_coherent(size_t size, uint32_t *dma_handle);  // 分配 DMA 内存
+void dma_free_coherent(void *cpu_addr, size_t size);  // 释放（bump allocator 不支持）
+
+
