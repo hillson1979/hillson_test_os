@@ -18,6 +18,7 @@ output.txt
 # 测试文件
 test_*.c
 *_test.c
+!msi_test.c  # 例外：保留 msi_test.c
 
 # 调试文件
 debug.gdb
