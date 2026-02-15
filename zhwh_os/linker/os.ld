@@ -12,7 +12,7 @@ SECTIONS
     .init 0x00100000:
     {
       /* Multiboot 2 头必须在最前面，前8KB内 */
-      *(.multiboot)
+      KEEP(*(.multiboot))
       PROVIDE(loader = .);
       *(.init)
     }

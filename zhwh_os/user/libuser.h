@@ -44,6 +44,12 @@
 #define SYS_NET_LOOPBACK_TEST 61  // 🔥 E1000 硬件 loopback 测试（轮询）
 #define SYS_NET_LOOPBACK_TEST_INT 62  // 🔥 E1000 硬件 loopback 测试（中断）
 
+// GUI 系统调用
+#define SYS_GUI_FB_INFO 70      // 获取帧缓冲区信息
+#define SYS_GUI_FB_BLIT 71      // 位图传输到帧缓冲区
+#define SYS_GUI_INPUT_READ 72   // 读取输入设备事件
+#define SYS_USB_MOUSE_POLL 73   // 轮询 USB 鼠标事件
+
 // WiFi 固件加载常量
 #define FW_CHUNK_SIZE   4096                // 每块大小（一页）
 #define FW_MAX_SIZE     (2 * 1024 * 1024)   // 最大固件大小 2MB（支持Intel 677KB等）
@@ -151,8 +157,32 @@ int msi_test(void);  // 手动触发 MSI 测试（包括 LAPIC 检查、软中�
 int e1000_loopback_test(void);  // 🔥 E1000 硬件 loopback 测试（轮询版本）
 int e1000_loopback_test_interrupt(void);  // 🔥 E1000 硬件 loopback 测试（中断版本，测试 MSI）
 
+// 🔥 GUI 系统调用
+typedef struct {
+    void *fb_addr;     // 帧缓冲区物理地址
+    uint32_t width;    // 屏幕宽度
+    uint32_t height;   // 屏幕高度
+    uint32_t pitch;    // 每行字节数
+    uint32_t bpp;      // 每像素位数
+} fb_info_t;
+
+typedef struct {
+    int x;             // 鼠标 X 坐标
+    int y;             // 鼠标 Y 坐标
+    int left_btn;      // 左键状态 (0=释放, 1=按下)
+    int right_btn;     // 右键状态
+    int middle_btn;    // 中键状态
+} input_event_t;
+
+int gui_get_fb_info(fb_info_t *info);           // 获取帧缓冲区信息
+int gui_fb_blit(int x, int y, int width, int height, const void *data);  // 位图传输
+int gui_read_input(input_event_t *event);      // 读取输入事件
+
 // 字符串和内存工具函数
 int strlen(const char *s);
+int strcmp(const char *s1, const char *s2);
+int strncmp(const char *s1, const char *s2, int n);
+int atoi(const char *str);
 void *memcpy(void *dst, const void *src, int n);
 void *memset(void *s, int c, int n);
 

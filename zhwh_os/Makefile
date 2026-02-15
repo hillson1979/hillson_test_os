@@ -25,6 +25,9 @@ C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += driver/vbe.c  # 添加 VBE 驱动
 C_SOURCES += driver/uart.c  # 添加串口驱动
 C_SOURCES += driver/netdebug.c  # 添加以太网调试接口
+C_SOURCES += driver/usb_hcd.c  # 添加 USB 主机控制器驱动
+C_SOURCES += driver/usb.c  # 添加 USB 核心协议栈
+C_SOURCES += driver/usb_mouse.c  # 添加 USB 鼠标驱动
 C_SOURCES += mm/buddy.c  # 启用 Buddy System（减小了 MAX_BUDDY_BLOCKS）
 C_SOURCES += mm/test_memory.c  # 启用内存测试
 C_SOURCES += fs/ramfs.c  # 添加 ramfs 文件系统
@@ -50,7 +53,8 @@ C_SOURCES += net/wifi/firmware/intel/iwlwifi-6000g2a.c
 C_SOURCES += net/wifi/firmware/atheros/ath10k_qca9377.c
 # C_SOURCES += net/wifi/firmware/atheros/fw-5.c  # 暂时禁用大容量固件 (783KB)
 # C_SOURCES += mm/slab.c  # 暂时禁用 Slab 分配器
-ASM_SOURCES = boot.s vectors.s task_impl.s interrupt_exit.s trap_entry.s #copy_user_32.s
+# vbe_thunk.s 暂时禁用 - 实模式切换太复杂
+ASM_SOURCES = boot.s vectors.s task_impl.s interrupt_exit.s trap_entry.s # vbe_thunk.s #copy_user_32.s
 
 # 目标文件
 C_OBJECTS = $(C_SOURCES:.c=.o)

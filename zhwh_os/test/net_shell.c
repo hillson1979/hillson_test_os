@@ -33,35 +33,7 @@ void _start() {
     exit(ret);
 }
 
-// 简单的字符串转数字（标准库没有，需要自己实现）
-int atoi(const char *str) {
-    int result = 0;
-    while (*str >= '0' && *str <= '9') {
-        result = result * 10 + (*str - '0');
-        str++;
-    }
-    return result;
-}
-
-// 简单的字符串比较（标准库没有，需要自己实现）
-int strcmp(const char *s1, const char *s2) {
-    while (*s1 && (*s1 == *s2)) {
-        s1++;
-        s2++;
-    }
-    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
-}
-
-// 简单的字符串前缀比较
-int strncmp(const char *s1, const char *s2, int n) {
-    while (n > 0 && *s1 && (*s1 == *s2)) {
-        s1++;
-        s2++;
-        n--;
-    }
-    if (n == 0) return 0;
-    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
-}
+// 注意: atoi, strcmp 和 strncmp 已经在 libuser.c 中定义，这里不再重复定义
 
 // 🔥 解析IP地址字符串 "x.x.x.x" 为 32位整数（网络字节序）
 uint32_t parse_ip(const char *ip_str) {

@@ -48,6 +48,10 @@ int keyboard_getchar(void);
 // 检查是否有按键可用
 int keyboard_kbhit(void);
 
+// 非阻塞版本：从键盘缓冲区读取一个字符
+// 如果没有字符，返回 -1
+int keyboard_getchar_nonblock(void);
+
 // 清空键盘缓冲区
 void keyboard_flush(void);
 

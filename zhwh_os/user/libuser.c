@@ -13,6 +13,16 @@ int strlen(const char *s) {
     return len;
 }
 
+// 简单的 atoi 实现
+int atoi(const char *str) {
+    int result = 0;
+    while (*str >= '0' && *str <= '9') {
+        result = result * 10 + (*str - '0');
+        str++;
+    }
+    return result;
+}
+
 // 简单的 memcpy 实现
 void *memcpy(void *dst, const void *src, int n) {
     char *d = (char*)dst;
@@ -26,6 +36,26 @@ void *memset(void *s, int c, int n) {
     char *p = (char*)s;
     while (n--) *p++ = c;
     return s;
+}
+
+// 字符串比较
+int strcmp(const char *s1, const char *s2) {
+    while (*s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+    }
+    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+}
+
+// 字符串前缀比较
+int strncmp(const char *s1, const char *s2, int n) {
+    while (n > 0 && *s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+        n--;
+    }
+    if (n == 0) return 0;
+    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
 }
 
 // 简单的数字转字符串

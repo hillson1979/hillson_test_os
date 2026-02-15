@@ -3,6 +3,7 @@
 .set MULTIBOOT_ARCHITECTURE_I386, 0
 .set MULTIBOOT_HEADER_TAG_END, 0
 .set MULTIBOOT_HEADER_TAG_OPTIONAL, 1
+.set MULTIBOOT_HEADER_TAG_FRAMEBUFFER, 5
 
 /* 计算 header 长度和校验和 */
 .set MULTIBOOT2_HEADER_LENGTH, multiboot2_header_end - multiboot2_header_start
@@ -16,10 +17,20 @@ multiboot2_header_start:
 .long MULTIBOOT2_HEADER_LENGTH      /* header length */
 .long MULTIBOOT2_HEADER_CHECKSUM    /* checksum */
 
-/* 结束标签 */
-.short MULTIBOOT_HEADER_TAG_END      /* type */
-.short 0                             /* flags */
-.long 8                              /* size */
+/* Framebuffer 请求标签 */
+.align 8
+.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER   /* type = 5 (framebuffer) */
+.short 1       /* flags = REQUIRED */
+.long 24                                  /* size */
+.long 1024                              /* width = 1024 */
+.long 768                                 /* height = 768 */
+.long 32           /* bpp (32 bits per pixel, XRGB8888) */
+.long 0            /* reserved (unused, must be 0) */
+
+.align 8
+.short 0
+.short 0
+.long 8
 multiboot2_header_end:
 
 /* 代码放在 .init 节 */

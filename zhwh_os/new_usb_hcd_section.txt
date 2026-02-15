@@ -1,0 +1,87 @@
+    // Store state for polling
+    intr_state.active = 1;
+    intr_state.buffer = (uint8_t *)data;
+    intr_state.max_length = len;
+    intr_state.bytes_transferred = 0;
+    intr_state.td = td;
+
+    // 🔥 关键修复：创建 QH 并将 TD 链接进去！
+    // 没有 QH，TD 永远不会被 UHCI 处理
+    uhci_qh_t *qh = uhci_alloc_qh(ctrl);
+    if (\!qh) {
+        printf("[USB] ERROR: Failed to allocate QH\n");
+        return -1;
+    }
+
+    // 初始化 QH
+    qh->horiz_link_ptr = UHCI_LINK_TERMINATE;  // 无水平链接
+    qh->vert_link_ptr = ((uint32_t)td) | 0x02;  // 指向 TD，设置 QH 选择位
+    qh->curr_qh_td_ptr = 0;  // 初始无当前 TD
+
+    // 设置端点属性
+    // [11:0] = Max N-1 包大小 (63 = 64 字节用于鼠标)
+    // [15:11] = 设备地址
+    // [10:0] = 端点号
+    // [12] = F 标志 (0 = 非等时)
+    qh->endpoint = (63 << 5) | (dev_addr << 8) | ep;
+    qh->endpoint_cap = 0;  // F = 0 (非等时)
+    qh->status = 0;
+
+    // 保存 QH 指针
+    intr_state.qh = qh;
+
+    printf("[USB] Interrupt transfer TD=%p QH=%p (linked)\n", td, qh);
+    return 0;  // Transfer initiated successfully
+}
+
+/**
+ * @brief Poll for interrupt transfer completion
+ *
+ * 检查之前启动的中断传输是否完成
+ *
+ * @return 1 if completed with data, 0 if still pending, negative on error
+ */
+int usb_interrupt_poll(int controller_id) {
+    if (controller_id >= num_uhci_controllers) {
+        return -1;
+    }
+
+    uhci_controller_t *ctrl = &uhci_controllers[controller_id];
+    if (\!ctrl->initialized) {
+        return -1;
+    }
+
+    if (\!intr_state.active) {
+        return 0;  // 没有传输进行中
+    }
+
+    // 检查 TD 是否完成（通过读取 TD 状态）
+    // 内存屏障：确保我们看到最新的 TD 状态
+    uint32_t ctrl_status = intr_state.td->ctrl_status;
+
+    if (\!(ctrl_status & UHCI_TD_CTRL_ACT)) {
+        // TD 不再活动 - 检查是否成功完成
+        uint32_t errors = (ctrl_status >> UHCI_TD_CTRL_ERR_SHIFT) & UHCI_TD_CTRL_ERR_MASK;
+
+        if (errors == 0) {
+            // 成功！计算实际传输的字节数
+            // 对于 IN 传输，实际长度 = (MAXLEN + 1) - (act_len encoded)
+            uint32_t token = intr_state.td->token;
+            int max_len_encoded = (token >> UHCI_TD_TOKEN_MAXLEN_SHIFT) & 0x7FF;
+            int actual_len = max_len_encoded + 1;
+
+            intr_state.bytes_transferred = actual_len;
+            intr_state.active = 0;
+
+            printf("[USB] Interrupt complete: %d bytes\n", actual_len);
+            return 1;
+        } else {
+            printf("[USB] ERROR: Transfer failed, status=0x%x\n", ctrl_status);
+            intr_state.active = 0;
+            return -1;
+        }
+    }
+
+    // 传输仍在进行中 - 继续等待
+    return 0;  // 仍在等待
+}

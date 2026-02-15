@@ -1,0 +1,930 @@
+[kernel_main] Stack: base=0xC03EE000 top=0xC03F0000 size=8 KB
+=== Serial initialized ===
+Kernel Booted with Multiboot 2!
+Magic: 0x36D76289
+Info addr: 0x106010
+cpuid is 0 
+lapicid is 0 
+ ---IOAPIC ---
+ioapicid is 0 
+ioapic addr is is 0xFEC00000 
+Highmem mapping initialized
+Identity mapped: 0xC0000000-0xC03FFFFF
+Buddy System will use direct mapping (PHYS_TO_VIRT) instead of pre-mapping
+Virtual address layout:
+  User space:   0x00000000 - 0xBFFFFFFF (0-3GB)
+  Kernel space: 0xC0000000 - 0xFFFFFFFF (3-4GB)
+    Identity mapped: 0xC0000000 - 0xC07FFFFF (first 8MB)
+    Direct mapping:  0xC0800000+ (computed as KERNEL_VIRT_BASE + phys)
+Multiboot2 info: mem_lower=639 KB, mem_upper=129912 KB
+Initializing memory management...
+mm_init: starting memory management initialization
+mm_init: detected 126 MB physical memory (mem_upper=129912 KB)
+mm_init: initializing physical memory manager...
+pmm_init: kernel_end_phys=0x3F0000
+pmm_init: placing buddy system data at 48MB physical (0x3000000)
+pmm_init: buddy system virtual address: 0xC3000000
+pmm_init: buddy system data size: 20 MB at phys=0x3000000-0x4400000
+pmm_init: buddy system data structures for 59 MB:
+  max_blocks=15250, buddy_data_size=0 MB (245760 bytes)
+pmm_init: mapping buddy data area: phys=0x3000000 -> virt=0xC3000000
+Allocating new page table for directory entry 780
+alloc_early_page_table: allocated phys=0x200000, virt=0xC0200000
+Allocated new page table for pd_idx=780: pt_phys=0x200000, mapped virt=0xC3000000 -> phys=0x3000000
+  PTE[0] = 0x3000003
+pmm_init: buddy data area mapped successfully
+pmm_init: physical memory manager initialized
+  start: 0x4400000 (68 MB), end: 0x7F7DFFF (127 MB)
+  total pages: 15230 (59 MB)
+pmm_init: initializing buddy system...
+  base_page=17408, managed_pages=15230, max_order=13
+pmm_init: reserving 512 MB for kernel (pages 17408-148479)
+buddy_init: base_page=17408, total_pages=15230, max_order=13
+buddy_init: kernel_reserved_pages=131072 (512 MB)
+buddy_init: using pre-allocated memory at 0xC3000000
+buddy_init: max_blocks=15243, sizeof(buddy_block_t)=12
+buddy_init: blocks_size=182916, freelists_size=56, nextfree_size=60972
+buddy_init: buddy_blocks_array=?
+buddy_init: free_lists_array=?
+buddy_init: next_free_array=?
+buddy_init: skipping write test, proceeding to memset...
+buddy_init: free_lists=?, size=3271740036 bytes
+buddy_init: memset free_lists done
+buddy_init: memset next_free done
+buddy_init: creating initial free blocks
+buddy_init: initialized 1 block (order 13 = 8192 pages)
+buddy_init: SUCCESS - buddy system ready
+pmm_init: buddy system enabled successfully
+pmm_init: initializing DMA coherent region...
+pmm_init: dma_map_region function pointer = 0xC010F800
+pmm_init: about to call dma_map_region()...
+[dma] Mapping DMA region: phys=0x2800000 -> virt=0xC2800000 (size=8 MB)
+Allocating new page table for directory entry 778
+alloc_early_page_table: allocated phys=0x201000, virt=0xC0201000
+Allocated new page table for pd_idx=778: pt_phys=0x201000, mapped virt=0xC2800000 -> phys=0x2800000
+  PTE[0] = 0x2800013
+Allocating new page table for directory entry 779
+alloc_early_page_table: allocated phys=0x202000, virt=0xC0202000
+Allocated new page table for pd_idx=779: pt_phys=0x202000, mapped virt=0xC2C00000 -> phys=0x2C00000
+  PTE[0] = 0x2C00013
+[dma] DMA region mapped as uncached
+pmm_init: returned from dma_map_region()
+mm_init: basic memory detection complete (buddy system disabled)
+mm_init: memory management initialization complete
+Memory management initialized
+After mm_init, before hardware init
+---lapic_addr value is 0xFEE00000---
+---lapic value is 0xFEE00000---
+[lapicinit] Mapping LAPIC window: phys=0xFEE00000 -> virt=0xFEE00000 (size=64KB)
+Allocating new page table for directory entry 1019
+alloc_early_page_table: allocated phys=0x203000, virt=0xC0203000
+Allocated new page table for pd_idx=1019: pt_phys=0x203000, mapped virt=0xFEE00000 -> phys=0xFEE00000
+  PTE[512] = 0xFEE0001B
+[lapicinit] LAPIC identity mapping complete
+[lapicinit] Verifying LAPIC access... LAPIC ID = 0x0
+[lapicinit] LAPIC initialized successfully
+phys_addr IOAPIC is : 0xFEC00000
+Allocating new page table for directory entry 770
+alloc_early_page_table: allocated phys=0x204000, virt=0xC0204000
+Allocated new page table for pd_idx=770: pt_phys=0x204000, mapped virt=0xC0800000 -> phys=0xFEC00000
+  PTE[0] = 0xFEC00013
+IOAPIC mapped at: 0xC0800000
+I/O APIC Version: 32
+===id value is 0===
+===ioapicid  value is 0===
+IOAPIC initialized
+Before seginit
+After seginit
+Before tss_init
+After tss_init
+Before tvinit
+[tvinit] IRQ36 gate: offset=0xC0107153, seg=0x8, type=14, dpl=0, p=1
+[tvinit] System call gate (IDT[128]):
+  offset=0xC010748F, seg=0x8, type=15, dpl=3, present=1
+  vector128 address=0x?
+[tvinit] Trap 13 (GP Fault): offset=0xC010708A, seg=0x8, type=14, dpl=0, p=1
+[tvinit] Trap 19 (SIMD): offset=0xC01070BA, seg=0x8, type=14, dpl=0, p=1
+[tvinit] IRQ 0 (Timer): offset=0xC010712F, seg=0x8, type=14, dpl=0, p=1
+After tvinit
+segment idt init is ok
+[DEBUG] Current ESP=0xC03EFF58, EBP=0xC03EFFF0
+[FPU] Re-initialized before STI
+Global interrupts DISABLED (sti commented out for debugging)
+[ioapicenable] Enabling IRQ1 on CPU0
+[ioapicenable] Writing to REG_TABLE+2 (0x12)
+[ioapicenable] Vector = 33 (0x21)
+[ioapicenable] Before: low=0x10021 high=0x0
+[ioapicenable] After: low=0x21 high=0x0
+[ioapicenable] Done!
+Keyboard driver initialized
+Re-configuring PIC after enabling interrupts...
+PIC mask before keyboard enable: 0xB8
+PIC mask after keyboard enable: 0xB8 (expected: 0xB8)
+IRQ1 (keyboard) ENABLED ✅
+Initializing file system...
+[fs] Initializing file system...
+[ramfs] Mounting ramfs...
+[ramfs] Allocated inode: ino=1, mode=0x41C0
+[ramfs] Mounted successfully, root_ino=1
+[vfs] Root super block set: sb=0xC02E0160, root_ino=1
+[fs] File system initialized
+[fs] Creating test files...
+[ramfs] create: dir_ino=1, name='test.txt', mode=0x81A4
+[ramfs] lookup: dir_ino=1, name='test.txt'
+[ramfs] lookup: not found
+[ramfs] Allocated inode: ino=2, mode=0x81A4
+[ramfs] create: success, inode=2
+[fs] Created /test.txt
+[fs] Written 39 bytes to /test.txt
+[ramfs] create: dir_ino=1, name='fstest.txt', mode=0x81A4
+[ramfs] lookup: dir_ino=1, name='fstest.txt'
+[ramfs] lookup: not found
+[ramfs] Allocated inode: ino=3, mode=0x81A4
+[ramfs] create: success, inode=3
+[fs] Created /fstest.txt
+[fs] Written 142 bytes to /fstest.txt
+[fs] Test files ready
+
+[fs] === Kernel-level File Read Test ===
+[fs] Attempting to read /test.txt...
+[ramfs] read: inode=2, size=255, pos=?lu
+[ramfs] read: read 39 bytes
+[fs] ramfs_read returned: 39 bytes
+[fs] Content of /test.txt:
+[fs] >>>Hello from ramfs!
+This is a test file.
+<<<
+
+[fs] Attempting to read /fstest.txt...
+[ramfs] read: inode=3, size=255, pos=?lu
+[ramfs] read: read 142 bytes
+[fs] ramfs_read returned: 142 bytes
+[fs] Content of /fstest.txt:
+[fs] >>>File System Test File
+=====================
+This file was created during kernel initialization.
+You can read it using the read() system call.
+<<<
+[fs] === Kernel Test Complete ===
+
+File system initialized
+Initializing PCI...
+0x8086:0x1237:: Intel Corporation 440FX - 82441FX PMC [Natoma]
+
+0x8086:0x7000:: Intel Corporation 82371SB PIIX3 ISA [Natoma/Triton II]
+
+0x1234:0x1111:Data acquisition o signal processing controller: Technical Corp 
+
+0x8086:0x100E:Encryption/Decryption controller: Intel Corporation 82540EM Gigabit Ethernet Controller
+
+0x8086:0x7020:: Intel Corporation 82371SB PIIX3 USB [Natoma/Triton II]
+
+PCI initialized
+Initializing USB...
+[USB] Initializing USB stack...
+[USB] Scanning for USB controllers...
+[USB] PCI devices (looking for Class=0x0C, Subclass=0x03):
+[USB]   Device 0: Class=0x06, Subclass=0x00, ProgIF=0x00
+[USB]   Device 1: Class=0x06, Subclass=0x01, ProgIF=0x00
+[USB]   Device 2: Class=0x03, Subclass=0x00, ProgIF=0x00
+[USB]   Device 3: Class=0x02, Subclass=0x00, ProgIF=0x00
+[USB]   Device 4: Class=0x0C, Subclass=0x03, ProgIF=0x00
+[USB] Checking device 0: 0x06:0x00:0x00
+[USB] Checking device 1: 0x06:0x01:0x00
+[USB] Checking device 2: 0x03:0x00:0x00
+[USB] Checking device 3: 0x02:0x00:0x00
+[USB] Checking device 4: 0x0C:0x03:0x00
+[USB] Found UHCI controller
+00:04:00 - 8086:7020
+class 70 subclass 20 progIF 80 int_line 0 int_pin 0
+BAR0: 00000107
+BAR1: 00000107
+BAR2: 00000107
+BAR3: 00000107
+BAR4: 0C030001
+BAR5: 0C030001
+[USB]   BAR4 raw value: 0x0000C041
+[USB]   I/O base: 0xC040 (from BAR4)
+[USB] Initializing UHCI controller 0
+[USB]   I/O base: 0xC040, IRQ: 11
+[USB]   Vendor:Device = 0x8086:0x7020
+[pci] write16: bus=0 dev=4 fn=0 reg=0x04 value=0x0107 addr=0x80002004
+[pci] verify: wrote=0x0107 (I/O=1,MEM=1,BM=1) read=0x0107 (I/O=1,MEM=1,BM=1) OK
+[USB] Resetting UHCI controller at I/O 0xC040
+[USB] UHCI reset complete
+[dma] alloc: size=4096, virt=0xC2800000, phys=0x2800000
+[USB] Frame list virt=0xC2800000 phys=0x2800000
+[dma] alloc: size=4096, virt=0xC2801000, phys=0x2801000
+[dma] alloc: size=16384, virt=0xC2802000, phys=0x2802000
+[USB] QH pool virt=0xC2801000 phys=0x2801000
+[USB] TD pool virt=0xC2802000 phys=0x2802000
+[USB]   Setting FLBASEADD=0x2800000 (readback=0x2800000)
+[USB] Frame List verification (first 4 entries):
+[USB]   entry 0: link=0x2801002
+[USB]   entry 1: link=0x2801002
+[USB]   entry 2: link=0x2801002
+[USB]   entry 3: link=0x2801002
+[USB]   Setting FLBASEADD low=0x0 high=0x280 (frame_list_phys=0x2800000)
+[USB] Enabling IRQ 11 for UHCI controller via IOAPIC
+[ioapicenable] Enabling IRQ11 on CPU0
+[ioapicenable] Writing to REG_TABLE+22 (0x26)
+[ioapicenable] Vector = 43 (0x2B)
+[ioapicenable] Before: low=0x1002B high=0x0
+[ioapicenable] After: low=0x2B high=0x0
+[ioapicenable] Done!
+[USB]   Started controller, cmd=0x1
+[USB] Interrupt QH allocated: virt=0xC2801008 phys=0x2801008
+[USB] UHCI controller initialized successfully
+[USB] Found 1 USB controller(s)
+[USB] Scanning controller 0 for devices...
+[USB] Scanning root hub ports...
+[USB] Checking port 0...
+[USB] Port 0: Device connected!
+[USB] Resetting port 0
+[USB]   Initial port status: 0x83
+[USB]   Port status after reset: 0x81
+[USB]   Trying to manually enable port...
+[USB]   Port status after manual enable: 0x85
+[USB]   Device speed: LOW SPEED
+[USB] Port 0 enabled (manual)
+[USB] Checking port 1...
+[USB] Port 1: No device connected
+[USB] Found 1 device(s) on controller 0
+[USB] Enumerating device on port 0...
+[USB] Enumerating device on controller 0, port 0
+[USB] Control transfer: dev=0, req=0x6, wValue=0x100 wLen=8
+[USB]   Direction: IN (device->host), Speed: LOW
+[dma] alloc: size=64, virt=0xC2806000, phys=0x2806000
+[dma] alloc: size=64, virt=0xC2806040, phys=0x2806040
+[USB]   SETUP TD: virt=0xC2802000 token=0xE0002D ctrl_status=0x6800000 buffer=0x2806000
+[USB]   DATA TD 0: virt=0xC2802020 len=8 token=0xE80069 ctrl_status=0x6800000 buffer=0x2806040
+[USB]   STATUS TD: virt=0xC2802010 token=0xFFE800E1 ctrl_status=0x7800000
+[USB]   TD chain: SETUP(0x2802000) -> DATA(s) -> STATUS(0x2802010)
+[USB]   Setting QH LS bit for low speed device (link_ptr=0x4000001)
+[USB]   TD chain linked to async QH (phys=0x2801000)
+[USB]   Waiting for transfer to complete...
+[USB]   Transfer completed successfully!
+[USB]   Copied 8 bytes to user buffer
+[USB] Control transfer: dev=0, req=0x6, wValue=0x100 wLen=18
+[USB]   Direction: IN (device->host), Speed: LOW
+[dma] alloc: size=64, virt=0xC2806080, phys=0x2806080
+[dma] alloc: size=64, virt=0xC28060C0, phys=0x28060C0
+[USB]   SETUP TD: virt=0xC2802030 token=0xE0002D ctrl_status=0x6800000 buffer=0x2806080
+[USB]   DATA TD 0: virt=0xC2802050 len=8 token=0xE80069 ctrl_status=0x6800000 buffer=0x28060C0
+[USB]   DATA TD 1: virt=0xC2802060 len=8 token=0xE00069 ctrl_status=0x6800000 buffer=0x28060C8
+[USB]   DATA TD 2: virt=0xC2802070 len=2 token=0x280069 ctrl_status=0x6800000 buffer=0x28060D0
+[USB]   STATUS TD: virt=0xC2802040 token=0xFFE800E1 ctrl_status=0x7800000
+[USB]   TD chain: SETUP(0x2802030) -> DATA(s) -> STATUS(0x2802040)
+[USB]   Setting QH LS bit for low speed device (link_ptr=0x4000001)
+[USB]   TD chain linked to async QH (phys=0x2801000)
+[USB]   Waiting for transfer to complete...
+[USB]   Transfer completed successfully!
+[USB]   Copied 18 bytes to user buffer
+[USB] Device Descriptor:
+      Length: 18
+      Type: Device
+      USB Version: 2.0
+      Class: 0x0, SubClass: 0x0, Protocol: 0x0
+      Max Packet Size: 8
+      Vendor:Product = 0x627:0x1
+      Manufacturer: 1, Product: 2, Serial: 9
+      Num Configurations: 1
+[USB] Control transfer: dev=0, req=0x5, wValue=0x1 wLen=0
+[USB]   Direction: OUT (host->device), Speed: LOW
+[dma] alloc: size=64, virt=0xC2806100, phys=0x2806100
+[USB]   SETUP TD: virt=0xC2802080 token=0xE0002D ctrl_status=0x6800000 buffer=0x2806100
+[USB]   STATUS TD: virt=0xC2802090 token=0xFFE80069 ctrl_status=0x7800000
+[USB]   TD chain: SETUP(0x2802080) -> STATUS(0x2802090)
+[USB]   Setting QH LS bit for low speed device (link_ptr=0x4000001)
+[USB]   TD chain linked to async QH (phys=0x2801000)
+[USB]   Waiting for transfer to complete...
+[USB]   Transfer completed successfully!
+[USB] Device assigned address 1
+[USB] Control transfer: dev=1, req=0x9, wValue=0x1 wLen=0
+[USB]   Direction: OUT (host->device), Speed: LOW
+[dma] alloc: size=64, virt=0xC2806140, phys=0x2806140
+[USB]   SETUP TD: virt=0xC28020A0 token=0xE0012D ctrl_status=0x6800000 buffer=0x2806140
+[USB]   STATUS TD: virt=0xC28020B0 token=0xFFE80169 ctrl_status=0x7800000
+[USB]   TD chain: SETUP(0x28020A0) -> STATUS(0x28020B0)
+[USB]   Setting QH LS bit for low speed device (link_ptr=0x4000001)
+[USB]   TD chain linked to async QH (phys=0x2801000)
+[USB]   Waiting for transfer to complete...
+[USB]   Transfer completed successfully!
+[USB] Device enumerated successfully (total: 1)
+[USB] Detected HID device
+[USB Mouse] Initializing mouse at address 1
+[USB] Control transfer: dev=1, req=0xB, wValue=0x0 wLen=0
+[USB]   Direction: OUT (host->device), Speed: LOW
+[dma] alloc: size=64, virt=0xC2806180, phys=0x2806180
+[USB]   SETUP TD: virt=0xC28020C0 token=0xE0012D ctrl_status=0x6800000 buffer=0x2806180
+[USB]   STATUS TD: virt=0xC28020D0 token=0xFFE80169 ctrl_status=0x7800000
+[USB]   TD chain: SETUP(0x28020C0) -> STATUS(0x28020D0)
+[USB]   Setting QH LS bit for low speed device (link_ptr=0x4000001)
+[USB]   TD chain linked to async QH (phys=0x2801000)
+[USB]   Waiting for transfer to complete...
+[USB]   Transfer completed successfully!
+[USB Mouse] Set boot protocol
+[USB] Control transfer: dev=1, req=0xA, wValue=0x0 wLen=0
+[USB]   Direction: OUT (host->device), Speed: LOW
+[dma] alloc: size=64, virt=0xC28061C0, phys=0x28061C0
+[USB]   SETUP TD: virt=0xC28020E0 token=0xE0012D ctrl_status=0x6800000 buffer=0x28061C0
+[USB]   STATUS TD: virt=0xC28020F0 token=0xFFE80169 ctrl_status=0x7800000
+[USB]   TD chain: SETUP(0x28020E0) -> STATUS(0x28020F0)
+[USB]   Setting QH LS bit for low speed device (link_ptr=0x4000001)
+[USB]   TD chain linked to async QH (phys=0x2801000)
+[USB]   Waiting for transfer to complete...
+[USB]   Transfer completed successfully!
+[dma] alloc: size=64, virt=0xC2806200, phys=0x2806200
+[USB Mouse] Linked to frame_list (every 10 frames)
+[USB Mouse] Periodic IN scheduled (addr=1 ep=1)
+[USB Mouse] Periodic polling initialized
+[USB Mouse] Mouse initialized successfully (total: 1)
+[USB] USB mouse initialized (index=0)
+[USB] USB stack initialized
+USB initialized
+
+========================================
+Testing USB Mouse Driver...
+========================================
+USB Mouse count: 1
+[USB Mouse] ========================================
+[USB Mouse] Testing periodic polling...
+[USB Mouse] ========================================
+[USB Mouse] Periodic polling active, waiting for data...
+[USB Mouse] Test complete!
+[USB Mouse] ========================================
+========================================
+
+[net] Initializing network stack...
+[net] Pre-populated ARP cache:
+[net]   192.168.0.145 -> D8:D0:90:15:E2:68
+[net] Network stack initialized
+[net] Local IP: 192.168.0.15
+[loopback] Initializing loopback device...
+[loopback] Loopback device ready (IP: 127.0.0.1)
+Network stack initialized
+Use 'net init' command to initialize network cards
+Enabling network debug interface...
+[netdebug] Debug output enabled
+[KERNEL] Network debug interface enabled
+[KERNEL] All firmware loading messages will be sent to network
+Network debug enabled on UDP port 9999
+[netdebug] === Statistics ===
+[netdebug]   Enabled: Yes
+[netdebug]   Level: 2
+[netdebug]   Destination: 255.255.255.255:9999
+[netdebug]   Total sent: 0
+[netdebug]   Total dropped: 0
+[netdebug]   Total bytes: 0
+[netdebug]   Queue depth: 0/32
+
+=== Network Test ===
+✓ Stack sentinel OK
+[loopback] Sending test packet...
+[loopback] Sending 62 bytes test packet
+[loopback] Sending 62 bytes
+[net] RAW 62 bytes: FF FF FF FF FF FF 00 00 00 00 00 01 08 00 45 00 00 1C 00 00 00 00 40 01 00 00 C0 A8 01 01 C0 A8 01 01 08 00 00 00 00 00 00 01 48 65 6C 6C 6F 20 66 72 6F 6D 20 6C 6F 6F 70 62 61 63 6B 21 
+[net] GOT PACKET len=62
+[net]   dst MAC: FF:FF:FF:FF:FF:FF (our MAC: 02:00:00:00:00:01)
+[net]   src MAC: 00:00:00:00:00:01 (IP)
+[net]   src IP: 192.168.1.1 -> dst IP: 192.168.1.1
+[net] RX: Broadcast packet
+kfree: freeing 62 bytes (0 pages) at virt=0xC02E0650, phys=0x0
+=== Network Test Complete ===
+
+VGA test: wrote TEST to screen at position 10-13
+
+=== VBE/Framebuffer Initialization ===
+✓ Framebuffer info available!
+=== Framebuffer Tag Structure (Hex Dump) ===
+Raw bytes (34 bytes):
+  0000: 08 00 00 00 26 00 00 00 00 00 00 FD 00 00 00 00 
+  0010: 00 10 00 00 00 04 00 00 00 03 00 00 20 01 00 00 
+  0020: 10 08 
+Manual field parsing:
+  type (offset 0x00):     0x00000008 -> 8
+  size (offset 0x04):     0x00000026 -> 38
+  framebuffer_addr (0x08): 0x00000000FD000000
+  framebuffer_pitch (0x10): 0x00001000 -> 4096
+  framebuffer_width (0x14):  0x00000400 -> 1024
+  framebuffer_height (0x18): 0x00000300 -> 768
+  framebuffer_bpp (0x1C):    0x20 -> 32
+  framebuffer_type (0x1D):   0x01 -> 1
+  reserved (0x1E):            0x0000 -> -1072651098
+
+Structure field values:
+  framebuffer_addr:   0x00000000FD000000
+  framebuffer_pitch:  0x0000 (0)
+  framebuffer_width:  0x1000 (4096)
+  framebuffer_height: 0x0400 (1024)
+  framebuffer_bpp:    0x00 (0)
+  framebuffer_type:   0x03 (3)
+=========================================
+✓ Manual parsing successful!
+  Parsed values: addr=0xFD000000, 1024x768, bpp=32, type=1
+✓ RGB framebuffer mode detected!
+[VBE] Initializing from Multiboot2 info:
+[VBE]   Physical framebuffer: 0xFD000000
+[VBE]   Resolution: 1024x768
+[VBE]   BPP: 32, Pitch: 4096
+[VBE] Mapping framebuffer to virtual address 0xF0000000...
+[VBE]   Size: 3145728 bytes (768 pages)
+[VBE]   Kernel PD: 0x101000
+[map_page] vaddr=0xF0000000 new PT at phys=0x4400000
+alloc_early_page_table: allocated phys=0x205000, virt=0xC0205000
+[map_page] Set pd_user[960]=0x4400007
+[VBE] ✓ Framebuffer mapped successfully!
+[VBE] Drawing test pattern (4 colored quadrants)...
+[VBE] ✓ Test pattern drawn!
+[VBE]   Top-Left: RED
+[VBE]   Top-Right: GREEN
+[VBE]   Bottom-Left: BLUE
+[VBE]   Bottom-Right: WHITE
+✓ VBE driver initialized from Multiboot2 info
+=============================================
+
+task init
+[init_task] kstack virt=0xC02E1690
+[task_load] user task: cr3=NULL (will be set by task_prepare_pde)
+start user task 
+[user_task_main] START: th=0xC02E0690
+User task started (task=0xC02E0690)
+[user_task_main] Calling task_prepare_pde for th=0xC02E0690
+[task_prepare_pde] START for task=0xC02E0690
+[task_prepare_pde] User task using kernel CR3: 0x101000 (shared with all)
+[task_prepare_pde] task->pde=0x101000 (kernel page directory)
+[task_prepare_pde] Calling load_module_to_user...
+[load_module_to_user] Starting...
+[load_module_to_user] Module: start=0x436000 end=0x54B198 size=0x115198 cmdline=
+[load_module_to_user] Mapping module: phys=0x436000 -> virt=0xC0436000 (size=1135000)
+Allocating new page table for directory entry 769
+alloc_early_page_table: allocated phys=0x206000, virt=0xC0206000
+Allocated new page table for pd_idx=769: pt_phys=0x206000, mapped virt=0xC0436000 -> phys=0x436000
+  PTE[54] = 0x436003
+[load_module_to_user] Module mapped successfully
+[load_module_to_user] Raw physical bytes at 0x436000: 7F 45 4C 46
+[load_module_to_user] ELF header at virtual 0xC0436000
+[load_module_to_user] First 4 bytes: 0x7F 0x45 0x4C 0x46
+[load_module_to_user] ELF file validated!
+[load_module_to_user] e_entry=0x8002570, e_phoff=52, e_phnum=3
+[load_module_to_user] Program Header 0: p_type=0x1
+[load_module_to_user] PT_LOAD: va=0x8000000, file_pa=0x437000, memsz=0xC72CC, filesz=0x5430C
+[load_module_to_user] Starting page mapping loop...
+[map_page] vaddr=0x8000000 new PT at phys=0x4403000
+[map_page] Set pd_user[32]=0x4403007
+[load_module_to_user] Page mapping loop done.
+[load_module_to_user] Program Header 1: p_type=0x4
+[load_module_to_user] Program Header 2: p_type=0x6474E551
+[load_module_to_user] Set tf->eip = 0x8002570 (from ELF entry)
+[load_module_to_user] Set segment registers: CS=0x1B, DS/ES/FS/GS/SS=0x23
+[load_module_to_user] Set tf->eflags = 0x200
+[load_module_to_user] Mapping user stack (4 pages)...
+[load_module_to_user] Allocated stack page 0: phys=0x44CB000
+[load_module_to_user] Mapping stack page: va=0xBFFFE000 -> pa=0x44CB000
+[map_page] vaddr=0xBFFFE000 new PT at phys=0x44CC000
+[map_page] Set pd_user[767]=0x44CC007
+[load_module_to_user] Allocated stack page 1: phys=0x44CD000
+[load_module_to_user] Mapping stack page: va=0xBFFFD000 -> pa=0x44CD000
+[load_module_to_user] Allocated stack page 2: phys=0x44CE000
+[load_module_to_user] Mapping stack page: va=0xBFFFC000 -> pa=0x44CE000
+[load_module_to_user] Allocated stack page 3: phys=0x44CF000
+[load_module_to_user] Mapping stack page: va=0xBFFFB000 -> pa=0x44CF000
+[load_module_to_user] User stack mapping complete.
+[load_module_to_user] Set task->user_stack = 0xBFFFF000 (virtual address of stack top)
+[load_module_to_user] Set up user stack ABI (Linux standard):
+  argc=0 at [ESP]=0xBFFFEFFC
+  argv[0]=NULL at [ESP+4]=0xBFFFF000
+  Stack protected with 32 NULL dwords (128 bytes) below stack_top
+[load_module_to_user] Trapframe setup:
+  eip=0x8002570, esp=0xBFFFEFFC
+  cs=0x1B, ss=0x23, ds=0x23, eflags=0x200
+[task_prepare_pde] load_module_to_user returned, checking EIP...
+[task_prepare_pde] task->tf=0xC02E1644, task->tf->eip=0x8002570
+[task_prepare_pde] Verifying trapframe:
+  eip=0x8002570, cs=0x1B, eflags=0x200, esp=0xBFFFEFFC
+[task_prepare_pde] User stack already mapped by load_module_to_user (4 pages = 16KB)
+[task_prepare_pde] User stack VA range: 0xBFFFB000 - 0xBFFFF000
+[task_prepare_pde] Keeping tf->esp=0xBFFFEFFC (set by load_module_to_user)
+[task_prepare_pde] This ESP points to argc, following Linux ABI standard
+[user_task_main] Initialization complete, returning to scheduler
+[start_task] DEBUG: pid=1, first_task=0xC02E0690, current_task[0]=0xC02E0690
+[start_task] Added task pid=1 to chain: prev->pid=1, next->pid=1
+[schedule] ENTRY - schedule() called!
+[schedule] Initialized schedule_switch_to_return_addr=0xC0114AD8
+[schedule] cpu_id=0
+[schedule] Before inline asm
+[schedule] After inline asm, flags=0x282
+[pick_next_task_cfs] current: pid=1, state=64, user_stack=0xBFFFF000
+[pick_next_task_cfs] current->next=0xC02E0690
+[pick_next_task_cfs] no other task, keeping current: pid=1
+[schedule] first_time_user=1, switch_to_user=0 (user_stack=0xBFFFF000, state=64)
+[schedule] First time entering user mode for pid=1
+[schedule] About to call task_to_user_mode_with_task, next=0xC02E0690
+[task_to_user_mode_wrapper] ENTRY: task=0xC02E0690
+[task_to_user_mode_wrapper] task=0xC02E0690, pid=1
+[task_to_user_mode_wrapper] task->tf=0xC02E1644
+[task_to_user_mode_wrapper] trapframe content:
+  eip=0x8002570, cs=0x1B, eflags=0x200
+  esp=0xBFFFEFFC, ss=0x23
+  eax=0x0 (should be 0 for child)
+[task_to_user_mode_wrapper] task_volatile = 0xC02E0690 (about to call task_to_user_mode_with_task)
+[task_to_user_mode_with_task] EBX (current_task[0]) = 0xC02E0690
+[GUI FB INFO] fb_phys=?, fb_virt=?, -50331648x-268435456, pitch=1024, bpp=768
+[GUI FB INFO] Mapping framebuffer to user space...
+[GUI FB INFO]   user_pde_phys = 0x101000
+[GUI FB INFO]   fb_virt = 0xF0000000, fb_phys = 0xFD000000
+[GUI FB INFO]   num_pages = 768
+[GUI FB INFO] ✓ Framebuffer mapped to user space!
+[SYS_GUI_INPUT_READ] KEY: scancode=0x31
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB1
+[SYS_GUI_INPUT_READ] KEY: scancode=0x12
+[SYS_GUI_INPUT_READ] KEY: scancode=0x92
+[SYS_GUI_INPUT_READ] KEY: scancode=0x14
+[SYS_GUI_INPUT_READ] KEY: scancode=0x94
+[SYS_GUI_INPUT_READ] KEY: scancode=0x39
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB9
+[SYS_GUI_INPUT_READ] Mouse call #100
+[SYS_GUI_INPUT_READ] Keyboard call #100
+[SYS_GUI_INPUT_READ] KEY: scancode=0x17
+[SYS_GUI_INPUT_READ] KEY: scancode=0x97
+[SYS_GUI_INPUT_READ] KEY: scancode=0x31
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB1
+[SYS_GUI_INPUT_READ] KEY: scancode=0x17
+[SYS_GUI_INPUT_READ] KEY: scancode=0x97
+[SYS_GUI_INPUT_READ] KEY: scancode=0x14
+[SYS_GUI_INPUT_READ] KEY: scancode=0x94
+[SYS_GUI_INPUT_READ] KEY: scancode=0x39
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB9
+[SYS_GUI_INPUT_READ] KEY: scancode=0x12
+[SYS_GUI_INPUT_READ] KEY: scancode=0x92
+[SYS_GUI_INPUT_READ] KEY: scancode=0x2
+[SYS_GUI_INPUT_READ] KEY: scancode=0x82
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8B
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8B
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8B
+[SYS_GUI_INPUT_READ] Mouse call #200
+[SYS_GUI_INPUT_READ] Keyboard call #200
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x1C
+[syscall] E1000 init: device=eth1
+[e1000] E1000 driver init
+[e1000] Found 5 PCI devices
+[e1000] Probing for E1000...
+[e1000] Found E1000 device!
+[e1000]   Bus: 0, Device: 3, Function: 0
+[e1000]   Vendor: 0x8086, Device: 0x100E
+[e1000] Initializing device eth1
+[e1000] MMIO phys base = 0xFEB80000
+[e1000] MMIO virt base = 0xC08C9000
+[pci] write16: bus=0 dev=3 fn=0 reg=0x04 value=0x0107 addr=0x80001804
+[pci] verify: wrote=0x0107 (I/O=1,MEM=1,BM=1) read=0x0107 (I/O=1,MEM=1,BM=1) OK
+[e1000] E1000 82579LM detected!
+[e1000] Interrupt Pin: 1 (1=INTA, 2=INTB, 3=INTC, 4=INTD)
+[e1000] Interrupt Line (from BIOS): 11
+[e1000] Using IRQ from BIOS: 11
+[e1000] Reset done
+[e1000] Device ID: 0x100E
+[e1000] WARNING: NVM/EEPROM auto-load timeout (status=0x80080783)
+[e1000] Continuing anyway...
+[e1000] MAC = 52:54:00:12:34:56
+[e1000] MAC copied to e1000_priv.mac_addr: 52:54:00:12:34:56
+[e1000] MAC copied to e1000_dev.mac_addr:   52:54:00:12:34:56
+[e1000] MAC copied to local_mac:             52:54:00:12:34:56
+[e1000] MAC configuration verified
+[e1000] Initializing RX ring with dma_alloc_coherent
+[dma] alloc: size=1024, virt=0xC2806240, phys=0x2806240
+[dma] alloc: size=2048, virt=0xC2806640, phys=0x2806640
+[e1000] RX desc 0: buf_virt=0xC2806640, buf_dma=0x2806640
+[dma] alloc: size=2048, virt=0xC2806E40, phys=0x2806E40
+[e1000] RX desc 1: buf_virt=0xC2806E40, buf_dma=0x2806E40
+[dma] alloc: size=2048, virt=0xC2807640, phys=0x2807640
+[e1000] RX desc 2: buf_virt=0xC2807640, buf_dma=0x2807640
+[dma] alloc: size=2048, virt=0xC2807E40, phys=0x2807E40
+[dma] alloc: size=2048, virt=0xC2808640, phys=0x2808640
+[dma] alloc: size=2048, virt=0xC2808E40, phys=0x2808E40
+[dma] alloc: size=2048, virt=0xC2809640, phys=0x2809640
+[dma] alloc: size=2048, virt=0xC2809E40, phys=0x2809E40
+[dma] alloc: size=2048, virt=0xC280A640, phys=0x280A640
+[dma] alloc: size=2048, virt=0xC280AE40, phys=0x280AE40
+[dma] alloc: size=2048, virt=0xC280B640, phys=0x280B640
+[dma] alloc: size=2048, virt=0xC280BE40, phys=0x280BE40
+[dma] alloc: size=2048, virt=0xC280C640, phys=0x280C640
+[dma] alloc: size=2048, virt=0xC280CE40, phys=0x280CE40
+[dma] alloc: size=2048, virt=0xC280D640, phys=0x280D640
+[dma] alloc: size=2048, virt=0xC280DE40, phys=0x280DE40
+[dma] alloc: size=2048, virt=0xC280E640, phys=0x280E640
+[dma] alloc: size=2048, virt=0xC280EE40, phys=0x280EE40
+[dma] alloc: size=2048, virt=0xC280F640, phys=0x280F640
+[dma] alloc: size=2048, virt=0xC280FE40, phys=0x280FE40
+[dma] alloc: size=2048, virt=0xC2810640, phys=0x2810640
+[dma] alloc: size=2048, virt=0xC2810E40, phys=0x2810E40
+[dma] alloc: size=2048, virt=0xC2811640, phys=0x2811640
+[dma] alloc: size=2048, virt=0xC2811E40, phys=0x2811E40
+[dma] alloc: size=2048, virt=0xC2812640, phys=0x2812640
+[dma] alloc: size=2048, virt=0xC2812E40, phys=0x2812E40
+[dma] alloc: size=2048, virt=0xC2813640, phys=0x2813640
+[dma] alloc: size=2048, virt=0xC2813E40, phys=0x2813E40
+[dma] alloc: size=2048, virt=0xC2814640, phys=0x2814640
+[dma] alloc: size=2048, virt=0xC2814E40, phys=0x2814E40
+[dma] alloc: size=2048, virt=0xC2815640, phys=0x2815640
+[dma] alloc: size=2048, virt=0xC2815E40, phys=0x2815E40
+[dma] alloc: size=2048, virt=0xC2816640, phys=0x2816640
+[dma] alloc: size=2048, virt=0xC2816E40, phys=0x2816E40
+[dma] alloc: size=2048, virt=0xC2817640, phys=0x2817640
+[dma] alloc: size=2048, virt=0xC2817E40, phys=0x2817E40
+[dma] alloc: size=2048, virt=0xC2818640, phys=0x2818640
+[dma] alloc: size=2048, virt=0xC2818E40, phys=0x2818E40
+[dma] alloc: size=2048, virt=0xC2819640, phys=0x2819640
+[dma] alloc: size=2048, virt=0xC2819E40, phys=0x2819E40
+[dma] alloc: size=2048, virt=0xC281A640, phys=0x281A640
+[dma] alloc: size=2048, virt=0xC281AE40, phys=0x281AE40
+[dma] alloc: size=2048, virt=0xC281B640, phys=0x281B640
+[dma] alloc: size=2048, virt=0xC281BE40, phys=0x281BE40
+[dma] alloc: size=2048, virt=0xC281C640, phys=0x281C640
+[dma] alloc: size=2048, virt=0xC281CE40, phys=0x281CE40
+[dma] alloc: size=2048, virt=0xC281D640, phys=0x281D640
+[dma] alloc: size=2048, virt=0xC281DE40, phys=0x281DE40
+[dma] alloc: size=2048, virt=0xC281E640, phys=0x281E640
+[dma] alloc: size=2048, virt=0xC281EE40, phys=0x281EE40
+[dma] alloc: size=2048, virt=0xC281F640, phys=0x281F640
+[dma] alloc: size=2048, virt=0xC281FE40, phys=0x281FE40
+[dma] alloc: size=2048, virt=0xC2820640, phys=0x2820640
+[dma] alloc: size=2048, virt=0xC2820E40, phys=0x2820E40
+[dma] alloc: size=2048, virt=0xC2821640, phys=0x2821640
+[dma] alloc: size=2048, virt=0xC2821E40, phys=0x2821E40
+[dma] alloc: size=2048, virt=0xC2822640, phys=0x2822640
+[dma] alloc: size=2048, virt=0xC2822E40, phys=0x2822E40
+[dma] alloc: size=2048, virt=0xC2823640, phys=0x2823640
+[dma] alloc: size=2048, virt=0xC2823E40, phys=0x2823E40
+[dma] alloc: size=2048, virt=0xC2824640, phys=0x2824640
+[dma] alloc: size=2048, virt=0xC2824E40, phys=0x2824E40
+[dma] alloc: size=2048, virt=0xC2825640, phys=0x2825640
+[dma] alloc: size=2048, virt=0xC2825E40, phys=0x2825E40
+[e1000] RX desc array: virt=0xC2806240, dma=0x2806240
+[e1000] Initializing TX ring with dma_alloc_coherent
+[dma] alloc: size=1024, virt=0xC2826640, phys=0x2826640
+[e1000] TX desc array: virt=0xC2826640, dma=0x2826640
+[dma] alloc: size=2048, virt=0xC2826A40, phys=0x2826A40
+[e1000] TX buffer 0: virt=0xC2826A40, dma=0x2826A40
+[dma] alloc: size=2048, virt=0xC2827240, phys=0x2827240
+[e1000] TX buffer 1: virt=0xC2827240, dma=0x2827240
+[dma] alloc: size=2048, virt=0xC2827A40, phys=0x2827A40
+[e1000] TX buffer 2: virt=0xC2827A40, dma=0x2827A40
+[dma] alloc: size=2048, virt=0xC2828240, phys=0x2828240
+[dma] alloc: size=2048, virt=0xC2828A40, phys=0x2828A40
+[dma] alloc: size=2048, virt=0xC2829240, phys=0x2829240
+[dma] alloc: size=2048, virt=0xC2829A40, phys=0x2829A40
+[dma] alloc: size=2048, virt=0xC282A240, phys=0x282A240
+[dma] alloc: size=2048, virt=0xC282AA40, phys=0x282AA40
+[dma] alloc: size=2048, virt=0xC282B240, phys=0x282B240
+[dma] alloc: size=2048, virt=0xC282BA40, phys=0x282BA40
+[dma] alloc: size=2048, virt=0xC282C240, phys=0x282C240
+[dma] alloc: size=2048, virt=0xC282CA40, phys=0x282CA40
+[dma] alloc: size=2048, virt=0xC282D240, phys=0x282D240
+[dma] alloc: size=2048, virt=0xC282DA40, phys=0x282DA40
+[dma] alloc: size=2048, virt=0xC282E240, phys=0x282E240
+[dma] alloc: size=2048, virt=0xC282EA40, phys=0x282EA40
+[dma] alloc: size=2048, virt=0xC282F240, phys=0x282F240
+[dma] alloc: size=2048, virt=0xC282FA40, phys=0x282FA40
+[dma] alloc: size=2048, virt=0xC2830240, phys=0x2830240
+[dma] alloc: size=2048, virt=0xC2830A40, phys=0x2830A40
+[dma] alloc: size=2048, virt=0xC2831240, phys=0x2831240
+[dma] alloc: size=2048, virt=0xC2831A40, phys=0x2831A40
+[dma] alloc: size=2048, virt=0xC2832240, phys=0x2832240
+[dma] alloc: size=2048, virt=0xC2832A40, phys=0x2832A40
+[dma] alloc: size=2048, virt=0xC2833240, phys=0x2833240
+[dma] alloc: size=2048, virt=0xC2833A40, phys=0x2833A40
+[dma] alloc: size=2048, virt=0xC2834240, phys=0x2834240
+[dma] alloc: size=2048, virt=0xC2834A40, phys=0x2834A40
+[dma] alloc: size=2048, virt=0xC2835240, phys=0x2835240
+[dma] alloc: size=2048, virt=0xC2835A40, phys=0x2835A40
+[dma] alloc: size=2048, virt=0xC2836240, phys=0x2836240
+[dma] alloc: size=2048, virt=0xC2836A40, phys=0x2836A40
+[dma] alloc: size=2048, virt=0xC2837240, phys=0x2837240
+[dma] alloc: size=2048, virt=0xC2837A40, phys=0x2837A40
+[dma] alloc: size=2048, virt=0xC2838240, phys=0x2838240
+[dma] alloc: size=2048, virt=0xC2838A40, phys=0x2838A40
+[dma] alloc: size=2048, virt=0xC2839240, phys=0x2839240
+[dma] alloc: size=2048, virt=0xC2839A40, phys=0x2839A40
+[dma] alloc: size=2048, virt=0xC283A240, phys=0x283A240
+[dma] alloc: size=2048, virt=0xC283AA40, phys=0x283AA40
+[dma] alloc: size=2048, virt=0xC283B240, phys=0x283B240
+[dma] alloc: size=2048, virt=0xC283BA40, phys=0x283BA40
+[dma] alloc: size=2048, virt=0xC283C240, phys=0x283C240
+[dma] alloc: size=2048, virt=0xC283CA40, phys=0x283CA40
+[dma] alloc: size=2048, virt=0xC283D240, phys=0x283D240
+[dma] alloc: size=2048, virt=0xC283DA40, phys=0x283DA40
+[dma] alloc: size=2048, virt=0xC283E240, phys=0x283E240
+[dma] alloc: size=2048, virt=0xC283EA40, phys=0x283EA40
+[dma] alloc: size=2048, virt=0xC283F240, phys=0x283F240
+[dma] alloc: size=2048, virt=0xC283FA40, phys=0x283FA40
+[dma] alloc: size=2048, virt=0xC2840240, phys=0x2840240
+[dma] alloc: size=2048, virt=0xC2840A40, phys=0x2840A40
+[dma] alloc: size=2048, virt=0xC2841240, phys=0x2841240
+[dma] alloc: size=2048, virt=0xC2841A40, phys=0x2841A40
+[dma] alloc: size=2048, virt=0xC2842240, phys=0x2842240
+[dma] alloc: size=2048, virt=0xC2842A40, phys=0x2842A40
+[dma] alloc: size=2048, virt=0xC2843240, phys=0x2843240
+[dma] alloc: size=2048, virt=0xC2843A40, phys=0x2843A40
+[dma] alloc: size=2048, virt=0xC2844240, phys=0x2844240
+[dma] alloc: size=2048, virt=0xC2844A40, phys=0x2844A40
+[dma] alloc: size=2048, virt=0xC2845240, phys=0x2845240
+[dma] alloc: size=2048, virt=0xC2845A40, phys=0x2845A40
+[dma] alloc: size=2048, virt=0xC2846240, phys=0x2846240
+[e1000] Enabling interrupts
+[e1000] Interrupts enabled (TXDW, RXDMT0, RXT0)
+[e1000] IMS = 0x000000F1
+[e1000] ===== Enabling MSI (Message Signaled Interrupt) =====
+[e1000] APIC BASE MSR = 0xFEE00900
+[e1000]   Bit 11 (Enable) = 1  LAPIC Enabled
+
+[MSI] ✗ No capabilities list
+[e1000] ✗ MSI failed, falling back to IOAPIC IRQ 11
+[e1000] Enabling IRQ 11 in IOAPIC (routing to CPU 0)...
+[ioapicenable] Enabling IRQ11 on CPU0
+[ioapicenable] Writing to REG_TABLE+22 (0x26)
+[ioapicenable] Vector = 43 (0x2B)
+[ioapicenable] Before: low=0x2B high=0x0
+[ioapicenable] After: low=0x2B high=0x0
+[ioapicenable] Done!
+[e1000] IRQ 11 enabled in IOAPIC
+[e1000] =======================================================
+[e1000] Device registered as eth1
+
+[e1000] ========== FINAL MAC VERIFICATION ==========
+[e1000] HW RAL(0):         0x12005452
+[e1000] HW RAH(0):         0x80005634
+[e1000] e1000_priv.mac:    52:54:00:12:34:56
+[e1000] e1000_dev.mac:     52:54:00:12:34:56
+[e1000] global local_mac:  52:54:00:12:34:56
+[e1000] ==============================================
+
+[e1000] ========== FINAL RX STATUS ==========
+[e1000] RCTL   = 0x00408006 (EN=1)
+[e1000] RDH    = 0
+[e1000] RDT    = 63
+[e1000] RX desc 0 status = 0x0000
+[e1000] ===========================================
+
+[e1000] Device initialized successfully
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x9C
+[SYS_GUI_INPUT_READ] Mouse call #300
+[SYS_GUI_INPUT_READ] Keyboard call #300
+[SYS_GUI_INPUT_READ] KEY: scancode=0x16
+[SYS_GUI_INPUT_READ] KEY: scancode=0x96
+[SYS_GUI_INPUT_READ] KEY: scancode=0x20
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x19
+[SYS_GUI_INPUT_READ] KEY: scancode=0x99
+[SYS_GUI_INPUT_READ] KEY: scancode=0x39
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB9
+[SYS_GUI_INPUT_READ] Mouse call #400
+[SYS_GUI_INPUT_READ] Keyboard call #400
+[SYS_GUI_INPUT_READ] KEY: scancode=0x2
+[SYS_GUI_INPUT_READ] KEY: scancode=0x82
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8A
+[SYS_GUI_INPUT_READ] KEY: scancode=0x3
+[SYS_GUI_INPUT_READ] KEY: scancode=0x83
+[SYS_GUI_INPUT_READ] KEY: scancode=0x34
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB4
+[SYS_GUI_INPUT_READ] KEY: scancode=0x2
+[SYS_GUI_INPUT_READ] KEY: scancode=0x82
+[SYS_GUI_INPUT_READ] KEY: scancode=0x7
+[SYS_GUI_INPUT_READ] KEY: scancode=0x87
+[SYS_GUI_INPUT_READ] KEY: scancode=0x9
+[SYS_GUI_INPUT_READ] KEY: scancode=0x89
+[SYS_GUI_INPUT_READ] KEY: scancode=0x34
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB4
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8B
+[SYS_GUI_INPUT_READ] KEY: scancode=0x34
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB4
+[SYS_GUI_INPUT_READ] KEY: scancode=0x2
+[SYS_GUI_INPUT_READ] KEY: scancode=0x82
+[SYS_GUI_INPUT_READ] KEY: scancode=0x5
+[SYS_GUI_INPUT_READ] KEY: scancode=0x85
+[SYS_GUI_INPUT_READ] KEY: scancode=0x6
+[SYS_GUI_INPUT_READ] KEY: scancode=0x86
+[SYS_GUI_INPUT_READ] KEY: scancode=0x39
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB9
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8A
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8A
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8A
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA
+[SYS_GUI_INPUT_READ] KEY: scancode=0x8A
+[SYS_GUI_INPUT_READ] KEY: scancode=0x39
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB9
+[SYS_GUI_INPUT_READ] KEY: scancode=0x23
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA3
+[SYS_GUI_INPUT_READ] KEY: scancode=0x12
+[SYS_GUI_INPUT_READ] KEY: scancode=0x92
+[SYS_GUI_INPUT_READ] Mouse call #500
+[SYS_GUI_INPUT_READ] Keyboard call #500
+[SYS_GUI_INPUT_READ] KEY: scancode=0x26
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA6
+[SYS_GUI_INPUT_READ] KEY: scancode=0x26
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA6
+[SYS_GUI_INPUT_READ] KEY: scancode=0x18
+[SYS_GUI_INPUT_READ] KEY: scancode=0x98
+[SYS_GUI_INPUT_READ] Mouse call #600
+[SYS_GUI_INPUT_READ] Keyboard call #600
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x1C
+[syscall] Send UDP: ip_str='192.168.0.145' (len=13), port=9999, len=5
+[syscall] Parsed IP: 192.168.0.145 -> 0x?
+[syscall] Auto-selected device: eth1
+[syscall] Using src port=59151, dst port=9999
+[net] UDP output: dst=192.168.0.145, sport=59151, dport=9999, len=5
+[net] -> Calling ip_output (UDP)
+[net] IP output: dst=192.168.0.145, proto=17, len=13
+[net] Device IP: 0xC0A8000F (192.168.0.15)
+[net] Netmask: 0xFFFFFF00 (255.255.255.0)
+[net] Subnet check: dst_network=192.168.0.0, local_network=192.168.0.0
+[net] Same subnet, direct delivery
+[arp] lookup ip=C0A80091 (192.168.0.145)
+[arp]   entry[0]: ip=C0A80091 -> 192.168.0.145
+[arp] cache HIT!
+[net] ARP cache hit: 192.168.0.145 -> D8:D0:90:15:E2:68
+[net] -> Calling eth_send (IP packet)
+[net] eth_send: 47 bytes
+D8 D0 90 15 E2 68 52 54 00 12 34 56 08 00 45 00 
+00 21 00 01 00 00 40 11 F8 DA C0 A8 00 0F C0 A8 
+00 91 E7 0F 27 0F 00 0D 00 00 68 65 6C 6C 6F 
+[e1000] TX desc 0: status=0x1 (before send)
+[e1000] Sending 47 bytes (desc 0)
+[e1000] TX data: D8 D0 90 15 E2 68 52 54 00 12 34 56 08 00 45 00 
+[IRQ] tf->trapno=43
+[IRQ] UHCI interrupt received! trapno=43 (IRQ11)
+[e1000] After send: TDT=1, TDH=1
+kfree: freeing 47 bytes (0 pages) at virt=0xC02E16C8, phys=0x0
+kfree: freeing 33 bytes (0 pages) at virt=0xC02E16A0, phys=0x0
+kfree: freeing 13 bytes (0 pages) at virt=0xC02E1690, phys=0x0
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x9C
+[SYS_GUI_INPUT_READ] Mouse call #700
+[SYS_GUI_INPUT_READ] Keyboard call #700
+[SYS_GUI_INPUT_READ] Mouse call #800
+[SYS_GUI_INPUT_READ] Keyboard call #800
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x48
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0xC8
+[SYS_GUI_INPUT_READ] KEY: scancode=0x39
+[SYS_GUI_INPUT_READ] KEY: scancode=0xB9
+[SYS_GUI_INPUT_READ] KEY: scancode=0x2C
+[SYS_GUI_INPUT_READ] KEY: scancode=0xAC
+[SYS_GUI_INPUT_READ] KEY: scancode=0x23
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA3
+[SYS_GUI_INPUT_READ] KEY: scancode=0x11
+[SYS_GUI_INPUT_READ] KEY: scancode=0x91
+[SYS_GUI_INPUT_READ] KEY: scancode=0x23
+[SYS_GUI_INPUT_READ] KEY: scancode=0xA3
+[SYS_GUI_INPUT_READ] Mouse call #900
+[SYS_GUI_INPUT_READ] Keyboard call #900
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x1C
+[syscall] Send UDP: ip_str='192.168.0.145' (len=13), port=9999, len=10
+[syscall] Parsed IP: 192.168.0.145 -> 0x?
+[syscall] Auto-selected device: eth1
+[syscall] Using src port=59152, dst port=9999
+[net] UDP output: dst=192.168.0.145, sport=59152, dport=9999, len=10
+[net] -> Calling ip_output (UDP)
+[net] IP output: dst=192.168.0.145, proto=17, len=18
+[net] Device IP: 0xC0A8000F (192.168.0.15)
+[net] Netmask: 0xFFFFFF00 (255.255.255.0)
+[net] Subnet check: dst_network=192.168.0.0, local_network=192.168.0.0
+[net] Same subnet, direct delivery
+[arp] lookup ip=C0A80091 (192.168.0.145)
+[arp]   entry[0]: ip=C0A80091 -> 192.168.0.145
+[arp] cache HIT!
+[net] ARP cache hit: 192.168.0.145 -> D8:D0:90:15:E2:68
+[net] -> Calling eth_send (IP packet)
+[net] eth_send: 52 bytes
+D8 D0 90 15 E2 68 52 54 00 12 34 56 08 00 45 00 
+00 26 00 01 00 00 40 11 F8 D5 C0 A8 00 0F C0 A8 
+00 91 E7 10 27 0F 00 12 00 00 68 65 6C 6C 6F 20 
+7A 68 77 68 
+[e1000] TX desc 1: status=0x1 (before send)
+[e1000] Sending 52 bytes (desc 1)
+[e1000] TX data: D8 D0 90 15 E2 68 52 54 00 12 34 56 08 00 45 00 
+[e1000] After send: TDT=2, TDH=2
+kfree: freeing 52 bytes (0 pages) at virt=0xC02E1738, phys=0x0
+kfree: freeing 38 bytes (0 pages) at virt=0xC02E1710, phys=0x0
+kfree: freeing 18 bytes (0 pages) at virt=0xC02E16F8, phys=0x0
+[SYS_GUI_INPUT_READ] KEY: scancode=0xE0
+[SYS_GUI_INPUT_READ] KEY: scancode=0x9C
+[SYS_GUI_INPUT_READ] Mouse call #1000
+[SYS_GUI_INPUT_READ] No mouse event (call=1000)
+[SYS_GUI_INPUT_READ] Keyboard call #1000
+[SYS_GUI_INPUT_READ] No keyboard event (call=1000)
+[SYS_GUI_INPUT_READ] Mouse call #1100
+[SYS_GUI_INPUT_READ] Keyboard call #1100
+
