@@ -148,7 +148,7 @@ static int e1000_send(net_device_t *dev, uint8_t *data, uint32_t len) {
     uint32_t tdh = e1000_read32(E1000_TDH);
     printf("[e1000] After send: TDT=%d, TDH=%d\n", tdt, tdh);
 
-    return len;
+    return 0;//len;
 }
 
 /**

@@ -504,7 +504,7 @@ void do_irq_handler(struct trapframe *tf) {
         // 🔥 E1000 网卡中断（常见 IRQ: 5, 9, 10, 11）
         
         case 36:  //  -> trapno 36
-        case 43:
+        //case 43:
         {
             
             //printf(">>> got vector 36 from LAPIC!\n");
@@ -542,6 +542,23 @@ void do_irq_handler(struct trapframe *tf) {
             while(1) {
                 __asm__ volatile("hlt");
             }
+            break;
+        }
+        // 🔥 UHCI USB控制器中断处理（IRQ 9-11 常见范围）
+        case T_IRQ0 + 9:
+        case T_IRQ0 + 10:
+        case T_IRQ0 + 11:
+        {
+            // 🔥 调试：显示UHCI中断
+            printf("[IRQ] UHCI interrupt received! trapno=%d (IRQ%d)\n",
+                   tf->trapno, tf->trapno - T_IRQ0);
+
+            // 🔥 调用UHCI中断处理函数
+            extern void uhci_irq_handler(void);
+            uhci_irq_handler();
+
+            // 发送EOI
+            lapiceoi();
             break;
         }
         default:

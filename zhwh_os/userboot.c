@@ -174,7 +174,7 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
                 //printf("[load_module_to_user] BSS: allocated and zeroed new page\n");
             }
 
-            printf("[load_module_to_user] Calling map_page: dst_va=0x%x dst_pa=0x%x flags=0x%x\n", dst_va, dst_pa, USER_PTE_FLAGS);
+            //printf("[load_module_to_user] Calling map_page: dst_va=0x%x dst_pa=0x%x flags=0x%x\n", dst_va, dst_pa, USER_PTE_FLAGS);
             // 🔥 使用内核页目录物理地址（共享 CR3）
             extern uint32_t kernel_page_directory_phys;
             map_page(kernel_page_directory_phys, dst_va, dst_pa, USER_PTE_FLAGS);

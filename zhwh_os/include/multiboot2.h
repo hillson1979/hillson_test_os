@@ -107,6 +107,7 @@ typedef struct multiboot_tag_mmap {
 } multiboot_tag_mmap_t;
 
 /* Framebuffer 公共部分 */
+#pragma pack(push, 1)
 typedef struct multiboot_tag_framebuffer_common {
     uint32_t type;
     uint32_t size;
@@ -117,8 +118,10 @@ typedef struct multiboot_tag_framebuffer_common {
     uint8_t framebuffer_bpp;
     uint8_t framebuffer_type;
     uint16_t reserved;
-} multiboot_tag_framebuffer_common_t;
+} __attribute__((packed)) multiboot_tag_framebuffer_common_t;
+#pragma pack(pop)
 
+#pragma pack(push, 1)
 /* Framebuffer 标签（完整版） */
 typedef struct multiboot_tag_framebuffer {
     uint32_t type;
@@ -138,8 +141,8 @@ typedef struct multiboot_tag_framebuffer {
                 uint8_t red;
                 uint8_t green;
                 uint8_t blue;
-            } framebuffer_palette[0];
-        };
+            } __attribute__((packed)) framebuffer_palette[0];
+        } __attribute__((packed));
 
         struct {
             uint8_t framebuffer_red_field_position;
@@ -148,9 +151,10 @@ typedef struct multiboot_tag_framebuffer {
             uint8_t framebuffer_green_mask_size;
             uint8_t framebuffer_blue_field_position;
             uint8_t framebuffer_blue_mask_size;
-        };
-    };
-} multiboot_tag_framebuffer_t;
+        } __attribute__((packed));
+    } __attribute__((packed));
+} __attribute__((packed)) multiboot_tag_framebuffer_t;
+#pragma pack(pop)
 
 /* ELF sections */
 typedef struct multiboot_tag_elf_sections {

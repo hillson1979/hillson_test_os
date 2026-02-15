@@ -443,6 +443,24 @@ start_task(struct task_t* th, task_entry_callback_t entry) {
 
 
 void handle_idle_state(uint8_t cpu) {
+    // 检查 USB 设备热插拔事件（在空闲时检测）
+    extern int usb_hcd_poll_hotplug(int controller_id);
+    extern int num_uhci_controllers;
+
+    for (int ctrl_id = 0; ctrl_id < num_uhci_controllers; ctrl_id++) {
+        static int hotplug_count[8] = {0};  // 每个 USB 控制器独立的计数器
+        int changed = usb_hcd_poll_hotplug(ctrl_id);
+
+        if (changed > 0) {
+            printf("[IDLE] USB hotplug event detected on controller %d\n", ctrl_id);
+            hotplug_count[ctrl_id] = 0;  // 重置计数器
+        } else if (++hotplug_count[ctrl_id] >= 10000) {
+            // 每 10000 次空闲循环打印一次状态（减少输出）
+            hotplug_count[ctrl_id] = 0;
+            // printf("[IDLE] USB hotplug check: controller %d, no change\n", ctrl_id);
+        }
+    }
+
     if (task_list[cpu] == NULL) __asm__ __volatile__("sti; hlt; cli");
 }
 

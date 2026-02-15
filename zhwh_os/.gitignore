@@ -50,3 +50,22 @@ iso/boot/*.elf
 *.backup
 *.old
 docs/
+
+# LVGL 图形库 - 只保留源码和配置文件，忽略示例和文档
+lvgl/source/demos/
+lvgl/source/docs/
+lvgl/source/examples/
+lvgl/source/tests/
+lvgl/source/scripts/
+lvgl/source/env_support/
+# LVGL 构建文件（不需要）
+lvgl/source/CMakeLists.txt
+lvgl/source/component.mk
+lvgl/source/idf_component.yml
+lvgl/source/library.json
+lvgl/source/library.properties
+lvgl/source/SConscript
+lvgl/source/Kconfig
+# LVGL README 和许可证（可以保留，但通常不需要）
+# lvgl/source/README*.md
+# lvgl/source/LICENCE.txt

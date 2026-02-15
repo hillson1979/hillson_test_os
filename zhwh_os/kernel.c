@@ -255,6 +255,37 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         pci_init();
         printf("PCI initialized\n");
 
+        // 初始化 USB 总线（依赖 PCI）
+        extern int usb_init(void);
+        printf("Initializing USB...\n");
+        if (usb_init() == 0) {
+            printf("USB initialized\n");
+        } else {
+            printf("USB initialization failed (may not be critical)\n");
+        }
+
+        // 测试 USB 鼠标驱动
+        printf("\n========================================\n");
+        printf("Testing USB Mouse Driver...\n");
+        printf("========================================\n");
+
+        extern int usb_mouse_get_count(void);
+        extern int usb_mouse_read(int mouse_index, void *report);
+        extern int usb_mouse_data_available(int mouse_index);
+
+        int mouse_count = usb_mouse_get_count();
+        printf("USB Mouse count: %d\n", mouse_count);
+
+        if (mouse_count > 0) {
+            // 🔥 测试新的周期性轮询 API
+            extern void usb_mouse_test_periodic(void);
+            usb_mouse_test_periodic();
+        } else {
+            printf("No USB mouse found!\n");
+        }
+
+        printf("========================================\n\n");
+
         // 初始化网络协议栈
         extern void net_init(void);
         extern int loopback_init(void);
@@ -319,8 +350,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         vga[13] = (0x0E << 8) | 'T';
         printf("VGA test: wrote TEST to screen at position 10-13\n");
 
-        // 实验2：检测并打印 VBE/Framebuffer 信息（从 Multiboot2 读取）
-        printf("\n=== VBE/Framebuffer Detection (Multiboot2) ===\n");
+        // 实验2：检测并初始化 VBE/Framebuffer（从 Multiboot2 读取）
+        printf("\n=== VBE/Framebuffer Initialization ===\n");
 
         // 遍历 multiboot2 标签查找 framebuffer 信息
         {
@@ -333,20 +364,138 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                 if (fb_tag->type == MULTIBOOT_TAG_TYPE_FRAMEBUFFER) {
                     multiboot_tag_framebuffer_t *fb = (multiboot_tag_framebuffer_t *)fb_tag;
                     printf("✓ Framebuffer info available!\n");
-                    printf("  framebuffer_addr:   0x%llx\n", fb->framebuffer_addr);
-                    printf("  framebuffer_pitch:  %d\n", fb->framebuffer_pitch);
-                    printf("  framebuffer_width:  %d\n", fb->framebuffer_width);
-                    printf("  framebuffer_height: %d\n", fb->framebuffer_height);
-                    printf("  framebuffer_bpp:    %d\n", fb->framebuffer_bpp);
-                    printf("  framebuffer_type:   %d\n", fb->framebuffer_type);
+                    printf("=== Framebuffer Tag Structure (Hex Dump) ===\n");
+
+                    // 打印整个结构体的十六进制dump
+                    uint8_t *fb_bytes = (uint8_t *)fb;
+                    printf("Raw bytes (%d bytes):\n", sizeof(multiboot_tag_framebuffer_t));
+                    for (int i = 0; i < sizeof(multiboot_tag_framebuffer_t); i++) {
+                        if (i % 16 == 0) {
+                            printf("  %04x: ", i);
+                        }
+                        printf("%02x ", fb_bytes[i]);
+                        if (i % 16 == 15) {
+                            printf("\n");
+                        }
+                    }
+                    printf("\n");
+
+                    // 手动解析每个字段来验证
+                    printf("Manual field parsing:\n");
+                    printf("  type (offset 0x00):     0x%02x%02x%02x%02x -> %d\n",
+                           fb_bytes[3], fb_bytes[2], fb_bytes[1], fb_bytes[0],
+                           *(uint32_t*)&fb_bytes[0]);
+                    printf("  size (offset 0x04):     0x%02x%02x%02x%02x -> %d\n",
+                           fb_bytes[7], fb_bytes[6], fb_bytes[5], fb_bytes[4],
+                           *(uint32_t*)&fb_bytes[4]);
+                    printf("  framebuffer_addr (0x08): 0x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+                           fb_bytes[15], fb_bytes[14], fb_bytes[13], fb_bytes[12],
+                           fb_bytes[11], fb_bytes[10], fb_bytes[9], fb_bytes[8]);
+                    printf("  framebuffer_pitch (0x10): 0x%02x%02x%02x%02x -> %d\n",
+                           fb_bytes[19], fb_bytes[18], fb_bytes[17], fb_bytes[16],
+                           *(uint32_t*)&fb_bytes[16]);
+                    printf("  framebuffer_width (0x14):  0x%02x%02x%02x%02x -> %d\n",
+                           fb_bytes[23], fb_bytes[22], fb_bytes[21], fb_bytes[20],
+                           *(uint32_t*)&fb_bytes[20]);
+                    printf("  framebuffer_height (0x18): 0x%02x%02x%02x%02x -> %d\n",
+                           fb_bytes[27], fb_bytes[26], fb_bytes[25], fb_bytes[24],
+                           *(uint32_t*)&fb_bytes[24]);
+                    printf("  framebuffer_bpp (0x1C):    0x%02x -> %d\n",
+                           fb_bytes[28], fb_bytes[28]);
+                    printf("  framebuffer_type (0x1D):   0x%02x -> %d\n",
+                           fb_bytes[29], fb_bytes[29]);
+                    printf("  reserved (0x1E):            0x%02x%02x -> %d\n",
+                           fb_bytes[31] | (fb_bytes[30] << 8),
+                           *(uint16_t*)&fb_bytes[30]);
+                    printf("\n");
+
+                    // 结构体解析值
+                    printf("Structure field values:\n");
+                    printf("  framebuffer_addr:   0x%08x%08x\n",
+                           (uint32_t)(fb->framebuffer_addr >> 32),
+                           (uint32_t)fb->framebuffer_addr);
+                    printf("  framebuffer_pitch:  0x%04x (%d)\n", fb->framebuffer_pitch, fb->framebuffer_pitch);
+                    printf("  framebuffer_width:  0x%04x (%d)\n", fb->framebuffer_width, fb->framebuffer_width);
+                    printf("  framebuffer_height: 0x%04x (%d)\n", fb->framebuffer_height, fb->framebuffer_height);
+                    printf("  framebuffer_bpp:    0x%02x (%d)\n", fb->framebuffer_bpp, fb->framebuffer_bpp);
+                    printf("  framebuffer_type:   0x%02x (%d)\n", fb->framebuffer_type, fb->framebuffer_type);
+                    printf("=========================================\n");
+
+                    // ⚠️ 临时修复：手动解析字段,避免结构体对齐问题
+                    uint64_t fb_addr = *(uint64_t*)&fb_bytes[8];
+                    uint32_t fb_pitch = *(uint32_t*)&fb_bytes[16];
+                    uint32_t fb_width = *(uint32_t*)&fb_bytes[20];
+                    uint32_t fb_height = *(uint32_t*)&fb_bytes[24];
+                    uint8_t fb_bpp = fb_bytes[28];
+                    uint8_t fb_type = fb_bytes[29];
+
+                    printf("✓ Manual parsing successful!\n");
+                    printf("  Parsed values: addr=0x%x, %dx%d, bpp=%d, type=%d\n",
+                           (uint32_t)fb_addr, fb_width, fb_height, fb_bpp, fb_type);
+
+                    // 检测是否为文本模式 (使用手动解析的正确值)
+                    if (fb_type != 1) {  // 必须是 RGB 图形模式
+                        printf("✗ ERROR: Not RGB framebuffer mode!\n");
+                        printf("  framebuffer_type=%d (must be 1 for RGB)\n", fb_type);
+                        printf("  Type meanings:\n");
+                        printf("    0 = Indexed color\n");
+                        printf("    1 = RGB (required for graphics) ✅\n");
+                        printf("    2 = EGA text\n");
+                        printf("    3 = VBE text (current)\n");
+                        printf("\n");
+                        printf("  Current settings:\n");
+                        printf("    addr: 0x%x\n", (uint32_t)fb_addr);
+                        printf("    resolution: %dx%d\n", fb_width, fb_height);
+                        printf("    bpp: %d, pitch: %d\n", fb_bpp, fb_pitch);
+                        printf("\n");
+                        printf("  GUI functions will NOT work!\n");
+                        printf("  Please check GRUB configuration:\n");
+                        printf("    - Ensure gfxmode is set correctly\n");
+                        printf("    - Try: set gfxmode=1024x768x16\n");
+                        printf("    - Try: set gfxmode=800x600x16\n");
+                        found_framebuffer = 0;
+                        break;
+                    }
+
+                    // 额外检查：bpp 和 pitch 必须有效
+                    if (fb_bpp == 0 || fb_pitch == 0) {
+                        printf("✗ ERROR: Invalid framebuffer parameters!\n");
+                        printf("  bpp=%d (must be > 0)\n", fb_bpp);
+                        printf("  pitch=%d (must be > 0)\n", fb_pitch);
+                        found_framebuffer = 0;
+                        break;
+                    }
+
+                    printf("✓ RGB framebuffer mode detected!\n");
+
                     found_framebuffer = 1;
+
+                    // 初始化 VBE 驱动（使用手动解析的正确值）
+                    extern void vbe_init_from_multiboot(uint64_t fb_addr, uint32_t width,
+                                                        uint32_t height, uint32_t pitch, uint8_t bpp);
+                    vbe_init_from_multiboot(fb_addr, fb_width, fb_height, fb_pitch, fb_bpp);
+                    printf("✓ VBE driver initialized from Multiboot2 info\n");
                     break;
                 }
                 fb_tag = (multiboot_tag_t *)((uint8_t *)fb_tag + ((fb_tag->size + 7) & ~7));
             }
 
             if (!found_framebuffer) {
-                printf("✗ No framebuffer info available\n");
+                printf("✗ No valid framebuffer info available from GRUB\n");
+                printf("  Note: GRUB did not provide RGB framebuffer (type=1)\n");
+                printf("\n");
+                printf("⚠ WARNING: GUI functions will NOT work!\n");
+                printf("\n");
+                printf("Real-mode VBE thunk is disabled due to complexity.\n");
+                printf("Please fix GRUB configuration instead:\n");
+                printf("\n");
+                printf("Solution: Add these lines to zh.sh BEFORE menuentry entries:\n");
+                printf("  set gfxmode=1024x768x32\n");
+                printf("  set gfxpayload=keep\n");
+                printf("  insmod all_video\n");
+                printf("  terminal_output gfxterm\n");
+                printf("\n");
+                printf("Or use VGA 13h mode (320x200x256) as fallback.\n");
             }
         }
 

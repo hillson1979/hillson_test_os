@@ -27,6 +27,11 @@ static const char scancode_to_ascii_shift_table[] = {
     '*', 0, ' '
 };
 
+// 🔥 原始扫描码缓冲区（用于 GUI 输入）
+static uint8_t scancode_buffer[KBD_BUFFER_SIZE];
+static int scancode_head = 0;
+static int scancode_tail = 0;
+
 // 全局键盘状态
 static keyboard_state_t kbd_state = {
     .shift_pressed = 0,
@@ -202,10 +207,23 @@ static void keyboard_debug_print(uint8_t scancode) {
     vga[pos++] = (0x0F << 8) | ' ';
 }
 
+// 🔥 向扫描码缓冲区写入
+static void scancode_buffer_put(uint8_t sc) {
+    int next_tail = (scancode_tail + 1) % KBD_BUFFER_SIZE;
+    if (next_tail == scancode_head) {
+        scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;  // 丢弃最旧的
+    }
+    scancode_buffer[scancode_tail] = sc;
+    scancode_tail = next_tail;
+}
+
 // 键盘中断处理程序
 void keyboard_handler(void) {
     // 读取扫描码
     uint8_t scancode = inb(KBD_DATA_PORT);
+
+    // 🔥 总是保存原始扫描码（包括按键释放事件 0x80）
+    scancode_buffer_put(scancode);
 
     // 转换为 ASCII
     char c = scancode_to_ascii(scancode);
@@ -237,9 +255,38 @@ int keyboard_getchar(void) {
     return c;
 }
 
-// 检查是否有按键可用
+// 检查是否有按键可用（ASCII 缓冲区）
 int keyboard_kbhit(void) {
     return (kbd_state.buffer_head != kbd_state.buffer_tail);
+}
+
+// 🔥 检查是否有原始扫描码可用
+int keyboard_scancode_available(void) {
+    return (scancode_head != scancode_tail);
+}
+
+// 🔥 非阻塞读取原始扫描码（用于 GUI 输入）
+int keyboard_get_scancode_nonblock(void) {
+    if (!keyboard_scancode_available()) {
+        return -1;
+    }
+
+    uint8_t sc = scancode_buffer[scancode_head];
+    scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
+    return sc;
+}
+
+// 非阻塞版本：从键盘缓冲区读取一个字符
+// 如果没有字符，返回 -1
+int keyboard_getchar_nonblock(void) {
+    if (!keyboard_kbhit()) {
+        return -1;  // 没有字符可用
+    }
+
+    char c = kbd_state.buffer[kbd_state.buffer_head];
+    kbd_state.buffer_head = (kbd_state.buffer_head + 1) % KBD_BUFFER_SIZE;
+
+    return c;
 }
 
 // 清空键盘缓冲区

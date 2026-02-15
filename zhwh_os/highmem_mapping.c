@@ -76,7 +76,7 @@ void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags) {
     }*/
     //#define printf(...)
     
-    printf("no Identity mapped---------\n");
+    //printf("no Identity mapped---------\n");
     // 检查是否已经映射
     void* existing = get_mapped_address(phys_addr);
     if (existing) {
@@ -135,8 +135,8 @@ void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags) {
     mappings[free_slot].in_use = true;
     mappings[free_slot].description = "Highmem mapping";
 
-    printf("Mapped highmem: phys 0x%x -> virt 0x%x (size: %u)\n",
-           phys_addr, virt_base + offset, size);
+   // printf("Mapped highmem: phys 0x%x -> virt 0x%x (size: %u)\n",
+        //   phys_addr, virt_base + offset, size);
 
     next_virt_addr += total_size;
     return (void*)(virt_base + offset);

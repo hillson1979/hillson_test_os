@@ -43,11 +43,22 @@
 #define SYS_NET_LOOPBACK_TEST 61  // 🔥 E1000 硬件 loopback 测试（轮询）
 #define SYS_NET_LOOPBACK_TEST_INT 62  // 🔥 E1000 硬件 loopback 测试（中断）
 
+// GUI 系统调用
+#define SYS_GUI_FB_INFO 70      // 获取帧缓冲区信息
+#define SYS_GUI_FB_BLIT 71      // 位图传输到帧缓冲区
+#define SYS_GUI_INPUT_READ 72   // 读取输入设备事件
+#define SYS_USB_MOUSE_POLL 73   // 轮询 USB 鼠标事件
+
 // WiFi
 static uint8_t  *fw_buf      = NULL;
 static uint32_t  fw_size     = 0;
 static uint32_t  fw_received = 0;
 static uint32_t  fw_checksum = 0;
+
+// USB 鼠标状态
+static int usb_mouse_x = 512;
+static int usb_mouse_y = 384;
+static uint8_t usb_mouse_buttons = 0;
 
 // 🔥 当前选择的网络设备名称（空字符串表示自动选择）
 // 🔥 改为非 static，以便网络模块可以访问
@@ -99,14 +110,21 @@ int copy_from_user(char *dst, const char *src, uint32_t n) {
     return 0;
 }
 
+/*  copy_to_user */
+int copy_to_user(char *dst, const char *src, uint32_t n) {
+    // 从内核空间拷贝到用户空间
+    for (uint32_t i = 0; i < n; ++i) dst[i] = src[i];
+    return 0;
+}
+
 /* sys_write(fd, buf, len) */
 static int sys_write(uint32_t fd, const char *buf, uint32_t len) {
-    if (fd != 1) return -1;
-    // 
-    //  console console_putc 
+    if (fd != 1 && fd != 2) return -1;  // 只支持stdout(1)和stderr(2)
+
+    // 输出到串口
+    extern void uart_putc(char c);
     for (uint32_t i = 0; i < len; ++i) {
-        char c = buf[i];      // 
-        vga_putc(c);
+        uart_putc(buf[i]);
     }
     return (int)len;
 }
@@ -264,8 +282,8 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_EXIT:
-            //   printf ES 
-            // printf("[user] exit code=%d\n", arg1);
+            // 打印退出信息
+            printf("[USER] exit() called with code=%d\n", arg1);
             do_exit(arg1);
             // do_exit() 
             // 
@@ -385,8 +403,11 @@ void syscall_dispatch(struct trapframe *tf) {
             const char *user_buf = (const char*)arg2;
             uint32_t len = arg3;
 
+            static int write_count = 0;
+            write_count++;
+
             if (fd == 1 && len < 512) {  // stdout
-                // 
+                //
                 char kbuf[512];
                 int copied = 0;
 
@@ -398,7 +419,7 @@ void syscall_dispatch(struct trapframe *tf) {
                         "orl $0x40000, (%%esp)\n"    // AC
                         "popfl\n"
 
-                        "movb (%1), %0\n"             // 
+                        "movb (%1), %0\n"             //
 
                         "pushfl\n"
                         "andl $~0x40000, (%%esp)\n"  // AC
@@ -412,10 +433,9 @@ void syscall_dispatch(struct trapframe *tf) {
                     copied++;
                 }
 
-                //  VGA
-                for (int i = 0; i < copied; i++) {
-                    vga_putc(kbuf[i]);
-                }
+                // 输出到串口，添加前缀和计数器
+                kbuf[copied] = '\0';
+                printf("[USER #%d] %s", write_count, kbuf);
                 tf->eax = copied;
             } else {
                 tf->eax = -1;
@@ -1253,7 +1273,7 @@ void syscall_dispatch(struct trapframe *tf) {
             const char *data = (const char *)tf->edx;
             int len = (int)tf->esi;
 
-            printf("[syscall] Send UDP: %s:%d, len=%d\n", ip_str, port, len);
+            printf("[syscall] Send UDP: ip_str='%s' (len=%d), port=%d, len=%d\n", ip_str, strlen(ip_str), port, len);
 
             // 1. 解析 IP 地址字符串为 32 位整数
             uint32_t dst_ip = 0;
@@ -1261,17 +1281,27 @@ void syscall_dispatch(struct trapframe *tf) {
             int octet_idx = 0;
             uint32_t current = 0;
 
-            for (const char *p = ip_str; *p != '\0'; p++) {
+            // 跳过前导空格
+            const char *p = ip_str;
+            while (*p == ' ') p++;
+
+            for (; *p != '\0'; p++) {
                 if (*p == '.') {
                     octets[octet_idx++] = (uint8_t)current;
                     current = 0;
                 } else if (*p >= '0' && *p <= '9') {
                     current = current * 10 + (*p - '0');
+                } else if (*p == ' ') {
+                    // 遇到空格，停止解析
+                    break;
                 }
             }
             octets[octet_idx] = (uint8_t)current;
 
             dst_ip = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+
+            printf("[syscall] Parsed IP: %d.%d.%d.%d -> 0x%08X\n",
+                   octets[0], octets[1], octets[2], octets[3], dst_ip);
 
             // 2. 获取网络设备
             extern net_device_t *net_device_get_default(void);
@@ -1506,6 +1536,366 @@ void syscall_dispatch(struct trapframe *tf) {
             extern int e1000_loopback_test_interrupt(void);
             int ret = e1000_loopback_test_interrupt();
             tf->eax = ret;
+            break;
+        }
+        // ==================== GUI 系统调用 ====================
+        case SYS_GUI_FB_INFO: {
+            // 获取帧缓冲区信息
+            // 参数：ebx = fb_info_t* (用户态指针)
+            // 返回：eax = 0 成功，-1 失败
+
+            // 使用 VBE 驱动获取真实的帧缓冲区信息
+            extern int vbe_is_available(void);
+            extern uint32_t vbe_get_framebuffer(void);
+            extern void vbe_get_resolution(uint16_t *width, uint16_t *height);
+            extern uint8_t vbe_get_bpp(void);
+            extern uint16_t vbe_get_pitch(void);
+
+            // 定义帧缓冲区信息结构（必须与用户空间一致）
+            struct fb_info {
+                void *fb_addr;
+                uint32_t width;
+                uint32_t height;
+                uint32_t pitch;
+                uint32_t bpp;
+            } info;
+
+            // 检查 VBE 是否可用
+            if (!vbe_is_available()) {
+                printf("[GUI FB INFO] VBE not available\n");
+                tf->eax = -1;
+                break;
+            }
+
+            // 填充帧缓冲区信息
+            uint16_t width, height;
+            vbe_get_resolution(&width, &height);
+
+            uint32_t fb_phys = vbe_get_framebuffer();
+            info.fb_addr = (void *)0xF0000000;  // 返回固定的虚拟地址
+            info.width = width;
+            info.height = height;
+            info.pitch = vbe_get_pitch();
+            info.bpp = vbe_get_bpp();
+
+            printf("[GUI FB INFO] fb_phys=%p, fb_virt=%p, %dx%d, pitch=%d, bpp=%d\n",
+                   fb_phys, info.fb_addr, info.width, info.height, info.pitch, info.bpp);
+
+            // 🔥 重要: 将framebuffer映射到用户地址空间
+            extern void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags);
+
+            uint32_t fb_virt = 0xF0000000;
+            uint32_t fb_size = info.pitch * info.height;
+            uint32_t num_pages = (fb_size + 4095) / 4096;
+
+            // 获取当前任务的页目录物理地址
+            extern task_t *current_task[];
+            task_t *task = current_task[logical_cpu_id()];
+            uint32_t user_pde_phys = (uint32_t)(task->cr3);
+
+            printf("[GUI FB INFO] Mapping framebuffer to user space...\n");
+            printf("[GUI FB INFO]   user_pde_phys = 0x%x\n", user_pde_phys);
+            printf("[GUI FB INFO]   fb_virt = 0x%x, fb_phys = 0x%x\n", fb_virt, fb_phys);
+            printf("[GUI FB INFO]   num_pages = %d\n", num_pages);
+
+            // 逐页映射到用户地址空间
+            for (uint32_t i = 0; i < num_pages; i++) {
+                uint32_t phys = fb_phys + i * 4096;
+                uint32_t virt = fb_virt + i * 4096;
+                map_page(user_pde_phys, virt, phys, 0x7);  // USER | WRITE | PRESENT
+            }
+
+            printf("[GUI FB INFO] ✓ Framebuffer mapped to user space!\n");
+
+            // 拷贝到用户空间
+            struct fb_info *user_info = (struct fb_info *)tf->ebx;
+            if (copy_to_user(user_info, &info, sizeof(info)) != 0) {
+                tf->eax = -1;
+                break;
+            }
+
+            tf->eax = 0;
+            break;
+        }
+        case SYS_GUI_FB_BLIT: {
+            // 位图传输到帧缓冲区
+            // 参数：ebx = x, ecx = y, edx = width, esi = height, edi = data (用户态指针)
+            // 返回：eax = 0 成功，-1 失败
+
+            int x = (int)tf->ebx;
+            int y = (int)tf->ecx;
+            int width = (int)tf->edx;
+            int height = (int)tf->esi;
+            const uint16_t *data = (const uint16_t *)tf->edi;
+
+            // 简单验证
+            if (width <= 0 || height <= 0 || data == NULL) {
+                tf->eax = -1;
+                break;
+            }
+
+            // 使用 VBE 函数获取帧缓冲区信息
+            extern int vbe_is_available(void);
+            extern uint32_t vbe_get_framebuffer(void);
+            extern void vbe_get_resolution(uint16_t *width, uint16_t *height);
+            extern uint16_t vbe_get_pitch(void);
+
+            // 检查 VBE 是否可用
+            if (!vbe_is_available()) {
+                tf->eax = -1;
+                break;
+            }
+
+            // 获取帧缓冲区信息
+            uint32_t fb_addr = vbe_get_framebuffer();
+            uint16_t fb_width, fb_height;
+            vbe_get_resolution(&fb_width, &fb_height);
+            uint16_t fb_pitch = vbe_get_pitch();
+
+            // 计算目标地址
+            uint16_t *fb = (uint16_t *)fb_addr;
+            uint16_t *dst = fb + y * (fb_pitch / 2) + x;
+
+            // 逐行拷贝（处理 pitch）
+            for (int i = 0; i < height && (y + i) < fb_height; i++) {
+                for (int j = 0; j < width && (x + j) < fb_width; j++) {
+                    // 从用户空间读取像素数据
+                    uint16_t pixel;
+                    if (copy_from_user((char *)&pixel, (const char *)&data[i * width + j], 2) != 0) {
+                        tf->eax = -1;
+                        goto blit_done;
+                    }
+                    dst[i * (fb_pitch / 2) + j] = pixel;
+                }
+            }
+
+            tf->eax = 0;
+        blit_done:
+            break;
+        }
+        case SYS_GUI_INPUT_READ: {
+            // 读取输入设备事件（键盘或鼠标）
+            // 参数：ebx = input_event_t* (用户态指针)
+            //         ecx = 事件类型 (1=键盘, 2=鼠标)
+            // 返回：eax = 1 有事件, 0 无事件
+
+            static int call_count = 0;
+            static int keyboard_call_count = 0;
+            static int mouse_call_count = 0;
+            call_count++;
+
+            // 定义输入事件结构（必须与用户空间一致）
+            struct input_event {
+                uint32_t type;      // 1=键盘, 2=鼠标
+                int x;             // 鼠标 X 或 键码
+                int y;             // 鼠标 Y 或 保留
+                uint32_t pressed;  // 按键状态或保留
+            } event;
+
+            // 检查请求的事件类型
+            uint32_t event_type = tf->ecx;
+
+            if (event_type == 1) {
+                keyboard_call_count++;
+                if (keyboard_call_count % 100 == 0) {
+                    printf("[SYS_GUI_INPUT_READ] Keyboard call #%d\n", keyboard_call_count);
+                }
+            } else if (event_type == 2) {
+                mouse_call_count++;
+                if (mouse_call_count % 100 == 0) {
+                    printf("[SYS_GUI_INPUT_READ] Mouse call #%d\n", mouse_call_count);
+                }
+            }
+
+            if (event_type == 1) {
+                // 键盘事件 - 使用非阻塞方式读取
+                extern int keyboard_scancode_available(void);
+                extern int keyboard_get_scancode_nonblock(void);
+
+                if (keyboard_scancode_available()) {
+                    int scancode = keyboard_get_scancode_nonblock();
+                    event.type = 1;
+                    event.x = scancode;
+                    event.y = 0;
+                    event.pressed = 1;
+
+                    // 拷贝到用户空间
+                    struct input_event *user_event = (struct input_event *)tf->ebx;
+                    if (copy_to_user(user_event, &event, sizeof(event)) != 0) {
+                        tf->eax = -1;
+                        break;
+                    }
+
+                    // 打印键盘事件（每次都打印）
+                    printf("[SYS_GUI_INPUT_READ] KEY: scancode=0x%x\n", scancode);
+
+                    tf->eax = 1;  // 有事件
+                } else {
+                    tf->eax = 0;  // 无事件
+
+                    // 每1000次打印一次"无事件"
+                    if (keyboard_call_count % 1000 == 0) {
+                        printf("[SYS_GUI_INPUT_READ] No keyboard event (call=%d)\n", keyboard_call_count);
+                    }
+                }
+            } else if (event_type == 2) {
+                // 🔥 方案B：鼠标事件 - 状态机 + 边沿触发
+                extern int usb_mouse_get_count(void);
+                extern int usb_mouse_read(int mouse_index, void *report);
+                extern int usb_mouse_data_available(int mouse_index);
+
+                // 🔥 鼠标状态机（保存上次返回给用户态的状态）
+                static struct {
+                    int last_returned_x;
+                    int last_returned_y;
+                    uint32_t last_returned_buttons;
+                    int initialized;
+                } mouse_event_state = {0};
+
+                // 🔥 初始化（使用当前全局状态作为初始值）
+                if (!mouse_event_state.initialized) {
+                    mouse_event_state.last_returned_x = usb_mouse_x;
+                    mouse_event_state.last_returned_y = usb_mouse_y;
+                    mouse_event_state.last_returned_buttons = usb_mouse_buttons;
+                    mouse_event_state.initialized = 1;
+                }
+
+                int new_data_from_usb = 0;
+
+                // 🔥 尝试读取USB鼠标数据（非阻塞）
+                if (usb_mouse_get_count() > 0) {
+                    if (usb_mouse_data_available(0)) {
+                        struct {
+                            uint8_t buttons;
+                            int8_t x;
+                            int8_t y;
+                        } mouse_report;
+
+                        int bytes = usb_mouse_read(0, &mouse_report);
+                        if (bytes > 0) {
+                            // 有新USB数据，更新全局状态
+                            int old_buttons = usb_mouse_buttons;
+
+                            usb_mouse_x += mouse_report.x;
+                            usb_mouse_y += mouse_report.y;
+
+                            // 边界检查
+                            if (usb_mouse_x < 0) usb_mouse_x = 0;
+                            if (usb_mouse_y < 0) usb_mouse_y = 0;
+                            if (usb_mouse_x > 1024) usb_mouse_x = 1024;
+                            if (usb_mouse_y > 768) usb_mouse_y = 768;
+
+                            usb_mouse_buttons = mouse_report.buttons;
+                            new_data_from_usb = 1;
+
+                            // 🔥 调试：打印USB原始数据
+                            static int usb_read_count = 0;
+                            if (++usb_read_count <= 5 || (old_buttons != usb_mouse_buttons)) {
+                                printf("[SYS] USB RAW: btn=%d->%d x=%d y=%d\n",
+                                       old_buttons, usb_mouse_buttons,
+                                       mouse_report.x, mouse_report.y);
+                            }
+                        }
+                    }
+                }
+
+                // 🔥 关键：比较当前全局状态与上次返回给用户的状态
+                // 如果有差异，就返回事件（边沿触发）
+                int state_changed =
+                    (usb_mouse_x != mouse_event_state.last_returned_x ||
+                     usb_mouse_y != mouse_event_state.last_returned_y ||
+                     usb_mouse_buttons != mouse_event_state.last_returned_buttons);
+
+                if (state_changed) {
+                    // 🔥 返回当前状态给用户
+                    event.type = 2;
+                    event.x = usb_mouse_x;
+                    event.y = usb_mouse_y;
+                    event.pressed = usb_mouse_buttons;
+
+                    // 🔥 更新"上次返回"的状态
+                    mouse_event_state.last_returned_x = usb_mouse_x;
+                    mouse_event_state.last_returned_y = usb_mouse_y;
+                    mouse_event_state.last_returned_buttons = usb_mouse_buttons;
+
+                    // 拷贝到用户空间
+                    struct input_event *user_event = (struct input_event *)tf->ebx;
+                    if (copy_to_user(user_event, &event, sizeof(event)) != 0) {
+                        tf->eax = -1;
+                        break;
+                    }
+
+                    // 打印鼠标事件
+                    printf("[SYS_GUI_INPUT_READ] MOUSE: x=%d y=%d btn=%d (changed)\n",
+                           usb_mouse_x, usb_mouse_y, usb_mouse_buttons);
+
+                    tf->eax = 1;  // 有事件
+                } else {
+                    tf->eax = 0;  // 无事件
+
+                    // 每1000次打印一次"无事件"
+                    if (mouse_call_count % 1000 == 0) {
+                        printf("[SYS_GUI_INPUT_READ] No mouse event (call=%d)\n", mouse_call_count);
+                    }
+                }
+            } else {
+                // 其他事件类型暂不支持
+                tf->eax = -1;
+            }
+            break;
+        }
+        case SYS_USB_MOUSE_POLL: {
+            // 轮询 USB 鼠标事件（用于非阻塞读取）
+            // 参数：ebx = usb_mouse_report_t* (用户态指针)
+            // 返回：eax = 1 有数据, 0 无数据, -1 错误
+
+            extern int usb_mouse_get_count(void);
+            extern int usb_mouse_read(int mouse_index, void *report);
+            extern int usb_mouse_data_available(int mouse_index);
+
+            static int poll_count = 0;
+            poll_count++;
+
+            if (usb_mouse_get_count() == 0) {
+                tf->eax = -1;  // 没有鼠标
+                if (poll_count % 100 == 0) {
+                    printf("[SYS_USB_MOUSE_POLL] No mouse found (poll=%d)\n", poll_count);
+                }
+                break;
+            }
+
+            // 检查是否有数据
+            int avail = usb_mouse_data_available(0);
+            if (!avail) {
+                tf->eax = 0;  // 无数据
+                if (poll_count % 100 == 0) {
+                    printf("[SYS_USB_MOUSE_POLL] No data available (poll=%d)\n", poll_count);
+                }
+                break;
+            }
+
+            // 读取鼠标数据
+            struct {
+                uint8_t buttons;
+                int8_t x;
+                int8_t y;
+            } mouse_report;
+
+            int bytes = usb_mouse_read(0, &mouse_report);
+            if (bytes <= 0) {
+                tf->eax = -1;
+                printf("[SYS_USB_MOUSE_POLL] ERROR: usb_mouse_read returned %d\n", bytes);
+                break;
+            }
+
+            // 拷贝到用户空间
+            void *user_report = (void *)tf->ebx;
+            if (copy_to_user(user_report, &mouse_report, sizeof(mouse_report)) != 0) {
+                tf->eax = -1;
+                break;
+            }
+
+            tf->eax = 1;  // 有数据
             break;
         }
         default:

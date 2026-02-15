@@ -201,7 +201,7 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
         printf("[map_page] Set pd_user[%u]=0x%x\n", pd_index, pd_user[pd_index]);
     } else {
         // 页表已存在，复用
-        printf("[map_page] vaddr=0x%x reusing existing pd_user[%u]=0x%x\n", vaddr, pd_index, pd_user[pd_index]);
+        //printf("[map_page] vaddr=0x%x reusing existing pd_user[%u]=0x%x\n", vaddr, pd_index, pd_user[pd_index]);
     }
 
     // 得到页表虚拟地址
@@ -209,7 +209,7 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 
     // 填写 PTE
     pt[pt_index] =  (paddr & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;
-    printf("[map_page] Set pt[%u]=0x%x (vaddr=0x%x -> paddr=0x%x)\n", pt_index, pt[pt_index], vaddr, paddr);
+    //printf("[map_page] Set pt[%u]=0x%x (vaddr=0x%x -> paddr=0x%x)\n", pt_index, pt[pt_index], vaddr, paddr);
 }
 
 
