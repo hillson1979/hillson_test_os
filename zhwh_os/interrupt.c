@@ -619,10 +619,16 @@ trap(struct trapframe *tf)
 
   switch(tf->trapno){
   case T_IRQ0 + IRQ_TIMER:
-    // 🔥🔥 暂时禁用定时器中断，避免除零错误循环
-    printf("[TIMER] Timer interrupt received, returning immediately\n");
+    // ✅ Enable Local APIC Timer for scheduling (IH-005)
+    // Increment tick counter and trigger scheduling when needed
+    if(cpu_id() == 0){
+      //acquire(&tickslock);
+      ticks++;
+      //wakeup(&ticks);
+      //release(&tickslock);
+    }
     lapiceoi();
-    return;
+    break;
     // if(cpu_id() == 0){
     //   //acquire(&tickslock);
     //   ticks++;

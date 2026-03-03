@@ -126,10 +126,14 @@ lapicinit(void)
   // If xv6 cared more about precise timekeeping,
   // TICR would be calibrated using an external time source.
   lapicw(TDCR, X1);
-  // TEMPORARILY DISABLE TIMER FOR DEBUGGING
-  lapicw(TIMER, MASKED); // Disable timer
-  // lapicw(TIMER, PERIODIC | (T_IRQ0 + IRQ_TIMER));
-  // lapicw(TICR, 10000000);
+
+  // ✅ Enable Local APIC Timer for scheduling (IH-005)
+  // Configure timer for periodic interrupts at IRQ_TIMER
+  lapicw(TIMER, PERIODIC | (T_IRQ0 + IRQ_TIMER));
+  // Set initial count to approximately 100 Hz (10ms intervals)
+  // Assuming bus frequency ~100 MHz, 10000000 counts = 100 ms = 10 Hz
+  // For more accurate timing, should calibrate against PIT
+  lapicw(TICR, 10000000);
 
   // Disable logical interrupt lines.
   lapicw(LINT0, MASKED);
