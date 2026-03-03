@@ -1727,7 +1727,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     }
 
                     // 打印键盘事件（每次都打印）
-                    printf("[SYS_GUI_INPUT_READ] KEY: scancode=0x%x\n", scancode);
+                    //printf("[SYS_GUI_INPUT_READ] KEY: scancode=0x%x\n", scancode);
 
                     tf->eax = 1;  // 有事件
                 } else {
@@ -1735,7 +1735,7 @@ void syscall_dispatch(struct trapframe *tf) {
 
                     // 每1000次打印一次"无事件"
                     if (keyboard_call_count % 1000 == 0) {
-                        printf("[SYS_GUI_INPUT_READ] No keyboard event (call=%d)\n", keyboard_call_count);
+                        //printf("[SYS_GUI_INPUT_READ] No keyboard event (call=%d)\n", keyboard_call_count);
                     }
                 }
             } else if (event_type == 2) {

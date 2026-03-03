@@ -12,7 +12,7 @@
 #define pde_t uint32_t
 extern void* _data_start;  // defined by kernel.ld
 extern char text[];
-static struct kernel_mem_mapping mappings[64];
+static struct kernel_mem_mapping mappings[1536];  // Increased for large ELF files
 
 #define PDE_MASK 0xFFC00000
 #define IDX(addr) ((uint32_t)addr >> 12)            // 获取 addr 的页索引

@@ -26,6 +26,9 @@
 // 在内核初始化时设置，do_fork() 需要使用它来映射子进程内存
 uint32_t kernel_page_directory_phys = 0;
 
+// ⚠️ 全局变量：用户任务指针
+struct task_t *th_u = NULL;
+
 // ⚠️ 调试函数：打印进入task_to_user_mode_with_task
 void debug_print_enter(void) {
     printf("[DEBUG] ===== Entering task_to_user_mode_with_task =====\n");
@@ -244,11 +247,11 @@ void task_prepare_pde(struct task_t *task){
            }
        }
 
-       // ⚠️⚠️⚠️ 用户栈已经在 load_module_to_user 中映射了（4页 = 16KB）
+       // ⚠️⚠️⚠️ 用户栈已经在 load_module_to_user 中映射了（16页 = 64KB）
        // 不要在这里重复映射，否则可能会覆盖之前的映射
-       printf("[task_prepare_pde] User stack already mapped by load_module_to_user (4 pages = 16KB)\n");
+       printf("[task_prepare_pde] User stack already mapped by load_module_to_user (16 pages = 64KB)\n");
        printf("[task_prepare_pde] User stack VA range: 0x%x - 0x%x\n",
-              VIRT_USER_STACK_TOP - 4*PAGE_SIZE, VIRT_USER_STACK_TOP);
+              VIRT_USER_STACK_TOP - 16*PAGE_SIZE, VIRT_USER_STACK_TOP);
 
        // ⚠️⚠️⚠️ 关键修复：不要覆盖 tf->esp！
        // 原因：load_module_to_user 已经按照Linux ABI标准设置了正确的ESP
@@ -284,7 +287,7 @@ void task_prepare_pde(struct task_t *task){
 /* 假定这些宏与你内核一致 */
 #define USER_CS  ((SEG_UCODE << 3) | DPL_USER)   /* 0x1b in your case */
 #define USER_DS  ((SEG_UDATA << 3) | DPL_USER)   /* 0x23 in your case */
-#define FL_IF    0x00000200
+//#define FL_IF    0x00000200
 
 /* 内核任务主函数 */
 void kernel_task_main(struct task_t* th) {
@@ -438,7 +441,13 @@ start_task(struct task_t* th, task_entry_callback_t entry) {
                th->pid, th->prev ? th->prev->pid : -1, th->next ? th->next->pid : -1);
     }
 
-    th->state = PS_READY;
+    // ⚠️⚠️⚠️ 关键修复：不要覆盖 PS_CREATED 状态！
+    // 原因：first_time_user 检查依赖 state == PS_CREATED
+    //      如果设置成 PS_READY，调度器会调用 switch_to 而不是 task_to_user_mode_with_task
+    //      这会导致 switch_to 从 trapframe 位置恢复寄存器，破坏 trapframe
+    if (th->state != PS_CREATED) {
+        th->state = PS_READY;
+    }
 }
 
 
@@ -476,9 +485,27 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
 	}
         memset(newtask, 0, PAGE_SIZE);
 	char* error = "Unknown error";*/
-	// 分配 1 页
-        void *page = kmalloc_early(PAGE_SIZE);
-        if (!page) return NULL;
+	// 分配 1 页（使用伙伴系统）
+        uint32_t page_no = buddy_alloc(0);  // order 0 = 1 page
+        if (!page_no) {
+            printf("[task_load] Failed to allocate page from buddy system\n");
+            return NULL;
+        }
+
+        // ⚠️⚠️⚠️ 关键修复：使用 map_highmem_physical 映射高内存页
+        // 原因：buddy_alloc 返回的页可能在 68MB+ 区域，没有直接映射
+        //       直接访问会导致页错误！
+        uint32_t phys_addr = page_no * PAGE_SIZE;
+        extern void* map_highmem_physical(uint32_t, uint32_t, uint32_t);
+        void *page = map_highmem_physical(phys_addr, PAGE_SIZE, PAGE_PRESENT | PAGE_WRITABLE);
+
+        if (!page) {
+            printf("[task_load] Failed to map physical page 0x%x\n", phys_addr);
+            return NULL;
+        }
+
+        printf("[task_load] Allocated and mapped: phys=0x%x, virt=0x%x\n", phys_addr, page);
+
         memset(page, 0, PAGE_SIZE);
 
         // 任务结构体放在页首
@@ -511,11 +538,18 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
         // ⚠️⚠️⚠️ 初始化 has_run_user = 0，表示还未进入过用户态
         newtask->has_run_user = 0;
 
-        // 调试: 输出kstack的虚拟地址
-        printf("[init_task] kstack virt=0x%x\n", (uint32_t)newtask->kstack);
-
-        // trapframe 在栈顶下方
+        // 🔥 trapframe 在栈顶下方（必须先赋值再打印！）
         newtask->tf = (struct trapframe *)((uint8_t*)newtask->kstack - sizeof(struct trapframe));
+
+        // 调试: 输出内存布局关系
+        printf("[init_task] task=0x%x\n", (uint32_t)newtask);
+        printf("[init_task] kstack=0x%x\n", (uint32_t)newtask->kstack);
+        printf("[init_task] esp0=0x%x\n", (uint32_t)newtask->esp0);
+        printf("[init_task] tf=0x%x (kstack - %d)\n",
+               (uint32_t)newtask->tf, sizeof(struct trapframe));
+        printf("[init_task] sizeof(trapframe)=%d\n", sizeof(struct trapframe));
+        printf("[init_task] Memory layout: [task at page start] [tf at kstack-%d] [kstack at page end]\n",
+               sizeof(struct trapframe));
 	newtask->waitpid = 0;
 	newtask->name = "task_";//strdup(fsi->filename);
 	newtask->pid = nextid++;
@@ -1095,34 +1129,95 @@ const char debug_msg_before_iret[] = "[task_to_user_mode] *** ABOUT TO EXECUTE I
 // ================================
 // C包装函数：解决调用约定问题
 // ================================
-
+__attribute__((noinline))
 void task_to_user_mode_with_task_wrapper(struct task_t *task) {
-    // ⚠️⚠️⚠️ 关键调试：检查 task 参数
-    printf("[task_to_user_mode_wrapper] ENTRY: task=0x%x\n", (uint32_t)task);
+    // ⚠️⚠️⚠️ 先禁用中断，防止在打印过程中发生中断
+    __asm__ volatile("cli");
 
-    // ⚠️ 移除所有printf调试,避免printf中的除法导致异常
+    printf("[task_to_user_mode_wrapper] ENTRY: task=0x%x, task->tf=0x%x\n", (uint32_t)task, (uint32_t)task->tf);
 
-    // ⚠️⚠️⚠️ 关键调试:检查task指针是否为NULL
+    // 检查 task 指针是否为 NULL（静默检查）
     if (task == 0) {
-        printf("[task_to_user_mode_wrapper] ERROR: task is NULL!\n");
         __asm__ volatile("hlt");
+        while(1) {
+            __asm__ volatile("hlt");
+        }
     }
     if (task->tf == 0) {
-        printf("[task_to_user_mode_wrapper] ERROR: task->tf is NULL!\n");
         __asm__ volatile("hlt");
+        while(1) {
+            __asm__ volatile("hlt");
+        }
     }
 
-    // ⚠️⚠️⚠️ 关键调试：打印 trapframe 内容
-    printf("[task_to_user_mode_wrapper] task=0x%x, pid=%d\n", (uint32_t)task, task->pid);
-    printf("[task_to_user_mode_wrapper] task->tf=0x%x\n", (uint32_t)task->tf);
-    printf("[task_to_user_mode_wrapper] trapframe content:\n");
-    printf("  eip=0x%x, cs=0x%x, eflags=0x%x\n", task->tf->eip, task->tf->cs, task->tf->eflags);
-    printf("  esp=0x%x, ss=0x%x\n", task->tf->esp, task->tf->ss);
-    printf("  eax=0x%x (should be 0 for child)\n", task->tf->eax);
+    // 🔥🔥🔥 关键修复：初始化 FPU/SSE，避免 Trap 28 (#XF) 异常
+    // Trap 28 通常由以下原因触发：
+    //   1. SSE 指令执行时 CR4.OSFXSR = 0
+    //   2. FPU 指令执行时 CR0.TS = 1 (Task Switched)
+    //   3. FPU 状态未初始化
+    // printf("[task_to_user_mode_wrapper] Initializing FPU/SSE...\n");
 
-    // ⚠️⚠️⚠️ 直接调用 task_to_user_mode_with_task
-    //    参数通过 C 调用约定传递（栈）
-    printf("[task_to_user_mode_wrapper] task_volatile = 0x%x (about to call task_to_user_mode_with_task)\n", (uint32_t)task);
+    // 读取当前 CR0
+    uint32_t cr0;
+    __asm__ volatile("movl %%cr0, %0" : "=r"(cr0));
+
+    // 清除 CR0.TS (Task Switched) 和 CR0.EM (Emulation)
+    // TS=0 允许 FPU 指令执行
+    // EM=0 使用真正的 FPU（而不是软件模拟）
+    cr0 &= ~(1 << 3);  // 清除 TS (bit 3)
+    cr0 &= ~(1 << 2);  // 清除 EM (bit 2)
+
+    // 设置 CR0.MP (Monitor co-processor) = 1
+    cr0 |= (1 << 1);   // 设置 MP (bit 1)
+
+    __asm__ volatile("movl %0, %%cr0" : : "r"(cr0));
+
+    // 读取当前 CR4
+    uint32_t cr4;
+    __asm__ volatile("movl %%cr4, %0" : "=r"(cr4));
+
+    // 设置 CR4.OSFXSR (bit 9) = 1，启用 SSE 支持
+    cr4 |= (1 << 9);
+
+    // 设置 CR4.OSXMMEXCPT (bit 10) = 1，启用 SSE 异常支持
+    cr4 |= (1 << 10);
+
+    __asm__ volatile("movl %0, %%cr4" : : "r"(cr4));
+
+    // 初始化 FPU 状态
+    __asm__ volatile("fninit");
+
+    // printf("[task_to_user_mode_wrapper] FPU/SSE initialized ✅\n");
+    // printf("[task_to_user_mode_wrapper] CR0=0x%x, CR4=0x%x\n", cr0, cr4);
+
+    // 🔥🔥🔥 调试：打印 trapframe 的原始内存内容
+    printf("[task_to_user_mode_wrapper] Raw trapframe memory dump (76 bytes):\n");
+    uint32_t *tf_raw = (uint32_t *)task->tf;
+    for (int i = 0; i < 19; i++) {  // 76 bytes / 4 = 19 个 uint32_t
+        printf("  [+%2d] 0x%x", i*4, tf_raw[i]);
+        if ((i + 1) % 4 == 0) printf("\n");
+    }
+
+    // ⚠️⚠️⚠️ 完全禁用所有printf，防止在中断处理程序中调用printf
+    // printf("[task_to_user_mode_wrapper] BEFORE CALL:\n");
+    // printf("  task=0x%x, tf=0x%x\n", (uint32_t)task, (uint32_t)task->tf);
+
+    // 🔥 打印trapframe原始内存内容来检查eflags位置
+    // printf("  Raw trapframe dump (bytes 56-72):\n");
+    // uint8_t *tf_bytes = (uint8_t *)task->tf;
+    // printf("    [+56] eip = 0x%x\n", *(uint32_t*)(tf_bytes + 56));
+    // printf("    [+60] cs  = 0x%x\n", *(uint32_t*)(tf_bytes + 60));
+    // printf("    [+64] efl = 0x%x\n", *(uint32_t*)(tf_bytes + 64));
+    // printf("    [+68] esp = 0x%x\n", *(uint32_t*)(tf_bytes + 68));
+    // printf("    [+72] ss  = 0x%x\n", *(uint32_t*)(tf_bytes + 72));
+
+    // printf("  tf->eip=0x%x, tf->cs=0x%x, tf->eflags=0x%x\n",
+    //        task->tf->eip, task->tf->cs, task->tf->eflags);
+    // printf("  tf->esp=0x%x, tf->ss=0x%x\n", task->tf->esp, task->tf->ss);
+    // printf("  tf+56 (EIP offset) should be at: 0x%x\n", (uint32_t)task->tf + 56);
+
+    // ⚠️⚠️⚠️ 关键修复：在调用 task_to_user_mode_with_task 之前禁用中断！
+    __asm__ volatile("cli");
 
     task_to_user_mode_with_task(task);
 

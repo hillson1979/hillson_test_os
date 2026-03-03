@@ -19,7 +19,9 @@ SECTIONS
     
     .init.bss ALIGN(4096) :
     {
-    *(.init.bss)
+        __init_bss_start = .;    /* .init.bss 起始符号 */
+        *(.init.bss)
+        __init_bss_end = .;      /* .init.bss 结束符号 */
     }
     
     /* 内核的起始位置（物理地址） */
@@ -58,13 +60,17 @@ SECTIONS
     /* BSS 段 */
     .bss ALIGN(4K) : AT(ADDR(.bss) - VIRT_BASE)
     {
-        *(COMMON)
+        __bss_start = .;    /* BSS 起始符号 */
         *(.bss .bss.*)
-        . = ALIGN(8K);       /* 栈对齐（可选） */
-        stack_base = .;    /* 栈底（低地址） */
-        . += 8K;             /* 栈大小 16KB */
-        stack_top = .;       /* 栈顶（高地址） */
+        *(COMMON)
+        __bss_end = .;      /* BSS 结束符号 */
     }
+    stack_base = ALIGN(__bss_end, 0x1000);
+    stack_top = __bss_end +0x2000;       /* 栈顶（高地址） */
+
+    /* 🔥 定义 .bss 段的虚拟地址和物理地址 */
+    PROVIDE(bss_virt = ADDR(.bss));
+    PROVIDE(bss_phys = ADDR(.bss) - VIRT_BASE);
     
     /* 内核的结束位置（虚拟地址） */
     _kernel_end_virtual = .;

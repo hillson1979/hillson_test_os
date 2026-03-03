@@ -310,7 +310,8 @@ void vbe_init_from_multiboot(uint64_t fb_addr, uint32_t width, uint32_t height,
         uint32_t virt = fb_virt + i * 4096;
 
         // 使用内核页目录物理地址进行映射
-        map_page(kernel_page_directory_phys, virt, phys, 0x3);  // WRITE | PRESENT
+        // 0x7 = PRESENT | WRITE | USER - 允许用户模式访问
+        map_page(kernel_page_directory_phys, virt, phys, 0x7);  // WRITE | PRESENT | USER
     }
 
     printf("[VBE] ✓ Framebuffer mapped successfully!\n");

@@ -347,6 +347,30 @@ extern void vga_setcolor(uint8_t fg, uint8_t bg);
 #define SET_COLOR_RED()     vga_setcolor(4, 0)   // 红字黑底
 // 中断处理主函数
 void do_irq_handler(struct trapframe *tf) {
+    // ⚠️⚠️⚠️ 调试：打印原始 trapframe 内存
+    // ⚠️⚠️⚠️ 重要：printf 会破坏段寄存器！只能用于调试，不能在生产代码中使用！
+    // ⚠️⚠️⚠️ 如果启用 printf，必须在 printf 后恢复正确的段寄存器值
+    #ifdef DEBUG_IRQ_PRINT
+    printf("\n[ do_irq_handler] TRAP %d DEBUG ==========\n", tf->trapno);
+
+    // 🔥 打印原始内存（前 19 个 uint32_t）
+    uint32_t *raw = (uint32_t *)tf;
+    printf("  Raw memory [0-19]: ");
+    for (int i = 0; i < 19; i++) {
+        printf("[%d]=0x%x ", i, raw[i]);
+    }
+    printf("\n");
+
+    printf("  EIP=0x%x, CS=0x%x, EFLAGS=0x%x\n", tf->eip, tf->cs, tf->eflags);
+    printf("  ERR=0x%x, ESP=0x%x\n", tf->err, tf->esp);
+    printf("  EAX=0x%x, EBX=0x%x, ECX=0x%x, EDX=0x%x\n", tf->eax, tf->ebx, tf->ecx, tf->edx);
+    printf("  ESI=0x%x, EDI=0x%x, EBP=0x%x\n", tf->esi, tf->edi, tf->ebp);
+    printf("  DS=0x%x, ES=0x%x, FS=0x%x, GS=0x%x\n", tf->ds, tf->es, tf->fs, tf->gs);
+    printf("====================================\n");
+    #endif
+
+
+
     // 🔥🔥 详细寄存器打印（用于诊断 Trap 19/13 问题）
     // ⚠️⚠️⚠️ 禁用 printf，避免在处理 Trap 19 时再次触发 Trap 19
     if(tf->trapno == 19 || tf->trapno == 13) {
@@ -372,7 +396,7 @@ void do_irq_handler(struct trapframe *tf) {
     }
     else{
         //SET_COLOR_RED();
-        printf("[IRQ] tf->trapno=%d\n", tf->trapno);
+        //printf("[IRQ] tf->trapno=%d\n", tf->trapno);
     }
     
     // ⚠️⚠️⚠️ 暂时禁用所有 printf 调试！
@@ -470,7 +494,8 @@ void do_irq_handler(struct trapframe *tf) {
             sys_block(tf);
             lapiceoi();
             break;
-        case 33: { // 键盘中断（IRQ1）
+        case 33:
+        case 66: { // 键盘中断（IRQ1）
             // 调用键盘驱动处理程序
             extern void keyboard_handler(void);
             keyboard_handler();
@@ -501,19 +526,17 @@ void do_irq_handler(struct trapframe *tf) {
             break;
         }
 
-        // 🔥 E1000 网卡中断（常见 IRQ: 5, 9, 10, 11）
-        
-        case 36:  //  -> trapno 36
-        //case 43:
+        // 🔥 E1000 网卡中断（常见 IRQ: 5, 9, 10, 11, 36）
+
+        case 36:  // trapno 36 = IRQ 4
         {
-            
-            //printf(">>> got vector 36 from LAPIC!\n");
+            //printf(">>> got vector 36 from LAPIC (IRQ 4)!\n");
             extern void e1000_isr(void);
             e1000_isr();
             lapiceoi();
             break;
         }
-
+        
         // ... 其他中断类型 ...
         case T_SIMDERR: // 19 - SIMD Floating-Point Exception
         case 16: { // x87 FPU Error
@@ -563,8 +586,12 @@ void do_irq_handler(struct trapframe *tf) {
         }
         default:
             // 捕获所有未处理的异常
-            printf("[TRAP] Unhandled trap: trapno=%d, eip=0x%x, err=0x%x\n",
+            // ⚠️⚠️⚠️ 不能在中断处理程序中使用 printf！
+            // printf 会破坏段寄存器，导致系统崩溃
+            #ifdef DEBUG_IRQ_PRINT
+            printf("[do_irq_handler] [TRAP] Unhandled trap: trapno=%d, eip=0x%x, err=0x%x\n",
                    tf->trapno, tf->eip, tf->err);
+            #endif
             // 外部中断需要发送EOI，避免阻塞
             if (tf->trapno >= 32 && tf->trapno <= 47) {
                 send_eoi(tf->trapno - 32);

@@ -9,6 +9,7 @@
  */
 
 #include "libuser.h"
+// #include "libuser_minimal.h"  // 移除，避免与libuser.h冲突
 
 // 系统调用包装宏
 #define syscall1(num, arg1) \

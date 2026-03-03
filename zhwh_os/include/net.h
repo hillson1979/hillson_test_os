@@ -413,4 +413,7 @@ static inline uint32_t ntohl(uint32_t netlong) {
     return htonl(netlong);  // 相同操作
 }
 
+// ====== UDP 接收函数（供系统调用使用） ======
+int net_recv_udp_internal(char *buf, int len, int *port);
+
 #endif // NET_H

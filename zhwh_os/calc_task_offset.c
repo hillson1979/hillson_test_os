@@ -8,7 +8,7 @@ typedef uint32_t pid_t;
 typedef uint32_t uid_t;
 typedef uint32_t gid_t;
 typedef uint8_t cpu_id_t;
-typedef uint64_t task_time_t;  // 改名避免与系统 time_t 冲突
+typedef uint32_t task_time_t;  // ⚠️ 必须与内核 time_t 定义一致（32位！）
 
 #define OFFSETOF(type, member) ((unsigned long)&((type *)0)->member)
 

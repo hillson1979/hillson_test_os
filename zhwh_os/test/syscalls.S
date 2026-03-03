@@ -64,7 +64,7 @@ sys_exit:
 # SYS_FORK系统调用 (无参数，返回pid)
 .global syscall_fork
 syscall_fork:
-    movl $11, %eax         # 系统调用号 SYS_FORK
+    movl $12, %eax         # 系统调用号 SYS_FORK (fixed: was 11, now 12)
     int $0x80              # 触发系统调用
     # 返回值在EAX中：父进程返回子进程PID，子进程返回0
     ret
@@ -72,7 +72,7 @@ syscall_fork:
 # SYS_WRITE系统调用 (参数: int fd, const char *buf, int len)
 .global syscall_write
 syscall_write:
-    movl $10, %eax         # 系统调用号 SYS_WRITE
+    movl $11, %eax         # 系统调用号 SYS_WRITE (fixed: was 10, conflicted with SYS_GETCWD)
     movl 4(%esp), %ebx     # 参数1: fd
     movl 8(%esp), %ecx     # 参数2: buf
     movl 12(%esp), %edx    # 参数3: len

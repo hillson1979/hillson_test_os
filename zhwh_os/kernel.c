@@ -14,7 +14,7 @@
 #include "interrupt.h"
 #include "mm.h"
 #include "kmalloc.h"
-//#include "task.h"
+#include "task.h"
 #include "sched.h"
 #include "x86/io.h"
 #include "net/wifi/atheros.h"
@@ -30,7 +30,6 @@ extern void copy_kernel_mappings_to_pd(uint32_t *pd_user);
 extern void* _kernel_start_virtual;
 extern void* _kernel_end_virtual;
 extern void* data;
-struct task_t * th_u,* th_k;
 
 /* 转换 multiboot2 物理地址到虚拟地址 */
 static inline void* mb2_phys_to_virt(uint32_t phys_addr) {
@@ -70,6 +69,12 @@ void dump_multiboot2_modules(uint32_t mb_info_addr) {
     }
 }
 
+
+uint32_t get_esp(void) {
+    uint32_t esp;
+    __asm__ volatile("movl %%esp, %0" : "=r"(esp));
+    return esp;
+}
 
 int
 kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
@@ -111,6 +116,22 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         vga_setcolor(COLOR_GREEN, COLOR_BLACK);
         printf("Kernel Booted with Multiboot 2!\n");
 
+        // ================================
+        // 打印 TASK_IFRAME 值（调试偏移量一致性）
+        // ================================
+        printf("==================== TASK_IFRAME OFFSET CHECK ====================\n");
+        printf("[include/task.h]  TASK_IFRAME (OFFSETOF) = %d\n", TASK_IFRAME);
+        printf("[task_impl.s]     .set TASK_IFRAME, 156\n");
+        printf("[interrupt_exit.s].set TASK_TF, 156\n");
+        printf("[task_offsets.s]  .set TASK_IFRAME, 156\n");
+        printf("================================================================\n");
+        if (TASK_IFRAME != 156) {
+            printf("WARNING: TASK_IFRAME mismatch! Expected 156, got %d\n", TASK_IFRAME);
+        } else {
+            printf("OK: All TASK_IFRAME values are consistent (156)\n");
+        }
+        printf("================================================================\n\n");
+
         
 
         // uart_puts("[KERNEL] Booted with Multiboot 2!\n");
@@ -126,6 +147,11 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         }
 
         mpinit();
+        // 🔥 关键修复：必须在 init_highmem_mapping() 之前设置 GDT
+        // 因为 init_highmem_mapping() 会调用 kmalloc_early 和 map_4k_page
+        // 这些函数调用需要正确的段选择器
+        
+
         init_highmem_mapping();
         //acpi_init();
 
@@ -171,7 +197,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         ioapicinit();
         printf("IOAPIC initialized\n");
 
-        printf("Before seginit\n");
+        printf("Before seginit (early GDT setup)\n");
         seginit();
         printf("After seginit\n");
 
@@ -180,7 +206,13 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("After tss_init\n");
 
         printf("Before tvinit\n");
+        // 🔥 调试：在 tvinit() 前后检查 vectors[128]
+        extern uint32_t vectors[];
+        printf("[KERNEL] BEFORE tvinit: vectors[127] = 0x%x, vectors[128] = 0x%x, vectors[129] = 0x%x\n",
+               vectors[127], vectors[128], vectors[129]);
         tvinit();
+        printf("[KERNEL] AFTER tvinit: vectors[127] = 0x%x, vectors[128] = 0x%x, vectors[129] = 0x%x\n",
+               vectors[127], vectors[128], vectors[129]);
         printf("After tvinit\n");
         
         idtinit();
@@ -205,8 +237,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         // ⚠️ 暂时注释掉 STI，避免中断处理程序的问题导致系统崩溃
         // 启用全局中断（重要！）
-        //__asm__ volatile("sti");
-        printf("Global interrupts DISABLED (sti commented out for debugging)\n");
+        __asm__ volatile("sti");
+        printf("Global interrupts ENABLED\n");
 
         // 在启用中断后初始化键盘驱动
         extern void keyboard_init(void);
@@ -218,7 +250,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("Re-configuring PIC after enabling interrupts...\n");
         unsigned char mask1_after = inb(0x21);
         printf("PIC mask before keyboard enable: 0x%x\n", mask1_after);
-        mask1_after &= ~0x02;  // 清除bit 1 (IRQ1)
+        mask1_after &= 0xFD;  // 清除bit 1 (IRQ1)，使用 0xFD = 11111101
 
         // ⚠️⚠️⚠️ 强制使用内联汇编，确保 outb 不会被优化
         __asm__ volatile (
@@ -238,6 +270,63 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             printf("⚠️⚠️⚠️ WARNING: outb() is not working! PIC mask unchanged!\n");
         } else if (mask1_final != mask1_after) {
             printf("⚠️⚠️⚠️ WARNING: PIC mask changed unexpectedly!\n");
+        }
+
+        // 🔥🔥🔥 关键修复：禁用 8254 PIT 定时器
+        // PIT 的输出连接到 IRQ 0，即使 LAPIC Timer 被禁用，PIT 仍会触发中断
+        printf("Disabling 8254 PIT Timer...\n");
+        // 读取当前 PIT 配置
+        unsigned char pit_ctrl = inb(0x43);
+        printf("PIT control port (0x43): 0x%x\n", pit_ctrl);
+
+        // 禁用 PIT 通道 0（连接到 IRQ 0）
+        // 写入控制字：通道 0，低字节+高字节，模式 0（单次中断）
+        __asm__ volatile (
+            "outb %0, %1"
+            :
+            : "a" ((unsigned char)0x30), "dN" ((uint16_t)0x43)  // 0x30 = 00110000b
+            : "memory"
+        );
+
+        // 设置计数器为 0（停止计数）
+        __asm__ volatile (
+            "outb %0, %1\n"
+            "outb %0, %1"
+            :
+            : "a" ((unsigned char)0x00), "dN" ((uint16_t)0x40)
+            : "memory"
+        );
+
+        // 再次读取 PIT 控制端口验证
+        unsigned char pit_ctrl_after = inb(0x43);
+        printf("PIT control after disable: 0x%x\n", pit_ctrl_after);
+        printf("8254 PIT Timer disabled ✅\n");
+
+        // 🔥🔥🔥 额外保险：确保 LAPIC Timer 也完全禁用
+        // 即使 lapicinit() 中已经禁用了，再次确认
+        extern volatile uint32_t* lapic;
+        if (lapic) {
+            printf("Disabling LAPIC Timer (additional safety)...\n");
+            // LAPIC Timer 寄存器偏移（来自 lapic.h）
+            // #define TIMER 0x320
+            // #define TICR  0x380
+            volatile uint32_t *lapic_timer = lapic + 0x320/4;
+            volatile uint32_t *lapic_ticr = lapic + 0x380/4;
+
+            // 读取当前 Timer 配置
+            uint32_t timer_conf = *lapic_timer;
+            printf("LAPIC Timer config: 0x%x\n", timer_conf);
+
+            // 设置 Timer 为 MASKED 模式（bit 16 = 1）
+            *lapic_timer = 0x10000;  // MASKED = 1 << 16
+
+            // 设置初始计数为 0（停止计数）
+            *lapic_ticr = 0;
+
+            // 验证
+            uint32_t timer_after = *lapic_timer;
+            printf("LAPIC Timer after disable: 0x%x\n", timer_after);
+            printf("LAPIC Timer disabled ✅\n");
         }
 
         // 初始化文件系统
@@ -591,8 +680,11 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         // 实际需要的代码（不打印日志）
         user_task_main(th_u);
+        printf("[kernel_main] Before start_task: ESP=0x%x\n", (uint32_t)get_esp());
         start_task(th_u, user_task_main);
+        printf("[kernel_main] After start_task: ESP=0x%x, about to set state\n", (uint32_t)get_esp());
         th_u->state = PS_CREATED;
+        printf("[kernel_main] After setting state: ESP=0x%x, state=%d\n", (uint32_t)get_esp(), th_u->state);
 
         /*
         // 创建第二个用户进程（测试调度）- 已弃用

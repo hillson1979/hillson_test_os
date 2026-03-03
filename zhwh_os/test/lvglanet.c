@@ -9,6 +9,7 @@
 
 #include "libuser_minimal.h"
 #include "lvgl_os.h"
+#include "video_player.h"
 
 #include <lvgl.h>
 #include <string.h>
@@ -65,6 +66,10 @@ static lv_obj_t *term_textarea = NULL;  // 终端输入框
 static lv_group_t *input_group = NULL;  // 焦点组 - 用于Tab键切换
 static int shift_pressed = 0;  // Shift键状态
 
+// ====== 视频播放器状态 ======
+static int video_enabled = 0;   // 视频播放器是否启用
+static lv_obj_t *video_canvas = NULL;  // 视频显示区域
+
 // 命令历史 - 支持上下箭头翻动
 static char cmd_history[16][256];  // 最多保存16条历史命令
 static int cmd_history_count = 0;   // 当前历史命令数量
@@ -91,6 +96,10 @@ static const char scancode_to_ascii_shift_table[] = {
 // 终端历史
 static char term_history[4096];
 static int term_history_len = 0;
+
+// 日志文件
+static int log_fd = -1;  // 日志文件描述符
+static int log_to_file_enabled = 0;  // 是否启用日志到文件
 
 /**
  * @brief 添加命令到历史记录
@@ -157,9 +166,18 @@ static void load_next_cmd(void) {
 
 /**
  * @brief 添加日志到日志窗口
+ * ⚠️ 改为非 static，以便 lvgl_port.c 可以调用
  */
-static void log_append(const char *text) {
-    if (!log_label) return;
+void log_append(const char *text) {
+    // 🔥 如果 log_label 还没初始化，直接返回（避免崩溃）
+    if (!log_label) {
+        // 但是仍然写入文件
+        if (log_to_file_enabled && log_fd >= 0) {
+            write(log_fd, text, strlen(text));
+            write(log_fd, "\n", 1);
+        }
+        return;
+    }
 
     static char buffer[2048];
     const char *cur = lv_label_get_text(log_label);
@@ -185,6 +203,13 @@ static void log_append(const char *text) {
     buffer[cur_len] = '\0';
 
     lv_label_set_text(log_label, buffer);
+
+    // 🔥 写入日志文件
+    if (log_to_file_enabled && log_fd >= 0) {
+        // 添加换行符
+        write(log_fd, text, strlen(text));
+        write(log_fd, "\n", 1);
+    }
 }
 
 /**
@@ -232,10 +257,288 @@ static uint32_t scancode_to_lvgl_key(uint32_t scancode) {
     }
 }
 
+static int keyboard_read_call_count = 0;
+static void keyboard_read_bak1(lv_indev_drv_t *drv, lv_indev_data_t *data) {
+    // 🔥 调试：只在每1000次调用时打印一次
+    if (++keyboard_read_call_count % 1000 == 0) {
+        log_append("[KBD] keyboard_read called 1000 times");
+    }
+
+    // 🔥 新增：每次调用都打印（限制次数）
+    static int debug_count = 0;
+    if (debug_count < 10) {
+        char buf[128];
+        lv_snprintf(buf, sizeof(buf), "[KBD] keyboard_read call #%d", keyboard_read_call_count);
+        log_append(buf);
+        debug_count++;
+    }
+
+    input_event_t event;
+    int ret;
+
+    // 通过系统调用读取键盘输入
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_READ_INPUT), "b"(&event), "c"(1)
+        : "memory", "cc"
+    );
+
+    // 🔥 新增：打印系统调用返回值
+    if (debug_count <= 10) {
+        char buf[128];
+        lv_snprintf(buf, sizeof(buf), "[KBD] syscall returned %d, event.x=%d", ret, event.x);
+        log_append(buf);
+    }
+
+    if (ret != 1) {
+        // 没有输入
+        if (debug_count <= 10) {
+            log_append("[KBD] No input data available");
+        }
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    // 🔥 新增：打印成功获取的扫描码
+    if (debug_count <= 10) {
+        char buf[128];
+        lv_snprintf(buf, sizeof(buf), "[KBD] Got scancode: 0x%x", event.x);
+        log_append(buf);
+    }
+
+    uint32_t scancode = event.x;
+    uint32_t key_code = scancode & 0x7F;
+    int is_release = (scancode & 0x80) != 0;
+
+    // 先处理 Shift 键
+    if (key_code == KEY_LSHIFT || key_code == KEY_RSHIFT) {
+        shift_pressed = !is_release ? 1 : 0;
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    if (is_release) {
+        // 按键释放：不输出字符，只更新状态
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    // 按下事件
+    data->state = LV_INDEV_STATE_PR;
+
+    // 特殊键映射
+    int is_special_key = 1;
+    switch (key_code) {
+        case 0x0F: data->key = LV_KEY_NEXT;      break; // Tab
+        case 0x1C: data->key = LV_KEY_ENTER;     break; // Enter
+        case 0x0E: data->key = LV_KEY_BACKSPACE; break; // Backspace
+        case 0x48: data->key = LV_KEY_UP;        break; // Up arrow
+        case 0x50: data->key = LV_KEY_DOWN;      break; // Down arrow
+        case 0x4B: data->key = LV_KEY_LEFT;      break; // Left arrow
+        case 0x4D: data->key = LV_KEY_RIGHT;     break; // Right arrow
+        default:   is_special_key = 0;            break; // Not a special key
+    }
+
+    // 只有非特殊键才做普通字符映射
+    if (!is_special_key) {
+        const char *table = shift_pressed ? scancode_to_ascii_shift_table : scancode_to_ascii_table;
+        if (key_code < sizeof(scancode_to_ascii_table)) {
+            data->key = table[key_code];
+        } else {
+            data->key = 0; // 超表不处理
+        }
+    }
+
+    // 调试：记录按键到日志窗口
+    char debug_buf[128];
+    if (is_special_key) {
+        lv_snprintf(debug_buf, sizeof(debug_buf), "[KEY] Special: sc=0x%02X, key=%d", key_code, data->key);
+    } else {
+        lv_snprintf(debug_buf, sizeof(debug_buf), "[KEY] Char: sc=0x%02X, key=%c", key_code, (char)data->key);
+    }
+    log_append(debug_buf);
+}
+
+// 键盘扫描码
+#define KEY_LSHIFT    0x2A
+#define KEY_RSHIFT    0x36
+#define KEY_CAPSLOCK  0x3A
+
+static void keyboard_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
+    static int shift_pressed = 0;
+    static int caps_lock = 0;
+    static int debug_count = 0;
+    static int key_count = 0;
+
+    input_event_t event;
+    int ret;
+
+    // 调用系统调用读取键盘事件
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_READ_INPUT), "b"(&event), "c"(1)
+        : "memory", "cc"
+    );
+
+    if (ret != 1) {
+        // 没有输入，保持释放状态
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    // 🔥 使用 printf 直接输出到串口（前20次）
+    if (debug_count < 20) {
+        printf("USER_KBD: syscall ret=%d, event.x=0x%x, event.type=%d\n", ret, event.x, event.type);
+        debug_count++;
+    }
+
+    uint32_t scancode = event.x;
+    uint32_t key_code = scancode & 0x7F;
+    int is_release = (scancode & 0x80) != 0;
+
+    // 处理 Shift 键
+    if (key_code == KEY_LSHIFT || key_code == KEY_RSHIFT) {
+        shift_pressed = !is_release ? 1 : 0;
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    // 处理 Caps Lock
+    if (!is_release && key_code == KEY_CAPSLOCK) {
+        caps_lock = !caps_lock;
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    if (is_release) {
+        // 按键释放：不输出字符
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    // 按下事件
+    data->state = LV_INDEV_STATE_PR;
+
+    // 特殊键映射
+    int is_special_key = 1;
+    switch (key_code) {
+        case 0x0F: data->key = LV_KEY_NEXT;      break; // Tab
+        case 0x1C: data->key = LV_KEY_ENTER;     break; // Enter
+        case 0x0E: data->key = LV_KEY_BACKSPACE; break; // Backspace
+        case 0x48: data->key = LV_KEY_UP;        break; // Up arrow
+        case 0x50: data->key = LV_KEY_DOWN;      break; // Down arrow
+        case 0x4B: data->key = LV_KEY_LEFT;      break; // Left arrow
+        case 0x4D: data->key = LV_KEY_RIGHT;     break; // Right arrow
+        default:   is_special_key = 0;            break;
+    }
+
+    // 普通字符映射
+    if (!is_special_key) {
+        const char *table = shift_pressed ? scancode_to_ascii_shift_table : scancode_to_ascii_table;
+        const int table_size = sizeof(scancode_to_ascii_table) / sizeof(scancode_to_ascii_table[0]);
+        if (key_code < table_size) {
+            char ch = table[key_code];
+            // 根据 Caps Lock 和 Shift 调整大小写
+            if (ch >= 'a' && ch <= 'z') {
+                if ((caps_lock && !shift_pressed) || (!caps_lock && shift_pressed)) {
+                    ch = ch - 'a' + 'A';
+                }
+            }
+            data->key = ch;
+        } else {
+            data->key = 0;
+        }
+    }
+
+    // 🔥 使用 printf 直接输出到串口（前20次按键）
+    if (key_count < 20) {
+        if (is_special_key) {
+            printf("USER_KEY: Special: sc=0x%02X, key=%d\n", key_code, data->key);
+        } else {
+            printf("USER_KEY: Char: sc=0x%02X, key=%c (0x%x)\n", key_code, (char)data->key, (int)data->key);
+        }
+        key_count++;
+    }
+}
+#ifndef LV_KEY_TAB
+#define LV_KEY_TAB        9
+#endif
+static void keyboard_read_bak2(lv_indev_drv_t *drv, lv_indev_data_t *data) {
+    input_event_t event;
+    int ret;
+
+    // 通过系统调用读取键盘输入
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_READ_INPUT), "b"(&event), "c"(1)
+        : "memory", "cc"
+    );
+
+    if (ret != 1) {
+        // 没有输入
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    uint32_t scancode = event.x;
+    uint32_t key_code = scancode & 0x7F;
+    int is_release = (scancode & 0x80) != 0;
+
+    // 先处理 Shift 键
+    if (key_code == KEY_LSHIFT || key_code == KEY_RSHIFT) {
+        shift_pressed = !is_release ? 1 : 0;
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    if (is_release) {
+        // 按键释放：不输出字符，只更新状态
+        data->state = LV_INDEV_STATE_REL;
+        data->key = 0;
+        return;
+    }
+
+    // 按下事件
+    data->state = LV_INDEV_STATE_PR;
+
+    // 特殊键映射
+    switch (key_code) {
+        case 0x0F: data->key = LV_KEY_NEXT;      return; // Tab
+        case 0x1C: data->key = LV_KEY_ENTER;     return; // Enter
+        case 0x0E: data->key = LV_KEY_BACKSPACE; return; // Backspace
+        case 0x48: data->key = LV_KEY_UP;        return; // Up arrow
+        case 0x50: data->key = LV_KEY_DOWN;      return; // Down arrow
+        case 0x4B: data->key = LV_KEY_LEFT;      return; // Left arrow
+        case 0x4D: data->key = LV_KEY_RIGHT;     return; // Right arrow
+    }
+
+    // 普通字符映射表
+    const char *table = shift_pressed ? scancode_to_ascii_shift_table : scancode_to_ascii_table;
+    if (key_code < sizeof(scancode_to_ascii_table)) {
+        data->key = table[key_code];
+
+        // 可选：打印日志调试
+        // printf("[KEY] scancode=0x%02X, char=%c\n", scancode, data->key);
+    } else {
+        data->key = 0; // 超表不处理
+    }
+}
 /**
  * @brief 键盘输入读取回调
  */
-static void keyboard_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
+static void keyboard_read_bak(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     input_event_t event;
     int ret;
 
@@ -247,9 +550,11 @@ static void keyboard_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
         : "memory", "cc"
     );
 
+    printf("kbd: ret=%d sc=%x \n", ret, event.x);
+
     if (ret == 1) {
         // 有键盘输入
-        uint32_t scancode = event.x;
+        uint32_t scancode = (uint32_t)(event.x & 0xFF); // 只取低8位，避免符号扩展
         uint32_t key_code = scancode & 0x7F;
         int is_release = (scancode & 0x80) != 0;
 
@@ -280,27 +585,28 @@ static void keyboard_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
             }
         }
 
-        // 检查是否是按键释放
-        if (is_release) {
-            // 按键释放
-            data->state = LV_INDEV_STATE_REL;
-            data->key = scancode_to_lvgl_key(scancode);
+        // 映射到LVGL键值
+        uint32_t lv_key = scancode_to_lvgl_key(scancode);
+        if (lv_key != 0) {
+            // 对于特殊键（Tab, Enter, Arrow keys等）
+            data->key = lv_key;
+            data->state = is_release ? LV_INDEV_STATE_REL : LV_INDEV_STATE_PR;
         } else {
-            // 按键按下
-            data->state = LV_INDEV_STATE_PR;
-
-            // 映射到LVGL键值
-            uint32_t lv_key = scancode_to_lvgl_key(scancode);
-            if (lv_key != 0) {
-                data->key = lv_key;
-            } else {
-                // 对于普通字符键，转换为ASCII字符
-                const char *table = shift_pressed ? scancode_to_ascii_shift_table : scancode_to_ascii_table;
-                if (key_code < sizeof(scancode_to_ascii_table)) {
-                    data->key = table[key_code];
+            // 对于普通字符键，转换为ASCII字符
+            const char *table = shift_pressed ? scancode_to_ascii_shift_table : scancode_to_ascii_table;
+            // 检查键码是否在有效范围内
+            if (key_code < sizeof(scancode_to_ascii_table)) {
+                char ascii_char = table[key_code];
+                if (ascii_char != 0) {
+                    data->key = ascii_char;
+                    data->state = is_release ? LV_INDEV_STATE_REL : LV_INDEV_STATE_PR;
                 } else {
                     data->key = 0;
+                    data->state = LV_INDEV_STATE_REL;
                 }
+            } else {
+                data->key = 0;
+                data->state = LV_INDEV_STATE_REL;
             }
         }
     } else {
@@ -559,6 +865,9 @@ static void terminal_ready_callback(lv_event_t *e) {
                 "  udp IP PORT [MSG] - UDP send test\n"
                 "  wifi           - Initialize WiFi\n"
                 "  scan           - WiFi scan\n"
+                "  vstart [PORT]  - Start video receiver (def:1234)\n"
+                "  vstop          - Stop video receiver\n"
+                "  vstat          - Show video statistics\n"
                 "  clear          - Clear terminal\n"
                 "  help/?         - Show this help\n"
                 "> ";
@@ -610,6 +919,110 @@ static void terminal_ready_callback(lv_event_t *e) {
             term_history[0] = '\0';
             lv_label_set_text(term_label, "Terminal cleared.\n> ");
             log_append("[TERM] Terminal cleared");
+        }
+        else if (strncmp(text, "vstart", 6) == 0) {
+            // 启动视频播放器 - 支持格式: vstart [PORT]
+            int port = 1234;  // 默认端口
+            if (strlen(text) > 7 && text[6] == ' ') {
+                port = atoi(text + 7);
+            }
+
+            char log_buf[256];
+            lv_snprintf(log_buf, sizeof(log_buf), "[TERM] Starting video receiver on port %d...", port);
+            log_append(log_buf);
+
+            // 初始化网络接收器
+            int ret = net_recv_init("0.0.0.0", port, 1);  // UDP
+            if (ret == 0) {
+                // 初始化视频播放器（如果还没初始化）
+                if (!video_canvas) {
+                    video_canvas = lv_img_create(lv_scr_act());
+                    lv_obj_set_size(video_canvas, VIDEO_W, VIDEO_H);
+                    lv_obj_set_pos(video_canvas, 40, 180);  // 放在界面上方
+                    lv_obj_set_style_border_width(video_canvas, 2, 0);
+                    lv_obj_set_style_border_color(video_canvas, lv_palette_main(LV_PALETTE_CYAN), 0);
+
+                    // 🔥 使用静态分配（在 BSS 中），150KB
+                    static uint16_t black_buf[VIDEO_W * VIDEO_H];
+                    static lv_img_dsc_t black_dsc;
+                    memset(black_buf, 0, sizeof(black_buf));
+                    black_dsc.header.always_zero = 0;
+                    black_dsc.header.w = VIDEO_W;
+                    black_dsc.header.h = VIDEO_H;
+                    black_dsc.data_size = VIDEO_W * VIDEO_H * sizeof(uint16_t);
+                    black_dsc.header.cf = LV_IMG_CF_TRUE_COLOR;
+                    black_dsc.data = (uint8_t *)black_buf;
+                    lv_img_set_src(video_canvas, &black_dsc);
+
+                    log_append("[VIDEO] Canvas created");
+                }
+
+                video_enabled = 1;
+                log_append("[VIDEO] Receiver started");
+                if (term_history_len < sizeof(term_history) - 50) {
+                    term_history_len += lv_snprintf(term_history + term_history_len,
+                                                         sizeof(term_history) - term_history_len,
+                                                         "Video: started on port %d\n", port);
+                    lv_label_set_text(term_label, term_history);
+                }
+            } else {
+                log_append("[VIDEO] Failed to start receiver");
+                if (term_history_len < sizeof(term_history) - 50) {
+                    term_history_len += lv_snprintf(term_history + term_history_len,
+                                                         sizeof(term_history) - term_history_len,
+                                                         "Video: failed (ret=%d)\n", ret);
+                    lv_label_set_text(term_label, term_history);
+                }
+            }
+        }
+        else if (strcmp(text, "vstop") == 0) {
+            // 停止视频播放器
+            video_enabled = 0;
+            net_recv_close();
+            log_append("[VIDEO] Receiver stopped");
+            if (term_history_len < sizeof(term_history) - 50) {
+                term_history_len += lv_snprintf(term_history + term_history_len,
+                                                     sizeof(term_history) - term_history_len,
+                                                     "Video: stopped\n");
+                lv_label_set_text(term_label, term_history);
+            }
+        }
+        else if (strcmp(text, "vstat") == 0) {
+            // 显示视频统计信息
+            const video_stats_t *stats = video_player_get_stats();
+            if (stats) {
+                char stat_buf[512];
+                int len = lv_snprintf(stat_buf, sizeof(stat_buf),
+                    "Video Stats:\n"
+                    "  Frames: %u\n"
+                    "  FPS: %u\n"
+                    "  Bytes: %u\n"
+                    "  Packets: %u\n"
+                    "  Bandwidth: %u B/s\n"
+                    "  Decode avg: %u ms\n"
+                    "  Decode max: %u ms\n"
+                    "  Recv errors: %u\n"
+                    "  Decode errors: %u\n",
+                    stats->frames_displayed,
+                    stats->fps,
+                    stats->bytes_received,
+                    stats->total_packets,
+                    stats->last_bandwidth,
+                    stats->avg_decode_time,
+                    stats->max_decode_time,
+                    stats->recv_errors,
+                    stats->decode_errors);
+                log_append(stat_buf);
+
+                if (term_history_len < sizeof(term_history) - len - 50) {
+                    term_history_len += lv_snprintf(term_history + term_history_len,
+                                                         sizeof(term_history) - term_history_len,
+                                                         "%s", stat_buf);
+                    lv_label_set_text(term_label, term_history);
+                }
+            } else {
+                log_append("[VIDEO] No stats available");
+            }
         }
         else {
             // 未知命令
@@ -666,8 +1079,10 @@ void button2_callback(lv_event_t *e) {
 void button3_callback(lv_event_t *e) {
     log_append("Initializing E1000...");
     int ret = e1000_init_user("eth1");
-    if (ret == 0) log_append("[OK] E1000 ready!");
-    else log_append("[FAIL] E1000 init failed");
+    if (ret == 0) {log_append("[OK] E1000 ready!");
+     }
+      else {log_append("[FAIL] E1000 init failed");
+     }
 }
 
 /**
@@ -716,19 +1131,37 @@ static void focus_style_cb(lv_event_t *e) {
     }
 
     if (lv_event_get_code(e) == LV_EVENT_FOCUSED) {
-        // 获得焦点：显示明显的边框
-        lv_obj_set_style_border_width(target, 3, 0);
-        lv_obj_set_style_border_color(target, lv_palette_main(LV_PALETTE_CYAN), 0);
-        lv_obj_set_style_border_opa(target, LV_OPA_COVER, 0);
-    } else if (lv_event_get_code(e) == LV_EVENT_DEFOCUSED) {
-        // 失去焦点：移除焦点边框
+        // 获得焦点：非常明显的反馈
         if (lv_obj_get_class(target) == &lv_btn_class) {
-            // 按钮移除边框
-            lv_obj_set_style_border_width(target, 0, 0);
+            // 按钮：加粗边框 + 高亮背景
+            lv_obj_set_style_border_width(target, 5, 0);
+            lv_obj_set_style_border_color(target, lv_palette_main(LV_PALETTE_YELLOW), 0);
+            lv_obj_set_style_border_opa(target, LV_OPA_COVER, 0);
+            lv_obj_set_style_outline_width(target, 3, 0);
+            lv_obj_set_style_outline_color(target, lv_palette_main(LV_PALETTE_RED), 0);
+            lv_obj_set_style_outline_opa(target, LV_OPA_COVER, 0);
+            lv_obj_set_style_outline_pad(target, 2, 0);
         } else if (lv_obj_get_class(target) == &lv_textarea_class) {
-            // 输入框恢复绿色边框
+            // 输入框：加粗边框 + 白色背景
+            lv_obj_set_style_border_width(target, 5, 0);
+            lv_obj_set_style_border_color(target, lv_palette_main(LV_PALETTE_YELLOW), 0);
+            lv_obj_set_style_border_opa(target, LV_OPA_COVER, 0);
+            lv_obj_set_style_outline_width(target, 3, 0);
+            lv_obj_set_style_outline_color(target, lv_palette_main(LV_PALETTE_RED), 0);
+            lv_obj_set_style_outline_opa(target, LV_OPA_COVER, 0);
+            lv_obj_set_style_outline_pad(target, 2, 0);
+        }
+    } else if (lv_event_get_code(e) == LV_EVENT_DEFOCUSED) {
+        // 失去焦点：移除所有焦点样式
+        if (lv_obj_get_class(target) == &lv_btn_class) {
+            // 按钮恢复
+            lv_obj_set_style_border_width(target, 0, 0);
+            lv_obj_set_style_outline_width(target, 0, 0);
+        } else if (lv_obj_get_class(target) == &lv_textarea_class) {
+            // 输入框恢复
             lv_obj_set_style_border_width(target, 2, 0);
             lv_obj_set_style_border_color(target, lv_palette_main(LV_PALETTE_GREEN), 0);
+            lv_obj_set_style_outline_width(target, 0, 0);
         }
     }
 }
@@ -737,7 +1170,8 @@ static void focus_style_cb(lv_event_t *e) {
  * @brief 创建测试界面
  */
 void create_keyboard_ui(void) {
-    printf("[LVGL] Creating LVGL + Network UI...\n");
+    // 🔥 暂时禁用 printf
+    // printf("[LVGL] Creating LVGL + Network UI...\n");
 
     // 获取默认屏幕
     lv_obj_t *scr = lv_scr_act();
@@ -760,9 +1194,8 @@ void create_keyboard_ui(void) {
     lv_obj_set_size(btn1, 180, 45);
     lv_obj_set_pos(btn1, 50, 50);
     lv_obj_set_style_bg_color(btn1, lv_palette_main(LV_PALETTE_GREEN), 0);
+    lv_obj_set_style_bg_opa(btn1, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(btn1, 10, 0);  // 圆角
-    lv_obj_set_style_shadow_width(btn1, 5, 0);  // 阴影
-    lv_obj_set_style_shadow_opa(btn1, LV_OPA_50, 0);
     lv_obj_add_event_cb(btn1, button1_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn1, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
@@ -775,9 +1208,8 @@ void create_keyboard_ui(void) {
     lv_obj_set_size(btn2, 180, 45);
     lv_obj_set_pos(btn2, 260, 50);
     lv_obj_set_style_bg_color(btn2, lv_palette_main(LV_PALETTE_BLUE), 0);
+    lv_obj_set_style_bg_opa(btn2, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(btn2, 10, 0);  // 圆角
-    lv_obj_set_style_shadow_width(btn2, 5, 0);  // 阴影
-    lv_obj_set_style_shadow_opa(btn2, LV_OPA_50, 0);
     lv_obj_add_event_cb(btn2, button2_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn2, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
@@ -790,9 +1222,8 @@ void create_keyboard_ui(void) {
     lv_obj_set_size(btn3, 180, 45);
     lv_obj_set_pos(btn3, 470, 50);
     lv_obj_set_style_bg_color(btn3, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_set_style_bg_opa(btn3, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(btn3, 10, 0);  // 圆角
-    lv_obj_set_style_shadow_width(btn3, 5, 0);  // 阴影
-    lv_obj_set_style_shadow_opa(btn3, LV_OPA_50, 0);
     lv_obj_add_event_cb(btn3, button3_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn3, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
@@ -807,9 +1238,8 @@ void create_keyboard_ui(void) {
     lv_obj_set_size(btn4, 180, 45);
     lv_obj_set_pos(btn4, 50, 115);
     lv_obj_set_style_bg_color(btn4, lv_palette_main(LV_PALETTE_ORANGE), 0);
+    lv_obj_set_style_bg_opa(btn4, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(btn4, 10, 0);  // 圆角
-    lv_obj_set_style_shadow_width(btn4, 5, 0);  // 阴影
-    lv_obj_set_style_shadow_opa(btn4, LV_OPA_50, 0);
     lv_obj_add_event_cb(btn4, button4_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn4, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
@@ -822,9 +1252,8 @@ void create_keyboard_ui(void) {
     lv_obj_set_size(btn5, 180, 45);
     lv_obj_set_pos(btn5, 260, 115);
     lv_obj_set_style_bg_color(btn5, lv_palette_main(LV_PALETTE_PURPLE), 0);
+    lv_obj_set_style_bg_opa(btn5, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(btn5, 10, 0);  // 圆角
-    lv_obj_set_style_shadow_width(btn5, 5, 0);  // 阴影
-    lv_obj_set_style_shadow_opa(btn5, LV_OPA_50, 0);
     lv_obj_add_event_cb(btn5, button5_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn5, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
@@ -837,9 +1266,8 @@ void create_keyboard_ui(void) {
     lv_obj_set_size(btn6, 180, 45);
     lv_obj_set_pos(btn6, 470, 115);
     lv_obj_set_style_bg_color(btn6, lv_palette_main(LV_PALETTE_TEAL), 0);
+    lv_obj_set_style_bg_opa(btn6, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(btn6, 10, 0);  // 圆角
-    lv_obj_set_style_shadow_width(btn6, 5, 0);  // 阴影
-    lv_obj_set_style_shadow_opa(btn6, LV_OPA_50, 0);
     lv_obj_add_event_cb(btn6, button6_callback, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(btn6, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
@@ -877,6 +1305,7 @@ void create_keyboard_ui(void) {
     // 创建文本输入框用于键盘输入 - 黑色终端样式
     term_textarea = lv_textarea_create(term_win);
     lv_textarea_set_one_line(term_textarea, true);
+    lv_textarea_set_placeholder_text(term_textarea, "input data...");
     lv_obj_set_size(term_textarea, 430, 40);
     lv_obj_set_pos(term_textarea, 10, 30);
 
@@ -886,7 +1315,15 @@ void create_keyboard_ui(void) {
     lv_obj_set_style_text_color(term_textarea, lv_palette_main(LV_PALETTE_LIME), 0);
     lv_obj_set_style_border_width(term_textarea, 2, 0);
     lv_obj_set_style_border_color(term_textarea, lv_palette_main(LV_PALETTE_GREEN), 0);
+
+    lv_textarea_set_cursor_click_pos(term_textarea, true);   // 允许点击定位光标
+
+    // 设置光标样式 - 明显的黄色光标，便于观察
+    lv_obj_set_style_bg_color(term_textarea, lv_palette_main(LV_PALETTE_YELLOW), LV_PART_CURSOR);
+    lv_obj_set_style_bg_opa(term_textarea, LV_OPA_COVER, LV_PART_CURSOR);
+
     lv_obj_add_event_cb(term_textarea, terminal_ready_callback, LV_EVENT_READY, NULL);
+    //lv_obj_add_event_cb(term_textarea, textarea_key_cb, LV_EVENT_KEY, NULL);
     lv_obj_add_event_cb(term_textarea, focus_style_cb, LV_EVENT_FOCUSED | LV_EVENT_DEFOCUSED, NULL);
 
     // 创建终端输出显示区域 - 黑色终端样式
@@ -931,18 +1368,18 @@ void create_keyboard_ui(void) {
     lv_obj_align(log_label, LV_ALIGN_TOP_MID, 0, 0);  // 顶部居中对齐
 
     // 强制标记整个屏幕为"脏"，触发渲染
-    printf("[LVGL] Forcing screen invalidation...\n");
+    // printf("[LVGL] Forcing screen invalidation...\n");
     lv_obj_invalidate(scr);
     lv_refr_now(NULL);  // 立即触发刷新
 
     // 创建焦点组 - 用于Tab键切换
     input_group = lv_group_create();
     if (input_group) {
-        printf("[LVGL] Focus group created\n");
+        // printf("[LVGL] Focus group created\n");
 
         // 添加控件到焦点组（按Tab切换顺序）
         // 终端输入框放在第一个，这样焦点默认在这里
-        lv_group_add_obj(input_group, term_textarea);  // 终端输入框（默认焦点）
+       
         lv_group_add_obj(input_group, btn1);  // Init All
         lv_group_add_obj(input_group, btn2);  // Init RTL
         lv_group_add_obj(input_group, btn3);  // Init E1000
@@ -950,7 +1387,16 @@ void create_keyboard_ui(void) {
         lv_group_add_obj(input_group, btn5);  // Ping Test
         lv_group_add_obj(input_group, btn6);  // WiFi Stat
 
-        printf("[LVGL] Added 7 objects to focus group\n");
+        // printf("[LVGL] Added 7 objects to focus group\n");
+        // lv_obj_add_flag(term_textarea, LV_OBJ_FLAG_FOCUSABLE);
+        // lv_obj_add_flag(btn1, LV_OBJ_FLAG_FOCUSABLE);
+        // lv_obj_add_flag(btn2, LV_OBJ_FLAG_FOCUSABLE);
+        // lv_obj_add_flag(btn3, LV_OBJ_FLAG_FOCUSABLE);
+        // lv_obj_add_flag(btn4, LV_OBJ_FLAG_FOCUSABLE);
+        // lv_obj_add_flag(btn5, LV_OBJ_FLAG_FOCUSABLE);
+        // lv_obj_add_flag(btn6, LV_OBJ_FLAG_FOCUSABLE);
+
+        lv_group_set_wrap(input_group, true);
     }
 
     // 创建键盘输入设备
@@ -962,14 +1408,20 @@ void create_keyboard_ui(void) {
 
     // 将键盘输入设备关联到焦点组
     if (input_group && kb_indev) {
+        log_append("[UI] keyboard_ Created !");
+        
+        lv_group_add_obj(input_group, term_textarea);  // 终端输入框（默认焦点）
+
         lv_indev_set_group(kb_indev, input_group);
 
         // 设置焦点默认在终端输入框
         lv_group_focus_obj(term_textarea);
-
-        printf("[LVGL] Keyboard linked to focus group - TAB key enabled!\n");
-        printf("[LVGL] Default focus: Terminal input (use TAB to switch)\n");
+        lv_obj_add_state(term_textarea, LV_STATE_FOCUSED);  // 强制设置焦点状态
     }
+
+    // 最后再刷新一次屏幕
+    //lv_obj_invalidate(lv_scr_act());
+    //lv_refr_now(NULL);
 
     // 创建鼠标输入设备
     static lv_indev_drv_t mouse_drv;
@@ -978,120 +1430,121 @@ void create_keyboard_ui(void) {
     mouse_drv.read_cb = mouse_read;
     lv_indev_drv_register(&mouse_drv);
 
-    printf("[LVGL] UI created with keyboard terminal and mouse control!\n");
-    printf("[LVGL] About to return from create_keyboard_ui()...\n");
+    log_append("[UI] Created successfully!");
+
+    // printf("[LVGL] UI created with keyboard terminal and mouse control!\n");
+    // printf("[LVGL] About to return from create_keyboard_ui()...\n");
 }
 
 /**
  * @brief 主循环 - LVGL自动处理输入
  */
+// 声明 yield 函数
+extern void yield(void);
+
+// 用于 track 函数
+static uint32_t tick_count = 0;
+
 void lvgl_main_loop(void) {
-    LV_LOG("Entering main loop");
+    //LV_LOG("Entering main loop");
 
     uint32_t loop_count = 0;
+    log_append("[MAIN] Entering main loop");
 
     while (1) {
-        lv_tick_inc(5);
+        // 只在需要时 increase tick - 大约每 5 次循环增加 5ms
+        // 这样避免时间流逝相对合理
+        tick_count++;
+        if (tick_count % 5 == 0) {
+            lv_tick_inc(1);  // 每次增加 1ms，而不是 5ms
+        }
+
         lv_timer_handler();
 
-        loop_count++;
-
-        // 每2次循环就在界面上更新计数
-        if (loop_count % 2 == 0) {
-            static lv_obj_t *counter_label = NULL;
-            if (!counter_label) {
-                const char *msg1 = "[LOOP] About to create label\n";
-                int ret1;
-                __asm__ volatile(
-                    "int $0x80"
-                    : "=a"(ret1)
-                    : "a"(4), "b"(msg1), "c"(__builtin_strlen(msg1))
-                    : "memory", "cc"
-                );
-
-                counter_label = lv_label_create(lv_scr_act());
-
-                if (counter_label == NULL) {
-                    const char *msg_err = "[ERROR] lv_label_create returned NULL!\n";
-                    int ret_err;
-                    __asm__ volatile(
-                        "int $0x80"
-                        : "=a"(ret_err)
-                        : "a"(4), "b"(msg_err), "d"(__builtin_strlen(msg_err))
-                        : "memory", "cc"
-                    );
-                } else {
-                    const char *msg_ok = "[LOOP] Label created successfully\n";
-                    int ret_ok;
-                    __asm__ volatile(
-                        "int $0x80"
-                        : "=a"(ret_ok)
-                        : "a"(4), "b"(msg_ok), "d"(__builtin_strlen(msg_ok))
-                        : "memory", "cc"
-                    );
-                }
-
-                if (counter_label) {
-                    lv_obj_set_style_text_font(counter_label, &lv_font_montserrat_14, 0);
-                    lv_label_set_text_fmt(counter_label, "Loop: %d", loop_count);
-                    lv_obj_align(counter_label, LV_ALIGN_BOTTOM_MID, 0, -10);
-                }
-            } else {
-                lv_label_set_text_fmt(counter_label, "Loop: %d", loop_count);
-            }
+        // 🔥 调试：每10000次循环打印一次（使用静态字符串避免 sprintf）
+        if (loop_count % 10000 == 0) {
+            if (loop_count == 0) log_append("[MAIN] Loop started");
+            else if (loop_count == 10000) log_append("[MAIN] Loop count: 10000");
+            else if (loop_count == 50000) log_append("[MAIN] Loop count: 50000");
+            else if (loop_count == 100000) log_append("[MAIN] Loop count: 100000");
         }
+
+        // 处理视频播放器任务
+        if (video_enabled) {
+            video_player_task();
+        }
+
+        // 🔥 关键：让出 CPU，给中断和调度器有机会运行！
+        //yield();
+
+        loop_count++;
     }
 
     LV_LOG_ERROR("Main loop exited unexpectedly!");
 }
 
 // 程序入口点
-void _start() {
-    // 立即触发一个系统调用，看看是否能到达这里
-    const char *msg = "[_start] Reached!";
-    int ret;
-    __asm__ volatile(
-        "int $0x80"
-        : "=a"(ret)
-        : "a"(4), "b"(msg), "d"(__builtin_strlen(msg))
-        : "memory", "cc"
-    );
 
-    printf("[_start] Entry point\n");
+extern int main(void);
+extern char __bss_start, __bss_end;
+
+// ⚠️ 强制 _start 放在 .text.start 段，确保它位于程序最前面
+//__attribute__((section(".text.start")))
+void _start() {
+    // 清 BSS
+    // for (char *p = &__bss_start; p < &__bss_end; p++)
+    //     *p = 0;
+
+    // 🔥 暂时禁用ESP设置，使用内核设置的栈
+    // // 🔥 关键修复：设置栈顶地址为链接脚本中定义的 _stack_top
+    // // 确保用户程序使用足够大的栈空间（128KB）
+    // extern char _stack_top;
+    // __asm__ volatile(
+    //     "movl %0, %%esp"
+    //     :
+    //     : "r"(&_stack_top)
+    //     : "esp"
+    // );
+
+    
     int ret2 = main();
-    printf("[_start] main() returned=%d, calling exit...\n", ret2);
     exit(ret2);
+    //while (1);
 }
+// void _start() {
+//     // 🔥 暂时禁用所有 printf
+//     /*
+//     const char *msg = "[_start] Reached!";
+//     int ret;
+//     __asm__ volatile(
+//         "int $0x80"
+//         : "=a"(ret)
+//         : "a"(4), "b"(msg), "d"(__builtin_strlen(msg))
+//         : "memory", "cc"
+//     );
+
+//     printf("[_start] Entry point\n");
+//     */
+//     int ret2 = main();
+//     // printf("[_start] main() returned=%d, calling exit...\n", ret2);
+//     exit(ret2);
+// }
 
 /**
  * @brief 主函数
  */
 int main(void) {
-    // 打印欢迎信息
-    printf("========================================\n");
-    printf("    LVGL Mouse Test\n");
-    printf("========================================\n\n");
 
-    printf("LVGL Version: %d.%d.%d\n",
-           LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
-
-    // 初始化 LVGL 显示驱动
-    LV_LOG("Initializing LVGL...");
     if (lvgl_display_init() != 0) {
-        LV_LOG_ERROR("Failed to initialize LVGL display");
-        return 1;
+        // 初始化失败 - 无法继续
+        return -1;
     }
 
-    // 创建界面
-    LV_LOG("Creating UI...");
+    
     create_keyboard_ui();
 
-    LV_LOG("UI created successfully");
-    LV_LOG("About to enter main loop");
-
-    // 进入主循环
+    
     lvgl_main_loop();
-    printf("[main] lvgl_main_loop() returned (unexpected!)\n");
 
     return 0;
 }
@@ -1234,7 +1687,7 @@ void screen_log(const char *fmt, ...)
     __asm__ volatile(
         "int $0x80"
         : "=a"(ret)
-        : "a"(4), "b"(1), "c"(buffer), "d"(len)
+        : "a"(SYS_WRITE), "b"(1), "c"(buffer), "d"(len)
         : "memory", "cc"
     );
 }

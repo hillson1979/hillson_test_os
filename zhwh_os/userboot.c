@@ -1,4 +1,5 @@
 #include "string.h"
+#include "x86/mmu.h"
 #include "page.h"
 #include "multiboot2.h"
 #include "task.h"
@@ -13,7 +14,7 @@ extern uint32_t multiboot2_info_addr;
 #define SEG_UCODE 3
 #define SEG_UDATA 4
 #define DPL_USER 3
-#define FL_IF    0x00000200
+//#define FL_IF    0x00000200
 // 用户态段选择子定义
 #define USER_CS  ((SEG_UCODE << 3) | DPL_USER)   /* 0x1B */
 #define USER_DS  ((SEG_UDATA << 3) | DPL_USER)   /* 0x23 */
@@ -197,10 +198,10 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
 
     struct trapframe *tf = task->tf;
 
-    // ⚠️ 不要清零整个trapframe!
-    // 原因:这会把所有寄存器(eax,ebx,ecx,edx等)清零
-    // 用户程序可能期望某些寄存器有非零值
-    // 只显式设置我们需要的字段
+    // 🔥🔥🔥 关键修复：清零整个 trapframe！
+    // 原因：trapframe 包含 trapno, err 等字段，垃圾值会导致 iret 失败
+    // 必须确保所有字段都是合理值
+    memset(tf, 0, sizeof(struct trapframe));
 
     // 设置入口地址
     tf->eip = eh->e_entry;
@@ -219,9 +220,9 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     tf->eflags = FL_IF;
     printf("[load_module_to_user] Set tf->eflags = 0x%x\n", tf->eflags);
 
-    // 创建用户栈 - 多页(16KB)，确保栈有足够空间
+    // 创建用户栈 - 多页(64KB)，确保栈有足够空间
     // 栈从高地址向低地址增长
-    #define USER_STACK_PAGES 4  // 4页 = 16KB
+    #define USER_STACK_PAGES 16  // 16页 = 64KB
 
     printf("[load_module_to_user] Mapping user stack (%u pages)...\n", USER_STACK_PAGES);
 
@@ -230,10 +231,11 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
         uint32_t stack_pa = pmm_alloc_page();
         printf("[load_module_to_user] Allocated stack page %u: phys=0x%x\n", i, stack_pa);
 
-        // 🔥 修复：栈页映射应该从 VIRT_USER_STACK_TOP - (i+1)*PAGE_SIZE 开始
-        // 这样第一页(i=0)映射到 VIRT_USER_STACK_TOP - PAGE_SIZE
-        // 栈顶(VIRT_USER_STACK_TOP)在第一页的页尾
-        uint32_t stack_va = VIRT_USER_STACK_TOP - (i + 1) * PAGE_SIZE;
+        // 🔥🔥🔥 修复：栈页应该映射到包含 VIRT_USER_STACK_TOP 的页面
+        // VIRT_USER_STACK_TOP = 0xBFFFF000，它所在页面是 [0xBFFFE000, 0xBFFFF000)
+        // 所以 i=0 应该映射到 0xBFFFE000（包含 0xBFFFFEFC 的页面）
+        // 栈向下生长：i=1 -> 0xBFFFD000, i=2 -> 0xBFFFC000, i=3 -> 0xBFFFB000
+        uint32_t stack_va = VIRT_USER_STACK_TOP - i * PAGE_SIZE - PAGE_SIZE;
         printf("[load_module_to_user] Mapping stack page: va=0x%x -> pa=0x%x\n", stack_va, stack_pa);
 
         // 🔥 使用内核页目录物理地址（共享 CR3）

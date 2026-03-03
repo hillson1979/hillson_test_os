@@ -55,4 +55,14 @@ int keyboard_getchar_nonblock(void);
 // 清空键盘缓冲区
 void keyboard_flush(void);
 
+// 🔥 轮询方式：从键盘端口读取扫描码（用于中断不工作的情况）
+// 返回：如果有数据，返回扫描码；否则返回 -1
+int keyboard_poll_scancode(void);
+
+// 🔥 检查是否有原始扫描码可用
+int keyboard_scancode_available(void);
+
+// 🔥 非阻塞读取原始扫描码（用于 GUI 输入）
+int keyboard_get_scancode_nonblock(void);
+
 #endif // _KEYBOARD_H

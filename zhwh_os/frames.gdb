@@ -16,14 +16,22 @@ define show_frames
     printf "\n[Frame ①: trapframe @ %p]\n", current->tf
     set $tf = current->tf
 
-    printf " pushal regs:\n"
-    printf "  EDI = 0x%08x\n", $tf->edi
-    printf "  ESI = 0x%08x\n", $tf->esi
-    printf "  EBP = 0x%08x\n", $tf->ebp
-    printf "  EBX = 0x%08x\n", $tf->ebx
-    printf "  EDX = 0x%08x\n", $tf->edx
-    printf "  ECX = 0x%08x\n", $tf->ecx
+    # ⚠️ 修复：alltraps 先压段寄存器，后压 pusha
+    printf " segment regs (alltraps pushed first):\n"
+    printf "  DS  = 0x%04x\n", $tf->ds
+    printf "  ES  = 0x%04x\n", $tf->es
+    printf "  FS  = 0x%04x\n", $tf->fs
+    printf "  GS  = 0x%04x\n", $tf->gs
+
+    printf " pusha regs (pusha order: EAX,ECX,EDX,EBX,ESP,EBP,ESI,EDI):\n"
     printf "  EAX = 0x%08x\n", $tf->eax
+    printf "  ECX = 0x%08x\n", $tf->ecx
+    printf "  EDX = 0x%08x\n", $tf->edx
+    printf "  EBX = 0x%08x\n", $tf->ebx
+    printf "  OESP= 0x%08x\n", $tf->oesp
+    printf "  EBP = 0x%08x\n", $tf->ebp
+    printf "  ESI = 0x%08x\n", $tf->esi
+    printf "  EDI = 0x%08x\n", $tf->edi
 
     printf " trap info:\n"
     printf "  trapno = %d\n", $tf->trapno

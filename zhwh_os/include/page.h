@@ -60,6 +60,7 @@ typedef struct page_entry_t
 } page_entry_t;
 
 #define VIRT_USER_STACK_TOP 0xBFFFF000
+#define USER_STACK_SIZE (PAGE_SIZE * 16)  // 用户栈大小：16页 = 64KB
 
 #define VIRT_MEM_BASE_USER 0x08000000 //0x6000000
 #define PHYS_MEM_BASE_USER V2P(2 * 0x400000+KERNLINK) // 物理内存起始地址（避开1MB以下的BIOS/设备区域）

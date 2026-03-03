@@ -15,7 +15,6 @@ cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
 set default=4
 
-
 # 加载视频模块并设置图形模式
 insmod all_video
 insmod gfxterm
@@ -26,13 +25,11 @@ terminal_output gfxterm
 videoinfo
 
 
-
 menuentry "My OS - File System Test" {
     multiboot2 /boot/kernel.bin
     module2 /boot/fs_test.elf
     boot
 }
-
 
 menuentry "My OS - Network Shell (Interactive)" {
     multiboot2 /boot/kernel.bin
@@ -52,7 +49,7 @@ menuentry "My OS - LVGL Graphics Test" {
     boot
 }
 
-menuentry "My OS - LVGL + Network Test" {
+menuentry "My OS - LVGL + Network Test (Video Player)" {
     multiboot2 /boot/kernel.bin
     module2 /boot/lvglanet.elf
     boot
@@ -61,3 +58,16 @@ menuentry "My OS - LVGL + Network Test" {
 EOF
 grub-mkrescue -o os.iso iso
 echo "ISO created: os.iso"
+
+echo ""
+echo "============================================"
+echo "To run with QEMU, use:"
+echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl"
+echo ""
+echo "With USB mouse support:"
+echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl -device piix3-usb-uhci,id=usb -device usb-mouse,bus=usb.0"
+echo ""
+echo "With serial output:"
+echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl -serial file:./output.txt"
+echo "============================================"
+echo ""

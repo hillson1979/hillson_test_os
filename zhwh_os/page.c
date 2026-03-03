@@ -209,7 +209,10 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 
     // 填写 PTE
     pt[pt_index] =  (paddr & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;
-    //printf("[map_page] Set pt[%u]=0x%x (vaddr=0x%x -> paddr=0x%x)\n", pt_index, pt[pt_index], vaddr, paddr);
+    //printf("[map_page] Set pt[%u]=0x%x (vaddr=0x%x -> paddr=0x%x, flags=0x%x)\n", pt_index, pt[pt_index], vaddr, paddr, flags);
+    
+    // 🔥 关键修复：刷新 TLB，确保新映射生效
+    __asm__ volatile ("invlpg (%0)" : : "r" (vaddr) : "memory");
 }
 
 

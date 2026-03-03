@@ -28,9 +28,7 @@ static const char scancode_to_ascii_shift_table[] = {
 };
 
 // 🔥 原始扫描码缓冲区（用于 GUI 输入）
-static uint8_t scancode_buffer[KBD_BUFFER_SIZE];
-static int scancode_head = 0;
-static int scancode_tail = 0;
+// 注意：实际使用 kbd_event_t 结构的缓冲区，定义在第305-314行
 
 // 全局键盘状态
 static keyboard_state_t kbd_state = {
@@ -145,9 +143,15 @@ void keyboard_init(void) {
     outb(0x64, 0x20);
     kbd_wait_output_full();
     unsigned char cfg = inb(0x60);
+    printf("[KBD] Initial Controller Config: 0x%x\n", cfg);
 
     // 4. 启用 IRQ1 (设置 bit 0)
     cfg |= 0x01;
+
+    // 🔥🔥🔥 关键修复：启用键盘时钟（清除 bit 4）
+    // Bit 4 = 1 表示键盘时钟被禁用，需要清除它
+    cfg &= ~(1 << 4);
+    printf("[KBD] Modified Controller Config: 0x%x (enabled IRQ1, enabled keyboard clock)\n", cfg);
 
     // 5. 写回 Config
     kbd_wait_input_clear();
@@ -168,14 +172,86 @@ void keyboard_init(void) {
     // 8. 🔥🔥 启用扫描（关键步骤）
     kbd_wait_input_clear();
     outb(0x60, 0xF4);
+    printf("[KBD] Sent 0xF4 (enable scanning)\n");
 
     // 9. 等待 ACK
     kbd_wait_output_full();
-    inb(0x60);  // 丢弃 ACK
+    unsigned char ack = inb(0x60);
+    printf("[KBD] Received response: 0x%x (expected 0xFA for ACK)\n", ack);
+
+    // 🔥 测试：发送回送命令 (0xEE) 来验证键盘通信
+    printf("[KBD] Testing keyboard communication with echo command...\n");
+    kbd_wait_input_clear();
+    outb(0x60, 0xEE);  // Echo command
+
+    // 等待响应 (应该是 0xEE)
+    int echo_timeout = 100000;
+    int echo_received = 0;
+    while (echo_timeout-- > 0) {
+        if (inb(0x64) & 0x01) {  // OBF set
+            unsigned char echo_resp = inb(0x60);
+            printf("[KBD] Echo response: 0x%x (expected 0xEE)\n", echo_resp);
+            echo_received = 1;
+            break;
+        }
+    }
+    if (!echo_received) {
+        printf("[KBD] ⚠️ No echo response - keyboard may not be responding!\n");
+    }
+
+    // 检查键盘状态
+    kbd_wait_input_clear();
+    outb(0x64, 0x20);  // 读 Controller Config
+    kbd_wait_output_full();
+    unsigned char cfg_final = inb(0x60);
+    printf("[KBD] Controller Config: 0x%x (bit 0 should be 1 for IRQ enabled)\n", cfg_final);
 
     // 🔥🔥🔥 关键修复：在 IOAPIC 中启用 IRQ1！
     extern void ioapicenable(int irq, int cpunum);
     ioapicenable(1, 0);  // 启用 IRQ1，路由到 CPU 0
+
+    // 🔥 测试：轮询键盘，看看是否有任何数据
+    // 注意：这个测试会在键盘初始化后立即运行，此时用户可能还没有按下任何键
+    // 所以这个测试主要用于验证键盘硬件是否工作，而不是验证用户输入
+    printf("[KBD] Testing keyboard polling (will wait for key press or timeout)...\n");
+    printf("[KBD] Please press a key now to test keyboard hardware...\n");
+
+    // 🔥 调试：读取键盘端口状态
+    uint8_t status_before = inb(0x64);
+    printf("[KBD] Initial status port (0x64): 0x%x\n", status_before);
+    printf("[KBD]   OBF (bit 0): %d (should be 0 if no data)\n", status_before & 0x01);
+    printf("[KBD]   IBF (bit 1): %d (should be 0 if ready)\n", (status_before >> 1) & 0x01);
+    printf("[KBD]   SYSF (bit 2): %d\n", (status_before >> 2) & 0x01);
+    printf("[KBD]   CMD_DATA (bit 3): %d\n", (status_before >> 3) & 0x01);
+
+    int found = 0;
+    for (int i = 0; i < 10000000; i++) {  // 增加等待时间
+        uint8_t status = inb(0x64);
+        if (status & 0x01) {  // 输出缓冲区满
+            uint8_t scancode = inb(0x60);
+            printf("[KBD] ✓ Polled scancode: 0x%x (status=0x%x)\n", scancode, status);
+            found = 1;
+            break;
+        }
+        // 每 1000000 次循环打印一次进度
+        if (i % 1000000 == 0 && i > 0) {
+            printf("[KBD] Still waiting... (%d iterations)\n", i);
+        }
+    }
+
+    // 🔥 最终状态检查
+    uint8_t status_after = inb(0x64);
+    printf("[KBD] Final status port (0x64): 0x%x\n", status_after);
+
+    if (!found) {
+        printf("[KBD] No keyboard data detected during polling test\n");
+        printf("[KBD] This could mean:\n");
+        printf("[KBD]   1. No key was pressed during the test\n");
+        printf("[KBD]   2. Keyboard hardware is not connected\n");
+        printf("[KBD]   3. QEMU keyboard input is not properly configured\n");
+        printf("[KBD]   4. Keyboard controller is not sending IRQs\n");
+    }
+    printf("[KBD] Polling test complete\n");
 }
 
 // 简单的十六进制转字符辅助函数
@@ -207,34 +283,88 @@ static void keyboard_debug_print(uint8_t scancode) {
     vga[pos++] = (0x0F << 8) | ' ';
 }
 
-// 🔥 向扫描码缓冲区写入
-static void scancode_buffer_put(uint8_t sc) {
+// 🔥 备份函数（已弃用，使用下面的新版本）
+// static void scancode_buffer_put_bak(uint8_t sc) { ... }
+
+// 扫描码事件结构（带时间戳）
+typedef struct {
+    uint8_t scancode;
+    uint32_t tick;   // 可选：记录按键时间，用于防抖或长按处理
+} kbd_event_t;
+
+// 🔥 使用64个元素的kbd_event_t缓冲区（而不是256字节）
+// 重新定义 KBD_BUFFER_SIZE 用于扫描码缓冲区
+#undef KBD_BUFFER_SIZE
+#define KBD_BUFFER_SIZE 64
+
+static volatile kbd_event_t scancode_buffer[KBD_BUFFER_SIZE];
+static volatile int scancode_head = 0;
+static volatile int scancode_tail = 0;
+static volatile uint32_t last_scancode_tick = 0;
+
+void scancode_buffer_put(uint8_t sc) {
     int next_tail = (scancode_tail + 1) % KBD_BUFFER_SIZE;
+
+    // 队列满时丢弃最旧元素
     if (next_tail == scancode_head) {
-        scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;  // 丢弃最旧的
+        scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
+        // 🔥 可选调试
+        // log_append("[KBD] Buffer full, oldest scancode dropped");
     }
-    scancode_buffer[scancode_tail] = sc;
+
+    scancode_buffer[scancode_tail].scancode = sc;
+    extern uint32_t ticks;
+    scancode_buffer[scancode_tail].tick = ticks;
+
     scancode_tail = next_tail;
+    last_scancode_tick = ticks;
+}
+
+// 从缓冲区获取扫描码
+int scancode_buffer_get(uint8_t *sc) {
+    if (scancode_head == scancode_tail) return 0; // 队列空
+    *sc = scancode_buffer[scancode_head].scancode;
+    scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
+    return 1;
+}
+
+// 🔥 检查是否有扫描码可用（带调试信息）
+int keyboard_scancode_available_debug(void) {
+    int available = (scancode_head != scancode_tail);
+    if (available) {
+        extern uint32_t ticks;
+        printf("[KBD] Scancode available! last=%d, current=%d, age=%d ticks\n",
+               last_scancode_tick, ticks, ticks - last_scancode_tick);
+    }
+    return available;
 }
 
 // 键盘中断处理程序
 void keyboard_handler(void) {
+    // 🔥 调试：跟踪中断调用次数（每100次打印一次）
+    static int keyboard_handler_count = 0;
+    if (++keyboard_handler_count % 100 == 0) {
+        //printf("[KBD IRQ] keyboard_handler called %d times\n", keyboard_handler_count);
+    }
+
     // 读取扫描码
     uint8_t scancode = inb(KBD_DATA_PORT);
+    // ⚠️⚠️⚠️ 不能在中断处理程序中使用 printf！
+    // printf 会破坏段寄存器（DS/ES），导致系统崩溃
+    // printf("[KBD IRQ] scancode=0x%x\n", scancode);  // 🔥 临时启用，用于调试
 
     // 🔥 总是保存原始扫描码（包括按键释放事件 0x80）
     scancode_buffer_put(scancode);
 
-    // 转换为 ASCII
-    char c = scancode_to_ascii(scancode);
-
-    // 如果是有效字符，放入缓冲区
-    if (c != 0) {
-        keyboard_buffer_put(c);
-    }
+    // // 转换为 ASCII
+    // char c = scancode_to_ascii(scancode);
+    // // 如果是有效字符，放入缓冲区
+    // if (c != 0) {
+    //     keyboard_buffer_put(c);
+    // }
 
     // ⚠️⚠️⚠️ 注意：不要在这里发送 EOI！
-    // EOI 由 interrupt.c 中的 lapiceoi() 统一发送
+    // EOI 由 interrupt.c 中的 lapiceei() 统一发送
 }
 
 // 从键盘缓冲区读取一个字符（使用中断驱动的 buffer）
@@ -265,16 +395,25 @@ int keyboard_scancode_available(void) {
     return (scancode_head != scancode_tail);
 }
 
-// 🔥 非阻塞读取原始扫描码（用于 GUI 输入）
+// 从缓冲区非阻塞获取扫描码
 int keyboard_get_scancode_nonblock(void) {
-    if (!keyboard_scancode_available()) {
-        return -1;
-    }
-
-    uint8_t sc = scancode_buffer[scancode_head];
+    if (scancode_head == scancode_tail) return -1; // 空
+    uint8_t sc = scancode_buffer[scancode_head].scancode;
     scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
     return sc;
 }
+
+// 🔥 非阻塞读取原始扫描码（用于 GUI 输入）- 备份版本（已弃用）
+// 此函数因为scancode_buffer类型变更而不兼容，请使用 keyboard_get_scancode_nonblock()
+// int keyboard_get_scancode_nonblock_bak(void) {
+//     if (!keyboard_scancode_available()) {
+//         return -1;
+//     }
+//
+//     uint8_t sc = scancode_buffer[scancode_head];  // ❌ 类型不兼容
+//     scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
+//     return sc;
+// }
 
 // 非阻塞版本：从键盘缓冲区读取一个字符
 // 如果没有字符，返回 -1
@@ -293,4 +432,32 @@ int keyboard_getchar_nonblock(void) {
 void keyboard_flush(void) {
     kbd_state.buffer_head = 0;
     kbd_state.buffer_tail = 0;
+}
+
+// 🔥🔥🔥 轮询方式：从键盘端口读取扫描码（用于中断不工作的情况）
+// 这个函数会直接读取键盘硬件端口，而不依赖中断
+// 返回：如果有数据，返回扫描码；否则返回 -1
+int keyboard_poll_scancode(void) {
+    // 读取键盘状态端口
+    uint8_t status = inb(0x64);
+
+    // 检查输出缓冲区是否满（bit 0）
+    if (status & 0x01) {
+        // 有数据可用，读取扫描码
+        uint8_t scancode = inb(0x60);
+
+        // 将扫描码放入缓冲区（供后续读取）
+        scancode_buffer_put(scancode);
+
+        // 同时也处理 ASCII 转换
+        char c = scancode_to_ascii(scancode);
+        if (c != 0) {
+            keyboard_buffer_put(c);
+        }
+
+        return (int)scancode;
+    }
+
+    // 没有数据可用
+    return -1;
 }

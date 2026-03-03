@@ -9,35 +9,37 @@
 .extern schedule
 .extern th_u
 .extern current
-# ⚠️ 这些偏移必须与 struct trapframe 的布局完全匹配！
-# ⚠️ 关键修复：struct trapframe 的实际布局（按C结构体定义）
-# struct从offset 0开始：edi(0), esi(4), ebp(8), oesp(12), ebx(16), edx(20), ecx(24), eax(28)
-#                      ds(32), es(36), fs(40), gs(44), trapno(48), err(52)
-#                      eip(56), cs(60), eflags(64), esp(68), ss(72)
+# ⚠️⚠️⚠️ 这些偏移必须与 struct trapframe 的布局完全匹配！
+# ⚠️ 关键修复：alltraps 先压段寄存器 (DS/ES/FS/GS)，后压 pusha (EAX~EDI)
+# struct trapframe 实际布局（从 interrupt.h）：
+#   ds(0), es(4), fs(8), gs(12), eax(16), ecx(20), edx(24), ebx(28)
+#   oesp(32), ebp(36), esi(40), edi(44), trapno(48), err(52)
+#   eip(56), cs(60), eflags(64), esp(68), ss(72)
 
 # task_t 偏移量（匹配 include/task.h 的结构体定义）
-# ⚠️ tf 在 task_t 结构体中的偏移量是 148
-.set TASK_TF, 148
+# ⚠️ tf 在 task_t 结构体中的偏移量是 156 (TASK_IFRAME)
+#    根据 GDB 内存 dump 验证和 calc_task_offset.c 计算
+.set TASK_TF, 156
 
-.equ TRAPFRAME_EDI, 0
-.equ TRAPFRAME_ESI, 4
-.equ TRAPFRAME_EBP, 8
-.equ TRAPFRAME_OESP, 12
-.equ TRAPFRAME_EBX, 16
-.equ TRAPFRAME_EDX, 20
-.equ TRAPFRAME_ECX, 24
-.equ TRAPFRAME_EAX, 28
-.equ TRAPFRAME_DS, 32      # ⚠️ 修正: ds = offset 32 (C结构体定义)
-.equ TRAPFRAME_ES, 36      # ⚠️ 修正: es = offset 36
-.equ TRAPFRAME_FS, 40      # ⚠️ 修正: fs = offset 40
-.equ TRAPFRAME_GS, 44      # ⚠️ 修正: gs = offset 44
-.equ TRAPFRAME_TRAPNO, 48
-.equ TRAPFRAME_ERR, 52
-.equ TRAPFRAME_EIP, 56
-.equ TRAPFRAME_CS, 60
-.equ TRAPFRAME_EFLAGS, 64
-.equ TRAPFRAME_ESP, 68
-.equ TRAPFRAME_SS, 72
+.equ TRAPFRAME_DS, 0       # ⚠️ ds = offset 0 (alltraps最先压入)
+.equ TRAPFRAME_ES, 4       # ⚠️ es = offset 4
+.equ TRAPFRAME_FS, 8       # ⚠️ fs = offset 8
+.equ TRAPFRAME_GS, 12      # ⚠️ gs = offset 12
+.equ TRAPFRAME_EAX, 16     # ⚠️ eax = offset 16 (pusha起始)
+.equ TRAPFRAME_ECX, 20     # ⚠️ ecx = offset 20
+.equ TRAPFRAME_EDX, 24     # ⚠️ edx = offset 24
+.equ TRAPFRAME_EBX, 28     # ⚠️ ebx = offset 28
+.equ TRAPFRAME_OESP, 32    # ⚠️ oesp = offset 32
+.equ TRAPFRAME_EBP, 36     # ⚠️ ebp = offset 36
+.equ TRAPFRAME_ESI, 40     # ⚠️ esi = offset 40
+.equ TRAPFRAME_EDI, 44     # ⚠️ edi = offset 44
+.equ TRAPFRAME_TRAPNO, 48  # ⚠️ trapno = offset 48
+.equ TRAPFRAME_ERR, 52     # ⚠️ err = offset 52
+.equ TRAPFRAME_EIP, 56     # ⚠️ eip = offset 56
+.equ TRAPFRAME_CS, 60      # ⚠️ cs = offset 60
+.equ TRAPFRAME_EFLAGS, 64  # ⚠️ eflags = offset 64
+.equ TRAPFRAME_ESP, 68     # ⚠️ 用户ESP = offset 68
+.equ TRAPFRAME_SS, 72      # ⚠️ 用户SS = offset 72
 .equ TRAPFRAME_PDE, 544
 
 interrupt_exit:
@@ -113,6 +115,13 @@ interrupt_exit:
     # ⚠️⚠️⚠️ 继续恢复 trapframe
     # 只有用户任务会返回到这里，内核任务已在 schedule 中进入调度循环
 
+    # ⚠️⚠️⚠️ 关键修复：ESP 当前指向 DS (offset 0)，不是 EDI！
+    # 栈布局（从低地址到高地址）：
+    #   [DS][ES][FS][GS][EAX][ECX][EDX][EBX][OESP][EBP][ESI][EDI][TRAPNO][ERR][EIP][CS][EFLAGS][ESP][SS]
+    #    0   4   8   12  16   20   24   28   32    36   40   44   48     52   56  60   64     68  72
+    #    ↑
+    #   ESP指向这里 (DS)
+
     # ⚠️ 调试：暂时禁用
     # # ⚠️ 调试：打印开始恢复寄存器前的信息
     # pushl %eax
@@ -122,30 +131,11 @@ interrupt_exit:
     # popl %eax
 
     # -------------------------------
-    # 2. 恢复通用寄存器 (包括 EBX)
-    #    参考 trapret 的实现:先恢复所有通用寄存器
+    # 2. 检查特权级（在恢复段寄存器之前！）
     # -------------------------------
-    popl %edi             # ESP = 4
-    popl %esi             # ESP = 8
-    popl %ebp             # ESP = 12
-    addl $4, %esp         # ESP = 16 (跳过 old_esp)
-
-    popl %ebx             # ESP = 20, 恢复 EBX ✅
-    popl %edx             # ESP = 24, 恢复 EDX
-    popl %ecx             # ESP = 28, 恢复 ECX
-    popl %eax             # ESP = 32, 恢复 EAX
-    # 现在 ESP 指向 offset 32 (GS)
-
-    # ⚠️⚠️⚠️ 关键修复：暂时不要恢复段寄存器！
-    # 先检查是否来自用户态，如果是用户态才恢复段寄存器
-    # 如果是内核态，保持当前段寄存器（内核段）
-
-    # -------------------------------
-    # 3. 检查特权级（在恢复段寄存器之前！）
-    # -------------------------------
-    # ⚠️ 重要：ESP 现在指向 GS（offset 32）
-    # CS 在 offset 56，即 ESP+24
-    movl 24(%esp), %eax     # eax = cs (ESP=32, CS在32+24=56)
+    # ⚠️ 重要：ESP 当前指向 DS（offset 0）
+    # CS 在 offset 56
+    movl 56(%esp), %eax     # eax = cs (从 ESP+56 读取)
     testl $3, %eax          # 检查 RPL 位 (cs & 3)
     jz from_kernel_restore  # 如果 RPL=0，跳转到内核态恢复路径
 
@@ -153,15 +143,25 @@ interrupt_exit:
     # 来自用户态 (CPL3) 的恢复路径
     # ================================
 from_user_restore:
-    # 恢复段寄存器
-    popl %ebx             # ESP = 36, 读取 GS
-    movw %bx, %gs         # 恢复 GS
-    popl %ebx             # ESP = 40, 读取 FS
-    movw %bx, %fs         # 恢复 FS
-    popl %ebx             # ESP = 44, 读取 ES
-    movw %bx, %es         # 恢复 ES
-    popl %ebx             # ESP = 48, 读取 DS
+    # 先恢复段寄存器（offset 0-12）
+    popl %ebx             # ESP = 4, 读取 DS
     movw %bx, %ds         # 恢复 DS
+    popl %ebx             # ESP = 8, 读取 ES
+    movw %bx, %es         # 恢复 ES
+    popl %ebx             # ESP = 12, 读取 FS
+    movw %bx, %fs         # 恢复 FS
+    popl %ebx             # ESP = 16, 读取 GS
+    movw %bx, %gs         # 恢复 GS
+
+    # 恢复通用寄存器（offset 16-44）
+    popl %eax             # ESP = 20, 恢复 EAX
+    popl %ecx             # ESP = 24, 恢复 ECX
+    popl %edx             # ESP = 28, 恢复 EDX
+    popl %ebx             # ESP = 32, 恢复 EBX
+    addl $4, %esp         # ESP = 36, 跳过 OESP
+    popl %ebp             # ESP = 40, 恢复 EBP
+    popl %esi             # ESP = 44, 恢复 ESI
+    popl %edi             # ESP = 48, 恢复 EDI
 
     # ⚠️ 调试：暂时禁用
     # # ⚠️ 调试：打印恢复寄存器后的信息
@@ -172,7 +172,7 @@ from_user_restore:
     # popl %eax
 
     # -------------------------------
-    # 4. 跳过 trapno + errcode (8字节)
+    # 3. 跳过 trapno + errcode (8字节)
     # -------------------------------
     addl $8, %esp           # ESP = 56, 现在指向 EIP ✅
 
@@ -184,12 +184,33 @@ from_user_restore:
     # 来自内核态 (CPL0) 的恢复路径
     # ================================
 from_kernel_restore:
-    # ⚠️ 关键：内核态中断时，不要恢复段寄存器！
-    # 保持当前段寄存器（内核段），直接跳过它们
-    addl $16, %esp          # 跳过 GS/FS/ES/DS (4个寄存器 × 4字节)
+    # ⚠️ 关键修复：内核态中断也需要恢复段寄存器！
+    # 原因：在中断处理期间，段寄存器可能被修改（例如被C函数调用）
+    # 必须恢复到内核数据段的值
+    addl $4, %esp           # ESP = 4，跳过 DS（保持当前值）
+    addl $4, %esp           # ESP = 8，跳过 ES（保持当前值）
+    addl $4, %esp           # ESP = 12，跳过 FS（保持当前值）
+    addl $4, %esp           # ESP = 16，跳过 GS（保持当前值）
+
+    # 🔥 关键：确保段寄存器是内核段
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %fs
+    movw %ax, %gs
+
+    # 恢复通用寄存器（offset 16-44）
+    popl %eax             # ESP = 20，恢复 EAX
+    popl %ecx             # ESP = 24，恢复 ECX
+    popl %edx             # ESP = 28，恢复 EDX
+    popl %ebx             # ESP = 32，恢复 EBX
+    addl $4, %esp         # ESP = 36，跳过 OESP
+    popl %ebp             # ESP = 40，恢复 EBP
+    popl %esi             # ESP = 44，恢复 ESI
+    popl %edi             # ESP = 48，恢复 EDI
 
     # ⚠️ 调试：暂时禁用
-    # # ⚠️ 调试：打印内核态跳过段寄存器恢复
+    # # ⚠️ 调试：打印内核态恢复寄存器
     # pushl %eax
     # pushl %esp
     # call debug_print_after_restore_regs
@@ -197,7 +218,7 @@ from_kernel_restore:
     # popl %eax
 
     # -------------------------------
-    # 4. 跳过 trapno + errcode (8字节)
+    # 3. 跳过 trapno + errcode (8字节)
     # -------------------------------
     addl $8, %esp           # ESP = 56, 现在指向 EIP ✅
 

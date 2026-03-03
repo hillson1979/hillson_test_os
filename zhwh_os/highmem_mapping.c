@@ -6,8 +6,11 @@
 
 // 外部函数声明
 extern void identity_map_8m_4k(uint32_t addr);
+extern void *kmalloc_early(unsigned int size);
 
-static struct highmem_mapping mappings[512];  // Increased from 64 to 512 for large ELF files
+// 🔥 改为动态分配，避免撑大 .bss 段
+static struct highmem_mapping *mappings = NULL;
+static uint32_t max_mappings = 4096;  // 🔥 4096 个槽
 static uint32_t next_virt_addr = DYNAMIC_MAP_WINDOW_BASE;
 
 static inline void x86_refresh_tlb(void)
@@ -20,10 +23,18 @@ static inline void x86_refresh_tlb(void)
 }
 
 void init_highmem_mapping(void) {
-    memset(mappings, 0, sizeof(mappings));
+    // 🔥 动态分配映射表，避免 .bss 段过大
+    mappings = (struct highmem_mapping*)kmalloc_early(max_mappings * sizeof(struct highmem_mapping));
+    if (!mappings) {
+        printf("init_highmem_mapping: FATAL - failed to allocate mappings array!\n");
+        return;
+    }
+
+    memset(mappings, 0, max_mappings * sizeof(struct highmem_mapping));
     next_virt_addr = DYNAMIC_MAP_WINDOW_BASE;
 
-    printf("Highmem mapping initialized\n");
+    printf("Highmem mapping initialized: %u mappings (%u KB)\n",
+           max_mappings, (max_mappings * sizeof(struct highmem_mapping)) / 1024);
 
     // boot.s 中设置的映射：
     // pd[0]   = pt (物理 0-4MB → 虚拟 0x00000000-0x003FFFFF)
@@ -85,7 +96,7 @@ void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags) {
     
     // 查找空闲映射槽
     int free_slot = -1;
-    for (int i = 0; i < 512; i++) {
+    for (int i = 0; i < max_mappings; i++) {  // 使用 max_mappings
         if (!mappings[i].in_use) {
             free_slot = i;
             break;
@@ -148,7 +159,7 @@ void* get_mapped_address(uint32_t phys_addr) {
         return PHYS_TO_VIRT(phys_addr);
     }
 
-    for (int i = 0; i < 512; i++) {
+    for (int i = 0; i < max_mappings; i++) {  // 使用 max_mappings
         if (mappings[i].in_use &&
             phys_addr >= mappings[i].phys_addr &&
             phys_addr < mappings[i].phys_addr + mappings[i].size) {

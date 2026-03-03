@@ -1,0 +1,15 @@
+ENTRY(_start)
+
+SECTIONS
+{
+    . = 0x08000000;      /* 设置程序的起始地址 */
+    /* 主代码段：_start 必须在最前面！ */
+    .text : {
+        *(.text.start)   /* 先放 _start */
+        *(.text .text.*) /* 然后放其他代码 */
+    }
+
+    .data : { *(.data) } /* 数据段 */
+    .bss : { *(.bss) }   /* 未初始化数据段 */
+}
+

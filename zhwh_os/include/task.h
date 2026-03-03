@@ -1,3 +1,6 @@
+#ifndef _TASK_H
+#define _TASK_H
+
 #include "types.h"
 #include "llist.h"
 #include "time.h"
@@ -185,8 +188,9 @@ void user_task_main();
 void kernel_task_main();
 void handle_idle_state(uint8_t cpu);
 void task_to_user_mode_with_task(struct task_t *task);  // 参数通过 task 指针传递
-void task_to_user_mode_with_task_wrapper(struct task_t *task);  // C包装函数
+__attribute__((noinline)) void task_to_user_mode_with_task_wrapper(struct task_t *task);  // C包装函数
 
 void ok_here();
 void do_exit(int code);
 
+#endif /* _TASK_H */

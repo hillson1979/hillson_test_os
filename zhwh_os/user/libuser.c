@@ -1,16 +1,20 @@
-// libuser.c - 用户库实现
+// libuser.c - 用户库实现（编译成静态库 libuser.a）
 #include "libuser.h"
+#include "stddef.h"  // for size_t
 
 // 定义 NULL
 #ifndef NULL
 #define NULL ((void *)0)
 #endif
 
+// ⚠️ 所有函数都不再使用 __attribute__((section(...)))
+//    因为整个 libuser.a 会在链接时放在主程序之后
+
 // 简单的 strlen 实现
-int strlen(const char *s) {
-    int len = 0;
-    while (s[len]) len++;
-    return len;
+size_t strlen(const char *s) {
+    const char *p = s;
+    while (*p) p++;
+    return p - s;
 }
 
 // 简单的 atoi 实现
@@ -23,16 +27,41 @@ int atoi(const char *str) {
     return result;
 }
 
-// 简单的 memcpy 实现
-void *memcpy(void *dst, const void *src, int n) {
+// 优化的 memcpy 实现
+void *memcpy(void *dst, const void *src, size_t n) {
     char *d = (char*)dst;
     const char *s = (const char*)src;
+
+    // 如果长度小于 16，直接字节拷贝
+    if (n < 16) {
+        while (n--) *d++ = *s++;
+        return dst;
+    }
+
+    // 对齐到 4 字节边界
+    while (((uint32_t)d & 3) && n) {
+        *d++ = *s++;
+        n--;
+    }
+
+    // 32 位拷贝
+    uint32_t *dw = (uint32_t*)d;
+    const uint32_t *sw = (const uint32_t*)s;
+    while (n >= 4) {
+        *dw++ = *sw++;
+        n -= 4;
+    }
+
+    // 剩余字节
+    d = (char*)dw;
+    s = (const char*)sw;
     while (n--) *d++ = *s++;
+
     return dst;
 }
 
 // 简单的 memset 实现
-void *memset(void *s, int c, int n) {
+void *memset(void *s, int c, size_t n) {
     char *p = (char*)s;
     while (n--) *p++ = c;
     return s;
@@ -48,7 +77,7 @@ int strcmp(const char *s1, const char *s2) {
 }
 
 // 字符串前缀比较
-int strncmp(const char *s1, const char *s2, int n) {
+int strncmp(const char *s1, const char *s2, size_t n) {
     while (n > 0 && *s1 && (*s1 == *s2)) {
         s1++;
         s2++;
@@ -56,6 +85,27 @@ int strncmp(const char *s1, const char *s2, int n) {
     }
     if (n == 0) return 0;
     return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+}
+
+// 内存比较
+int memcmp(const void *s1, const void *s2, size_t n) {
+    const unsigned char *p1 = (const unsigned char *)s1;
+    const unsigned char *p2 = (const unsigned char *)s2;
+    while (n--) {
+        if (*p1 != *p2) {
+            return *p1 - *p2;
+        }
+        p1++;
+        p2++;
+    }
+    return 0;
+}
+
+// 字符串拷贝
+char *strcpy(char *dest, const char *src) {
+    char *d = dest;
+    while ((*d++ = *src++) != '\0');
+    return dest;
 }
 
 // 简单的数字转字符串
@@ -88,6 +138,7 @@ static char *itoa(int num, char *str, int base) {
         str[i++] = '-';
     }
 
+    // ⚠️⚠️⚠️ 关键修复：先设置终止符，再反转！
     str[i] = '\0';
 
     // 反转字符串
@@ -372,6 +423,22 @@ int net_ifup(const char *dev_name) {
           "b"(dev_name)    // 设备名称
         : "memory", "cc"
     );
+    return ret;
+}
+
+// 🔥 接收 UDP 数据系统调用
+int net_recv_udp(char *buf, int len, int *port) {
+    int ret;
+    int port_val = 0;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret), "=c"(port_val)
+        : "a"(53),         // SYS_NET_RECV_UDP = 53
+          "b"(buf),        // 缓冲区
+          "d"(len)         // 长度
+        : "memory", "cc"
+    );
+    if (port) *port = port_val;
     return ret;
 }
 

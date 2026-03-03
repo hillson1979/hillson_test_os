@@ -11,8 +11,9 @@
 #define SYS_GETCHAR 7
 #define SYS_PUTCHAR 8
 #define SYS_GETCWD 9
-#define SYS_WRITE 10
-#define SYS_FORK 11
+#define SYS_GET_FRAMEBUFFER 10
+#define SYS_WRITE 11
+#define SYS_FORK 12
 #define SYS_OPEN 20
 #define SYS_CLOSE 21
 #define SYS_READ 22
@@ -40,6 +41,7 @@
 #define SYS_NET_DUMP_RX_REGS 50 // 🔥 转储 RX 寄存器（详细）
 #define SYS_NET_IFUP 51        // 🔥 启动网络接口
 // #define SYS_NET_RAW_DUMP_RX_DESC 52  // 🔥 暂时注释掉
+#define SYS_NET_RECV_UDP 53    // 🔥 接收 UDP 数据
 #define SYS_MSI_TEST 60        // 🔥 MSI 测试
 #define SYS_NET_LOOPBACK_TEST 61  // 🔥 E1000 硬件 loopback 测试（轮询）
 #define SYS_NET_LOOPBACK_TEST_INT 62  // 🔥 E1000 硬件 loopback 测试（中断）
@@ -129,6 +131,7 @@ int net_dump_regs(const char *dev_name);  // 🔥 转储网卡寄存器状态（
 int net_arp(const char *dev_name, int scan);  // 🔥 ARP 命令（指定设备，scan=1 扫描并更新缓存，scan=0 仅显示）
 int net_dump_rx_regs(const char *dev_name);  // 🔥 转储 RX 寄存器（指定设备）
 int net_ifup(const char *dev_name);  // 🔥 启动网络接口
+int net_recv_udp(char *buf, int len, int *port);  // 🔥 接收 UDP 数据（阻塞）
 // int net_raw_dump_rx_desc(void);  // 🔥 暂时注释掉
 
 // 用户缓冲区描述符（用于安全传递大块数据）
@@ -179,11 +182,14 @@ int gui_fb_blit(int x, int y, int width, int height, const void *data);  // 位�
 int gui_read_input(input_event_t *event);      // 读取输入事件
 
 // 字符串和内存工具函数
-int strlen(const char *s);
+#include "stddef.h"  // for size_t
+size_t strlen(const char *s);
 int strcmp(const char *s1, const char *s2);
-int strncmp(const char *s1, const char *s2, int n);
+int strncmp(const char *s1, const char *s2, size_t n);
 int atoi(const char *str);
-void *memcpy(void *dst, const void *src, int n);
-void *memset(void *s, int c, int n);
+void *memcpy(void *dst, const void *src, size_t n);
+void *memset(void *s, int c, size_t n);
+int memcmp(const void *s1, const void *s2, size_t n);
+char *strcpy(char *dest, const char *src);
 
 #endif // LIBUSER_H

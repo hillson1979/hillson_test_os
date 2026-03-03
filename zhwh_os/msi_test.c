@@ -51,8 +51,9 @@ void msi_test_check_lapic(void) {
     printf("============================================\n");
 
     // 读取 APIC BASE MSR
-    uint64_t apic_base;
-    __asm__ volatile ("rdmsr" : "=a"(apic_base) : "c"(0x1B));
+    uint32_t apic_base_low, apic_base_high;
+    __asm__ volatile ("rdmsr" : "=a"(apic_base_low), "=d"(apic_base_high) : "c"(0x1B));
+    uint64_t apic_base = ((uint64_t)apic_base_high << 32) | apic_base_low;
 
     printf("[LAPIC] APIC BASE MSR = 0x%llx\n", apic_base);
     printf("[LAPIC]   Base Address = 0x%llx\n", apic_base & 0xFFFFF000ULL);

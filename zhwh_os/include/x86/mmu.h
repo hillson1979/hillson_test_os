@@ -5,7 +5,7 @@
 #define X86_MMU_H
 
 // Eflags register
-#define FL_IF           0x00000200      // Interrupt Enable
+#define FL_IF           0x00000202      // Interrupt Enable
 
 // Control Register flags
 #define CR0_PE          0x00000001      // Protection Enable

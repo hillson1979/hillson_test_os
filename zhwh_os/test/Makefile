@@ -3,19 +3,25 @@ AS = gcc
 LD = gcc
 
 TARGET_ARCH = -m32
-CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector -fno-pic
+CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-builtin-memcpy -fno-builtin-memset -fno-stack-protector -fno-pic -fno-threadsafe-statics -mno-tls-direct-seg-refs
 ASFLAGS = $(TARGET_ARCH) -fno-pic
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ../test/ts.ld
 
 LVGL_DIR = ../lvgl/source
 LVGL_SRC_DIR = $(LVGL_DIR)/src
-LVGL_FLAGS = -DLV_USE_EXTRA=0 -include libuser_minimal.h -include stdarg.h -include stdint_compat.h
+LVGL_FLAGS = -DLV_USE_EXTRA=0 -DSTB_NO_STDIO -include libuser_minimal.h -include stdarg.h -include stdint_compat.h
 LVGL_INCLUDES = -I. -I$(LVGL_DIR) -I$(LVGL_SRC_DIR) -I../user -I../include/lvgl -I../include
 
 TARGET = lvglanet.elf
 
+# 静态库
+LIBUSER = libuser.a
+
 # Main test program objects
-OBJS = lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../user/libuser.o ../test/syscalls.o
+OBJS = lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../test/syscalls.o ../user/gui.o
+
+# Video player objects
+VIDEO_OBJS = ../video/video_player.o ../video/video_player_net.o ../video/video_player_decode.o ../video/video_simple_udp.o ../video/video_player_socket_compat.o ../video/video_player_os_stats.o ../video/video_kmalloc_compat.o
 
 # LVGL source files - ONLY software rendering, NO hardware acceleration!
 LVGL_SRC = \
@@ -90,7 +96,8 @@ LVGL_SRC = \
 	$(LVGL_SRC_DIR)/widgets/lv_btn.c \
 	$(LVGL_SRC_DIR)/widgets/lv_label.c \
 	$(LVGL_SRC_DIR)/widgets/lv_slider.c \
-	$(LVGL_SRC_DIR)/widgets/lv_textarea.c
+	$(LVGL_SRC_DIR)/widgets/lv_textarea.c \
+	$(LVGL_SRC_DIR)/widgets/lv_img.c
 
 LVGL_OBJS = $(LVGL_SRC:.c=.o)
 
@@ -118,14 +125,50 @@ lvgl_stubs.o: ../lvgl/lvgl_stubs.c
 	@echo "Compiling lvgl_stubs.c..."
 	@$(CC) $(CFLAGS) $(LVGL_INCLUDES) -c $< -o $@
 
-# Dependencies
-../user/libuser.o:
+../user/gui.o: ../user/gui.c
+	@echo "Compiling gui.c..."
+	@$(CC) $(CFLAGS) $(LVGL_INCLUDES) -I../user -c $< -o $@
+
+# Build libuser.a static library
+$(LIBUSER): ../user/libuser.c ../user/libuser.h
 	@echo "Compiling libuser.c..."
 	@$(CC) $(CFLAGS) -I../user -c ../user/libuser.c -o ../user/libuser.o
+	@echo "Creating libuser.a static library..."
+	@ar rcs $@ ../user/libuser.o
+	@echo "Built $@ successfully!"
 
-../test/syscalls.o:
+../test/syscalls.o: ../test/syscalls.S
 	@echo "Assembling syscalls.S..."
 	@$(AS) $(ASFLAGS) -c ../test/syscalls.S -o ../test/syscalls.o
+
+# Video player compilation
+../video/video_player.o: ../video/video_player.c
+	@echo "Compiling video_player.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) -DSTBI_NO_STDIO $(LVGL_INCLUDES) -I../video -c $< -o $@
+
+../video/video_player_net.o: ../video/video_player_net.c
+	@echo "Compiling video_player_net.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) -DSTBI_NO_STDIO $(LVGL_INCLUDES) -I../video -c $< -o $@
+
+../video/video_player_decode.o: ../video/video_player_decode.c
+	@echo "Compiling video_player_decode.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) -DSTBI_NO_STDIO -DSTBI_NO_LINEAR -DSTBI_NO_HDR $(LVGL_INCLUDES) -I../video -c $< -o $@
+
+../video/video_simple_udp.o: ../video/video_simple_udp.c
+	@echo "Compiling video_simple_udp.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) -DSTBI_NO_STDIO $(LVGL_INCLUDES) -I../video -I../net -c $< -o $@
+
+../video/video_player_socket_compat.o: ../video/video_player_socket_compat.c
+	@echo "Compiling video_player_socket_compat.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) -DSTBI_NO_STDIO $(LVGL_INCLUDES) -I../video -c $< -o $@
+
+../video/video_player_os_stats.o: ../video/video_player_os_stats.c
+	@echo "Compiling video_player_os_stats.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) -DSTBI_NO_STDIO $(LVGL_INCLUDES) -I../video -c $< -o $@
+
+../video/video_kmalloc_compat.o: ../video/video_kmalloc_compat.c
+	@echo "Compiling video_kmalloc_compat.c..."
+	@$(CC) $(CFLAGS) $(LVGL_FLAGS) $(LVGL_INCLUDES) -I../video -c $< -o $@
 
 # LVGL source files
 $(LVGL_OBJS): %.o: %.c
@@ -133,14 +176,16 @@ $(LVGL_OBJS): %.o: %.c
 	@$(CC) $(CFLAGS) $(LVGL_FLAGS) $(LVGL_INCLUDES) -c $< -o $@
 
 # Linking
-$(TARGET): lvglanet.o lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../user/libuser.o ../test/syscalls.o $(LVGL_OBJS)
+$(TARGET): lvglanet.o $(LIBUSER) lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../test/syscalls.o ../user/gui.o $(LVGL_OBJS) $(VIDEO_OBJS)
 	@echo "Linking $@..."
-	@$(LD) $(LDFLAGS) -o $@ $^
+	@$(LD) $(LDFLAGS) -o $@ lvglanet.o $(LIBUSER) lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../test/syscalls.o ../user/gui.o $(LVGL_OBJS) $(VIDEO_OBJS)
 	@echo "Built $@ successfully!"
 
 clean:
 	@echo "Cleaning..."
-	@rm -f lvglanet.o lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o $(TARGET)
+	@rm -f lvglanet.o lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o $(TARGET) $(LIBUSER)
+	@rm -f ../user/libuser.o ../user/gui.o ../test/syscalls.o
+	@rm -f ../video/video_player.o ../video/video_player_net.o ../video/video_player_decode.o ../video/video_simple_udp.o ../video/video_player_socket_compat.o ../video/video_player_os_stats.o ../video/video_kmalloc_compat.o
 	@find $(LVGL_SRC_DIR) -name "*.o" -type f -delete 2>/dev/null || true
 	@echo "Cleaned!"
 

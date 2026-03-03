@@ -52,22 +52,21 @@ static volatile uint32_t _ioapic_base;
 
 static uint32_t
 ioapicread(uint32_t reg)
-{ 
+{
   if (_ioapic_base == NULL) {
         printf("IOAPIC not initialized! Call ioapic_init() first");
     }
 
-  ioapic_t *ioapic = (ioapic_t*)_ioapic_base;
-  ioapic->index = reg;
-  return ioapic->data;
+  // 使用统一的 IOAPIC 访问方式：通过 INDEX + DATA 窗口
+  IOAPIC_REG_SEL = reg;
+  return IOAPIC_REG_WIN;
 }
 
 
 static void
 ioapicwrite(int reg, uint32_t data)
 {
-  /*(&ioapic)->reg = reg;
-  (&ioapic)->data = data; */
+  // 使用统一的 IOAPIC 访问方式：通过 INDEX + DATA 窗口
   IOAPIC_REG_SEL = reg;
   IOAPIC_REG_WIN = data;
 }
@@ -152,6 +151,12 @@ ioapicinit(void)
     ioapicwrite(REG_TABLE+2*i, INT_DISABLED | (T_IRQ0 + i));
     ioapicwrite(REG_TABLE+2*i+1, 0);
   }
+
+  // 🔥 特别禁用 IRQ 36（trapno 68），防止其持续触发
+  // 这个中断可能是USB鼠标，但在这个阶段应该被禁用
+  ioapicwrite(REG_TABLE+2*36, INT_DISABLED | (T_IRQ0 + 36));
+  ioapicwrite(REG_TABLE+2*36+1, 0);
+  printf("[ioapicinit] IRQ 36 (trapno 68) explicitly disabled\n");
 }
 
 void
@@ -170,15 +175,28 @@ ioapicenable(int irq, int cpunum)
   uint32_t high_before = ioapicread(REG_TABLE+2*irq+1);
   printf("[ioapicenable] Before: low=0x%x high=0x%x\n", low_before, high_before);
 
-  // 🔥 关键：设置中断模式
-  // Bit 16: Mask (0 = enabled, 1 = masked)
-  // Bit 15: Trigger mode (0 = edge, 1 = level)
-  // Bit 13: Polarity (0 = active high, 1 = active low)
-  // PCI 中断应该是：edge-triggered, active high
-  uint32_t low = T_IRQ0 + irq;  // Vector
-  low &= ~(1 << 16);             // Unmask
-  // low &= ~(1 << 15);           // Edge triggered (默认)
-  // low &= ~(1 << 13);           // Active high (默认)
+  // 🔥 关键：读取当前值，只修改需要的位
+  // 不要完全覆盖，保留其他配置位
+  uint32_t low = low_before;
+
+  // 设置向量号
+  low &= ~0xFF;              // 清除向量号位 (0-7)
+  low |= (T_IRQ0 + irq);    // 设置新的向量号
+
+  // 清除 mask 位 (bit 16)
+  low &= ~(1 << 16);        // Unmask (enable)
+
+  // 确保是 edge-triggered (bit 15 = 0)
+  low &= ~(1 << 15);
+
+  // 确保是 active high (bit 13 = 0)
+  low &= ~(1 << 13);
+
+  // 设置 Delivery Mode = Fixed (bits 8-10 = 000)
+  low &= ~(0x7 << 8);
+
+  // 设置 Destination Mode = Physical (bit 11 = 0)
+  low &= ~(1 << 11);
 
   ioapicwrite(REG_TABLE+2*irq, low);
   ioapicwrite(REG_TABLE+2*irq+1, cpunum << 24);

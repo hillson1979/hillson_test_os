@@ -27,6 +27,13 @@ uint32_t local_ip = 0xC0A8000F;  // 192.168.0.15（全局变量）
 static uint32_t netmask = 0xFFFFFF00;   // 255.255.255.0
 static uint32_t gateway = 0xC0A80001;   // 192.168.0.1 (网关)
 
+// ====== UDP 接收缓冲区（用于用户态接收） ======
+#define UDP_RX_BUF_SIZE  (200 * 1024)  // 200KB，足够容纳一帧 JPEG
+static uint8_t udp_rx_buffer[UDP_RX_BUF_SIZE];
+static int udp_rx_len = 0;
+static int udp_rx_ready = 0;
+static uint16_t udp_rx_port = 0;  // 接收到的源端口
+
 // 🔥 本机 MAC 地址（全局变量，用于接收包过滤）
 uint8_t local_mac[ETH_ALEN] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};  // 默认值，会被设备初始化覆盖
 
@@ -687,20 +694,37 @@ int udp_input(net_device_t *dev, uint8_t *data, uint32_t len) {
         return -1;
     }
 
-    printf("[net] UDP: sport=%d, dport=%d, len=%d\n",
-           ntohs(udp->udp_sport), ntohs(udp->udp_dport), ntohs(udp->udp_len));
-
-    // 提取UDP数据
+    // 提取端口和数据
+    uint16_t dport = ntohs(udp->udp_dport);
     uint8_t *udp_data = data + sizeof(udp_hdr_t);
     uint32_t udp_data_len = len - sizeof(udp_hdr_t);
 
-    if (udp_data_len > 0) {
-        printf("[net] UDP data: ");
-        for (uint32_t i = 0; i < udp_data_len && i < 32; i++) {
-            printf("%c", udp_data[i]);
-        }
-        printf("\n");
+    // 🔥 新增：调用视频播放器钩子（弱引用，仅在用户态存在）
+    extern int video_udp_hook(uint16_t dport, uint8_t *data, uint32_t len) __attribute__((weak));
+    if (video_udp_hook && video_udp_hook(dport, udp_data, udp_data_len) == 0) {
+        // 视频播放器已处理这个包
+        return 0;
     }
+
+    // 🔥 新增：将 UDP 数据存入全局接收缓冲区（供用户态接收）
+    if (udp_data_len > 0 && udp_data_len < UDP_RX_BUF_SIZE) {
+        memcpy(udp_rx_buffer, udp_data, udp_data_len);
+        udp_rx_len = udp_data_len;
+        udp_rx_ready = 1;
+        udp_rx_port = ntohs(udp->udp_sport);
+    }
+
+    printf("[net] UDP: sport=%d, dport=%d, len=%d\n",
+           ntohs(udp->udp_sport), dport, ntohs(udp->udp_len));
+
+    // 🔥 禁用 UDP 数据内容打印（视频流数据太大会导致重启）
+    // if (udp_data_len > 0) {
+    //     printf("[net] UDP data: ");
+    //     for (uint32_t i = 0; i < udp_data_len && i < 32; i++) {
+    //         printf("%c", udp_data[i]);
+    //     }
+    //     printf("\n");
+    // }
 
     // TODO: 将数据传递给应用层套接字
 
@@ -1357,6 +1381,40 @@ void print_ip(uint32_t ip) {
     printf("%d.%d.%d.%d",
            (ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
            (ip >> 8) & 0xFF, ip & 0xFF);
+}
+
+/**
+ * @brief 内部 UDP 接收函数（供系统调用使用）
+ * @param buf 接收缓冲区
+ * @param len 缓冲区长度
+ * @param port 输出参数，返回源端口
+ * @return 接收到的字节数，-1 表示无数据，-2 表示错误
+ */
+int net_recv_udp_internal(char *buf, int len, int *port) {
+    extern uint8_t udp_rx_buffer[];
+    extern int udp_rx_len;
+    extern int udp_rx_ready;
+    extern uint16_t udp_rx_port;
+
+    if (!udp_rx_ready) {
+        return -1;  // 无数据
+    }
+
+    if (len < udp_rx_len) {
+        return -2;  // 缓冲区太小
+    }
+
+    // 复制数据
+    memcpy(buf, udp_rx_buffer, udp_rx_len);
+    if (port) {
+        *port = udp_rx_port;
+    }
+
+    int ret = udp_rx_len;
+    udp_rx_ready = 0;  // 清除标志
+    udp_rx_len = 0;
+
+    return ret;
 }
 
 /**

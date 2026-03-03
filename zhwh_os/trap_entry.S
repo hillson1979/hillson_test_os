@@ -15,6 +15,7 @@
 alltraps:
     # --- 1. 保存段寄存器（先压，在低地址） ---
     # ⚠️ 必须先压段寄存器，遵循 xv6 标准
+    cli
     pushl %ds
     pushl %es
     pushl %fs
@@ -36,15 +37,12 @@ alltraps:
     movw %ax, %gs
 
     # --- 4. 调用 C 层的 do_irq_handler ---
-    # ⚠️ 关键：ESP 自然指向 trapframe 的起点（edi）
-    #     直接传递 ESP，不需要任何偏移计算！
+    
     pushl %esp
     call do_irq_handler
     addl $4, %esp
 
     # --- 4.5 检查 need_resched 标志，实现调度 ---
-    # ⚠️⚠️⚠️ 关键修复：系统调用（如 yield）会设置 need_resched=1
-    #      必须在这里检查并调用调度器，否则 yield 不起作用
     pushl %esp
     call check_and_schedule
     addl $4, %esp

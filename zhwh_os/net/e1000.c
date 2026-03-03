@@ -187,13 +187,14 @@ static void e1000_recv(net_device_t *dev) {
 
         // 获取有效长度
         uint16_t pkt_len = rx_desc->length;
-        SET_COLOR_RED();
+        // 🔥 禁用完整数据包打印（会导致视频流重启）
+        // SET_COLOR_RED();
         // 打印 raw 数据（使用 e1000_priv.rx_buffers）
-        for (int i = 0; i < pkt_len; i++) {
-            printf("%02x ", e1000_priv.rx_buffers[e1000_priv.rx_cur][i]);
-        }
-        SET_COLOR_GREEN();
-        printf("\n");
+        // for (int i = 0; i < pkt_len; i++) {
+        //     printf("%02x ", e1000_priv.rx_buffers[e1000_priv.rx_cur][i]);
+        // }
+        // SET_COLOR_GREEN();
+        // printf("\n");
 
         // 检查长度
         if (rx_desc->length < ETH_HDR_LEN || rx_desc->length > ETH_MAX_FRAME) {

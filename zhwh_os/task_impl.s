@@ -15,7 +15,7 @@
 .set TASK_HAS_RUN_USER, 52  # has_run_user 标志
 .set TASK_NICE,        56
 .set TASK_VRUNTIME,    96
-.set TASK_IFRAME,      152     # tf 字段偏移量（根据 GDB 内存 dump 验证：offset 0x98 = 0xC02A3114）
+.set TASK_IFRAME,      156     # tf 字段偏移量（根据 GDB 内存 dump 验证：offset 0x98 = 0xC02A3114）
 
 # 用户态段选择子定义
 .set USER_CS, 0x1B       # 用户代码段选择子 (RPL=3, TI=0, index=3)
@@ -177,23 +177,27 @@ setup_signal_handler:
     ret
 
 
-# trapframe 偏移量（匹配 interrupt.h 中的 struct trapframe）
-# ⚠️ 关键修复：struct trapframe 的实际布局（按C结构体定义）
-# struct从offset 0开始：edi(0), esi(4), ebp(8), oesp(12), ebx(16), edx(20), ecx(24), eax(28)
-#                      ds(32), es(36), fs(40), gs(44), trapno(48), err(52)
-#                      eip(56), cs(60), eflags(64), esp(68), ss(72)
-.set TF_EDI,         0     # ⚠️ 修正: edi = offset 0 (pusha起始位置)
-.set TF_ESI,         4     # ⚠️ 修正: esi = offset 4
-.set TF_EBP,         8     # ⚠️ 修正: ebp = offset 8
-.set TF_OESP,        12    # ⚠️ 修正: oesp = offset 12
-.set TF_EBX,         16    # ⚠️ 修正: ebx = offset 16
-.set TF_EDX,         20    # ⚠️ 修正: edx = offset 20
-.set TF_ECX,         24    # ⚠️ 修正: ecx = offset 24
-.set TF_EAX,         28    # ⚠️ 修正: eax = offset 28
-.set TF_DS,          32    # ⚠️ 修正: ds = offset 32 (C结构体定义)
-.set TF_ES,          36    # ⚠️ 修正: es = offset 36
-.set TF_FS,          40    # ⚠️ 修正: fs = offset 40
-.set TF_GS,          44    # ⚠️ 修正: gs = offset 44
+# trapframe 偏移量（匹配 alltraps 的实际栈布局）
+# ⚠️ 关键修复：alltraps 先压段寄存器，后压 pusha
+# 栈布局（从低地址到高地址）：
+#   [0:ds, 4:es, 8:fs, 12:gs]          ← 先压段寄存器
+#   [16:eax, 20:ecx, 24:edx, 28:ebx, 32:oesp, 36:ebp, 40:esi, 44:edi]  ← pusha
+#   [48:trapno, 52:err]
+#   [56:eip, 60:cs, 64:eflags, 68:esp, 72:ss]
+.set TF_DS,          0     # ⚠️ 修正: ds = offset 0 (alltraps 先压)
+.set TF_ES,          4     # ⚠️ 修正: es = offset 4
+.set TF_FS,          8     # ⚠️ 修正: fs = offset 8
+.set TF_GS,          12    # ⚠️ 修正: gs = offset 12
+.set TF_EAX,         16    # ⚠️ 修正: eax = offset 16 (pusha 起始)
+.set TF_ECX,         20    # ⚠️ 修正: ecx = offset 20
+.set TF_EDX,         24    # ⚠️ 修正: edx = offset 24
+.set TF_EBX,         28    # ⚠️ 修正: ebx = offset 28
+.set TF_OESP,        32    # ⚠️ 修正: oesp = offset 32
+.set TF_EBP,         36    # ⚠️ 修正: ebp = offset 36
+.set TF_ESI,         40    # ⚠️ 修正: esi = offset 40
+.set TF_EDI,         44    # ⚠️ 修正: edi = offset 44
+.set TF_TRAPNO,      48
+.set TF_ERR,         52
 .set TF_EIP,         56
 .set TF_CS,          60
 .set TF_EFLAGS,      64
@@ -275,6 +279,10 @@ task_to_user_mode_with_task:
     # ⚠️ 从栈上读取 task 指针参数（C 调用约定）
     movl 4(%esp), %ebx          # EBX = task 指针
 
+    # 🔥 关键修复：在切换栈之前恢复中断！
+    # 原因：printf 需要中断工作，否则键盘输入无法被处理
+    sti
+
     # 验证 EBX 的值
     pushl %ebx
     pushl $task_to_user_mode_ebx_msg
@@ -286,6 +294,10 @@ task_to_user_mode_with_task:
     cmpl $0, %ecx
     je 1f
 
+    # 🔥 关键：在切换栈之前再次关中断！
+    # 原因：切换栈期间不能有中断
+    cli
+
     # 切换到 task->tf 所指的栈
     movl %ecx, %esp             # ESP = task->tf
 
@@ -295,32 +307,28 @@ task_to_user_mode_with_task:
     movl %eax, tss + TSS_ESP0_OFFSET
     movl %edx, %cr3
 
-    # ⚠️⚠️⚠️ 现在 ESP 指向 trapframe，按照 struct trapframe 布局恢复寄存器
-    # struct trapframe 布局（include/interrupt.h:121-159）：
-    #   offset 0-28: pusha 压入的通用寄存器
-    #     [0:edi, 4:esi, 8:ebp, 12:oesp, 16:ebx, 20:edx, 24:ecx, 28:eax]
-    #   offset 32-44: 段寄存器
-    #     [32:ds, 36:es, 40:fs, 44:gs]
-    #   offset 48-52: 中断信息
-    #     [48:trapno, 52:err]
-    #   offset 56-72: CPU 硬件压入的值
-    #     [56:eip, 60:cs, 64:eflags, 68:esp, 72:ss]
+    # ⚠️⚠️⚠️ 关键修复：现在 ESP 指向 trapframe，按照 alltraps 的布局恢复寄存器
+    # alltraps 布局（trap_entry.S:15-67）：
+    #   先压段寄存器：[0:ds, 4:es, 8:fs, 12:gs]
+    #   再压 pusha：   [16:eax, 20:ecx, 24:edx, 28:ebx, 32:oesp, 36:ebp, 40:esi, 44:edi]
+    #   然后压：       [48:trapno, 52:err]
+    #   最后硬件压：   [56:eip, 60:cs, 64:eflags, 68:esp, 72:ss]
 
-    # 恢复通用寄存器（pusha 的逆序）
-    popl %edi                 # offset 0
-    popl %esi                 # offset 4
-    popl %ebp                 # offset 8
-    addl $4, %esp             # 跳过 oesp (offset 12)
-    popl %ebx                 # offset 16（用户态 EBX）
-    popl %edx                 # offset 20
-    popl %ecx                 # offset 24
-    popl %eax                 # offset 28
+    # 先恢复段寄存器（offset 0-12）
+    popl %ds                  # offset 0
+    popl %es                  # offset 4
+    popl %fs                  # offset 8
+    popl %gs                  # offset 12
 
-    # 恢复段寄存器
-    popl %ds                  # offset 32
-    popl %es                  # offset 36
-    popl %fs                  # offset 40
-    popl %gs                  # offset 44
+    # 恢复通用寄存器（pusha 的逆序，offset 16-44）
+    popl %eax                 # offset 16
+    popl %ecx                 # offset 20
+    popl %edx                 # offset 24
+    popl %ebx                 # offset 28（用户态 EBX）
+    addl $4, %esp             # 跳过 oesp (offset 32)
+    popl %ebp                 # offset 36
+    popl %esi                 # offset 40
+    popl %edi                 # offset 44
 
     # 跳过 trapno 和 err（offset 48-52）
     addl $8, %esp

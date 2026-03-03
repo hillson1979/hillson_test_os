@@ -67,14 +67,24 @@ RAW_TARGET = kernel.raw
 
 # Offset 计算工具
 OFFSETcalc = calc_task_offset
+OFFSET_GEN = gen_asm_offsets
+OFFSET_HEADER = task_offsets.s
 
-# 默认目标
-all: $(TARGET) $(RAW_TARGET)
+# 默认目标（依赖自动生成的偏移量文件）
+all: $(OFFSET_HEADER) $(TARGET) $(RAW_TARGET)
 
-# 计算 task_t 结构体偏移量
+# 自动生成汇编偏移量文件（推荐方式）
+$(OFFSET_HEADER): gen_asm_offsets.c include/task.h
+	@echo "Generating assembly offset constants..."
+	$(CC) $(TARGET_ARCH) -o $(OFFSET_GEN) gen_asm_offsets.c $(INCLUDES)
+	./$(OFFSET_GEN) > $(OFFSET_HEADER)
+	@echo "Generated: $(OFFSET_HEADER)"
+	@echo ""
+
+# 计算 task_t 结构体偏移量（旧方式，保留用于调试）
 calc-offset: calc_task_offset.c
 	@echo "Compiling offset calculator..."
-	$(CC) $(TARGET_ARCH) -o $(OFFSETcalc) calc_task_offset.c
+	$(CC) $(TARGET_ARCH) -o $(OFFSETcalc) calc_task_offset.c $(INCLUDES)
 	@echo ""
 	./$(OFFSETcalc)
 	@echo ""
@@ -82,6 +92,15 @@ calc-offset: calc_task_offset.c
 	@echo "Copy the TASK_IFRAME value above to task_impl.s line 18:"
 	@echo "  .set TASK_IFRAME, <value>"
 	@echo "====================="
+	@echo ""
+	@echo "⚠️  更好的方式是使用自动生成的偏移量文件！"
+	@echo "   make gen-offsets  会生成 task_offsets.s"
+	@echo "   然后在 task_impl.s 中包含该文件即可"
+	@echo "====================="
+
+# 生成偏移量文件（快捷命令）
+gen-offsets: $(OFFSET_HEADER)
+	@echo "✓ Offset file generated successfully!"
 
 # 使用gcc链接（推荐）
 $(TARGET): $(OBJECTS) linker/os.ld
@@ -111,17 +130,18 @@ net/wifi/firmware/atheros/fw-5.o:
 	@echo "Assembled: $<"
 
 clean:
-	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso $(OFFSETcalc)
+	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso $(OFFSETcalc) $(OFFSET_GEN) $(OFFSET_HEADER)
 	@echo "Cleaned object files and binaries"
 
 help:
 	@echo "可用目标:"
-	@echo "  all         - 编译所有目标 (默认)"
+	@echo "  all         - 编译所有目标 (默认，自动生成偏移量文件)"
 	@echo "  kernel.bin  - 编译ELF内核文件"
 	@echo "  kernel.raw  - 生成原始二进制文件"
-	@echo "  calc-offset - 计算 task_t 结构体偏移量"
+	@echo "  gen-offsets - 生成 task_offsets.s (汇编偏移量常量)"
+	@echo "  calc-offset - 计算 task_t 结构体偏移量 (调试用)"
 	@echo "  clean       - 清理对象文件"
 	@echo "  help        - 显示此帮助信息"
 
-.PHONY: all clean help calc-offset
+.PHONY: all clean help calc-offset gen-offsets
 

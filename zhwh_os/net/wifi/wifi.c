@@ -848,13 +848,14 @@ int wifi_disconnect(void) {
  * @brief 获取 WiFi 状态
  */
 void wifi_status(void) {
+    // 🔥 修复：避免在系统调用上下文中调用 printf，因为这可能导致状态不一致
+    // 暂时禁用所有输出，包括 print_mac
     // printf("\n=== Atheros WiFi Status ===\n\n");
-
     // printf("Device: wlan0\n");
     // printf("Driver: Qualcomm Atheros QCA9377\n");
     // printf("Firmware Version: 12.0.0.722\n");
     // printf("MAC: ");
-    print_mac(atheros_dev.mac_addr);
+    // print_mac(atheros_dev.mac_addr);
     // printf("\n");
     // printf("Status: %s\n", atheros_priv.enabled ? "Enabled" : "Disabled");
 
