@@ -4,7 +4,7 @@
   "description": "32-bit x86 Operating System with GUI, networking, and advanced features",
   "last_updated": "2026-03-03",
   "total_features": 45,
-  "completed_features": 4,
+  "completed_features": 5,
   "categories": {
     "memory_management": {
       "name": "Memory Management",
@@ -299,7 +299,7 @@
           "id": "SI-001",
           "name": "System Call Entry/Exit",
           "description": "Implement int $0x80 syscall mechanism",
-          "status": "failing",
+          "status": "passing",
           "test_steps": [
             "Test syscall entry from user mode",
             "Verify syscall number is passed correctly",
@@ -308,7 +308,8 @@
             "Verify errno is set on errors"
           ],
           "verification_command": "test_syscall_entry() in user program",
-          "files": ["syscall.c", "vectors.s", "include/syscall.h"]
+          "files": ["syscall.c", "vectors.s", "include/syscall.h"],
+          "notes": "Working: syscall_dispatch() implements 30+ system calls, test program created"
         },
         {
           "id": "SI-002",

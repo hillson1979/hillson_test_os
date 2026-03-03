@@ -8,12 +8,12 @@ cp kernel.bin iso/boot/
 [ -f test/net_test.elf ] && cp test/net_test.elf iso/boot/
 [ -f test/net_shell.elf ] && cp test/net_shell.elf iso/boot/
 [ -f test/gui_shell.elf ] && cp test/gui_shell.elf iso/boot/
-
 [ -f test/lvglanet.elf ] && cp test/lvglanet.elf iso/boot/
+[ -f test/syscall_test.elf ] && cp test/syscall_test.elf iso/boot/
 
 cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
-set default=4
+set default=5
 
 # 加载视频模块并设置图形模式
 insmod all_video
@@ -52,6 +52,12 @@ menuentry "My OS - LVGL Graphics Test" {
 menuentry "My OS - LVGL + Network Test (Video Player)" {
     multiboot2 /boot/kernel.bin
     module2 /boot/lvglanet.elf
+    boot
+}
+
+menuentry "My OS - System Call Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/syscall_test.elf
     boot
 }
 

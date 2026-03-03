@@ -12,7 +12,7 @@ LVGL_SRC_DIR = $(LVGL_DIR)/src
 LVGL_FLAGS = -DLV_USE_EXTRA=0 -DSTB_NO_STDIO -include libuser_minimal.h -include stdarg.h -include stdint_compat.h
 LVGL_INCLUDES = -I. -I$(LVGL_DIR) -I$(LVGL_SRC_DIR) -I../user -I../include/lvgl -I../include
 
-TARGET = lvglanet.elf
+TARGETS = lvglanet.elf syscall_test.elf
 
 # 静态库
 LIBUSER = libuser.a
@@ -176,15 +176,28 @@ $(LVGL_OBJS): %.o: %.c
 	@$(CC) $(CFLAGS) $(LVGL_FLAGS) $(LVGL_INCLUDES) -c $< -o $@
 
 # Linking
-$(TARGET): lvglanet.o $(LIBUSER) lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../test/syscalls.o ../user/gui.o $(LVGL_OBJS) $(VIDEO_OBJS)
+lvglanet.elf: lvglanet.o $(LIBUSER) lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../test/syscalls.o ../user/gui.o $(LVGL_OBJS) $(VIDEO_OBJS)
 	@echo "Linking $@..."
 	@$(LD) $(LDFLAGS) -o $@ lvglanet.o $(LIBUSER) lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o ../test/syscalls.o ../user/gui.o $(LVGL_OBJS) $(VIDEO_OBJS)
 	@echo "Built $@ successfully!"
 
+# syscall_test program
+syscall_test.elf: syscall_test.o $(LIBUSER) ../test/syscalls.o
+	@echo "Linking $@..."
+	@$(LD) $(LDFLAGS) -o $@ syscall_test.o $(LIBUSER) ../test/syscalls.o
+	@echo "Built $@ successfully!"
+
+syscall_test.o: syscall_test.c
+	@echo "Compiling syscall_test.c..."
+	@$(CC) $(CFLAGS) -I../user -I../include -c $< -o $@
+
+# Build all targets
+all: $(TARGETS)
+
 clean:
 	@echo "Cleaning..."
-	@rm -f lvglanet.o lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o $(TARGET) $(LIBUSER)
-	@rm -f ../user/libuser.o ../user/gui.o ../test/syscalls.o
+	@rm -f lvglanet.o lvgl_port.o string_compat.o libgcc_compat.o lvgl_stubs.o $(TARGETS) $(LIBUSER)
+	@rm -f syscall_test.o ../user/libuser.o ../user/gui.o ../test/syscalls.o
 	@rm -f ../video/video_player.o ../video/video_player_net.o ../video/video_player_decode.o ../video/video_simple_udp.o ../video/video_player_socket_compat.o ../video/video_player_os_stats.o ../video/video_kmalloc_compat.o
 	@find $(LVGL_SRC_DIR) -name "*.o" -type f -delete 2>/dev/null || true
 	@echo "Cleaned!"
