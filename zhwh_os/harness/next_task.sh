@@ -21,7 +21,11 @@ echo ""
 # Get current progress
 TOTAL=$(grep -c '"id":' harness/feature_list.json 2>/dev/null || echo "0")
 PASSING=$(grep -c '"status": "passing"' harness/feature_list.json 2>/dev/null || echo "0")
-PERCENT=$((PASSING * 100 / TOTAL))
+if [ "$TOTAL" -gt 0 ]; then
+    PERCENT=$((PASSING * 100 / TOTAL))
+else
+    PERCENT=0
+fi
 
 echo "Progress: $PASSING/$TOTAL features passing ($PERCENT%)"
 echo ""

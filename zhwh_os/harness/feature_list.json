@@ -4,7 +4,7 @@
   "description": "32-bit x86 Operating System with GUI, networking, and advanced features",
   "last_updated": "2026-03-03",
   "total_features": 45,
-  "completed_features": 5,
+  "completed_features": 7,
   "categories": {
     "memory_management": {
       "name": "Memory Management",
@@ -15,7 +15,7 @@
           "id": "MM-001",
           "name": "Physical Page Allocator",
           "description": "Implement physical page frame allocation using bitmap or free list",
-          "status": "failing",
+          "status": "passing",
           "test_steps": [
             "Boot the OS and check memory initialization message",
             "Verify page allocator reports correct total memory",
@@ -24,7 +24,8 @@
             "Verify page boundaries are correctly aligned (4KB)"
           ],
           "verification_command": "check_physical_memory() in kernel console",
-          "files": ["page.c", "mm.c", "include/page.h"]
+          "files": ["page.c", "mm.c", "include/page.h"],
+          "notes": "Working: Buddy System with 15230 pages (59MB) managed, order 13 blocks initialized successfully"
         },
         {
           "id": "MM-002",
@@ -231,7 +232,7 @@
           "id": "TM-003",
           "name": "Context Switch",
           "description": "Implement switch_to() for task switching",
-          "status": "failing",
+          "status": "passing",
           "test_steps": [
             "Create two tasks and yield between them",
             "Verify ESP, CR3, and general registers are saved/restored",
@@ -240,7 +241,8 @@
             "Test switch from kernel task to user task"
           ],
           "verification_command": "test_context_switch() in kernel console",
-          "files": ["task.c", "task_impl.s", "include/task.h"]
+          "files": ["task.c", "task_impl.s", "include/task.h"],
+          "notes": "Working: switch_to() implemented in task_impl.s, schedule() uses it for task switching"
         },
         {
           "id": "TM-004",
