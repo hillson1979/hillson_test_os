@@ -1,0 +1,696 @@
+{
+  "project_name": "zhwh_os",
+  "version": "0.1.0",
+  "description": "32-bit x86 Operating System with GUI, networking, and advanced features",
+  "last_updated": "2026-03-03",
+  "total_features": 45,
+  "completed_features": 4,
+  "categories": {
+    "memory_management": {
+      "name": "Memory Management",
+      "description": "Physical and virtual memory management",
+      "priority": "critical",
+      "features": [
+        {
+          "id": "MM-001",
+          "name": "Physical Page Allocator",
+          "description": "Implement physical page frame allocation using bitmap or free list",
+          "status": "failing",
+          "test_steps": [
+            "Boot the OS and check memory initialization message",
+            "Verify page allocator reports correct total memory",
+            "Run allocation test pattern: alloc 10 pages, free 5, alloc 3",
+            "Check for memory leaks after 100 allocation cycles",
+            "Verify page boundaries are correctly aligned (4KB)"
+          ],
+          "verification_command": "check_physical_memory() in kernel console",
+          "files": ["page.c", "mm.c", "include/page.h"]
+        },
+        {
+          "id": "MM-002",
+          "name": "Virtual Memory Mapping",
+          "description": "Implement page table setup and virtual-to-physical mapping",
+          "status": "failing",
+          "test_steps": [
+            "Verify kernel page tables are correctly set up",
+            "Test mapping a virtual page to physical page",
+            "Test unmapping and freeing virtual pages",
+            "Verify page protection bits (R/W/U/S)",
+            "Test TLB invalidation after mapping changes"
+          ],
+          "verification_command": "check_page_tables() in kernel console",
+          "files": ["mm.c", "page.c", "include/x86/mmu.h", "include/page.h"]
+        },
+        {
+          "id": "MM-003",
+          "name": "High Memory Mapping",
+          "description": "Implement dynamic mapping for high memory (>896MB) access",
+          "status": "failing",
+          "test_steps": [
+            "Boot on system with >1GB RAM",
+            "Verify highmem region is identified correctly",
+            "Test temporary mapping of high memory pages",
+            "Verify mapping/unmapping doesn't leak page table entries",
+            "Test concurrent high memory access from multiple tasks"
+          ],
+          "verification_command": "test_highmem_mapping() in kernel console",
+          "files": ["highmem_mapping.c", "hardware_highmem.c", "include/page.h"]
+        },
+        {
+          "id": "MM-004",
+          "name": "Buddy System Allocator",
+          "description": "Implement buddy system for efficient multi-page allocations",
+          "status": "passing",
+          "test_steps": [
+            "Initialize buddy system with available memory",
+            "Test allocation of various sizes (1, 2, 4, 8, 16 pages)",
+            "Test splitting and merging of buddy blocks",
+            "Verify coalescing of free adjacent blocks",
+            "Check fragmentation after 1000 random allocations/frees"
+          ],
+          "verification_command": "test_buddy_system() in kernel console",
+          "files": ["mm/buddy.c", "include/mm.h"],
+          "notes": "Working: Buddy system initialized successfully in output_net.txt"
+        },
+        {
+          "id": "MM-005",
+          "name": "Kernel Memory Allocator (kmalloc)",
+          "description": "Implement kmalloc/kfree for small kernel objects",
+          "status": "failing",
+          "test_steps": [
+            "Test allocations from 8 bytes to 4096 bytes",
+            "Verify alignment requirements are met",
+            "Test freeing and reusing freed blocks",
+            "Check for memory corruption with pattern fill",
+            "Test edge cases: 0-byte, huge allocations (>PAGE_SIZE)"
+          ],
+          "verification_command": "test_kmalloc() in kernel console",
+          "files": ["kmalloc_early.c", "mm.c", "include/mm.h"]
+        }
+      ]
+    },
+    "interrupt_handling": {
+      "name": "Interrupt Handling",
+      "description": "Hardware interrupt handling and dispatch",
+      "priority": "critical",
+      "features": [
+        {
+          "id": "IH-001",
+          "name": "IDT and Interrupt Vectors",
+          "description": "Set up Interrupt Descriptor Table with 256 vectors",
+          "status": "passing",
+          "test_steps": [
+            "Verify IDT is loaded with lidt instruction",
+            "Test all 32 exception vectors (0-31)",
+            "Test IRQ vectors (32-47)",
+            "Test software interrupt (int $0x80)",
+            "Verify each vector has correct handler address"
+          ],
+          "verification_command": "check_idt() in kernel console",
+          "files": ["interrupt.c", "vectors.s", "trap_entry.S", "include/interrupt.h"],
+          "notes": "Working: IDT initialized in output_net.txt"
+        },
+        {
+          "id": "IH-002",
+          "name": "Exception Handlers",
+          "description": "Implement handlers for CPU exceptions (divide by zero, page fault, etc)",
+          "status": "failing",
+          "test_steps": [
+            "Trigger divide by zero and verify handler catches it",
+            "Trigger page fault and verify error code is correct",
+            "Test general protection fault handler",
+            "Verify trapframe captures correct register state",
+            "Test exception recovery and task continuation"
+          ],
+          "verification_command": "test_exceptions() in test program",
+          "files": ["interrupt.c", "trap_entry.S", "interrupt_exit.s", "include/interrupt.h"]
+        },
+        {
+          "id": "IH-003",
+          "name": "Trapframe Layout",
+          "description": "Correct trapframe structure for register save/restore",
+          "status": "passing",
+          "test_steps": [
+            "Verify DS/ES/FS/GS are saved at correct offsets",
+            "Verify pusha registers (EDI-EAX) are saved correctly",
+            "Verify EIP/CS/EFLAGS are captured",
+            "Test user-kernel mode transitions preserve state",
+            "Verify iret restores all registers correctly"
+          ],
+          "verification_command": "check_trapframe() in kernel console",
+          "files": ["include/interrupt.h", "trap_entry.S", "interrupt_exit.s", "task_impl.s"],
+          "notes": "Fixed in TRAPFRAME_LAYOUT_FIX.md - DS at offset 0, pusha at offset 16"
+        },
+        {
+          "id": "IH-004",
+          "name": "IRQ Controller (IOAPIC)",
+          "description": "Configure I/O APIC for interrupt routing",
+          "status": "passing",
+          "test_steps": [
+            "Detect IOAPIC from MADT table",
+            "Initialize IOAPIC with proper configuration",
+            "Test IRQ routing for keyboard (IRQ 1)",
+            "Test IRQ routing for timer (IRQ 0)",
+            "Verify interrupt acknowledgments work correctly"
+          ],
+          "verification_command": "check_ioapic() in kernel console",
+          "files": ["ioapic.c", "madt_parser.c", "include/interrupt.h"],
+          "notes": "Working: IOAPIC initialized, keyboard IRQ 1 enabled"
+        },
+        {
+          "id": "IH-005",
+          "name": "Local APIC Timer",
+          "description": "Implement local APIC timer for scheduling",
+          "status": "failing",
+          "test_steps": [
+            "Initialize local APIC on each CPU core",
+            "Configure timer interrupt frequency",
+            "Test timer interrupt delivery",
+            "Verify timer handler increments tick counter",
+            "Test one-shot and periodic modes"
+          ],
+          "verification_command": "check_apic_timer() in kernel console",
+          "files": ["lapic.c", "interrupt.c", "include/interrupt.h"]
+        },
+        {
+          "id": "IH-006",
+          "name": "Interrupt Safety - No Printf",
+          "description": "Ensure interrupt handlers don't use printf (corrupts segment registers)",
+          "status": "passing",
+          "test_steps": [
+            "Search all interrupt handlers for printf calls",
+            "Verify all printf in handlers are wrapped in #ifdef DEBUG",
+            "Run system with keyboard interrupts active",
+            "Verify DS/ES registers are not corrupted",
+            "Test system stability under interrupt load"
+          ],
+          "verification_command": "grep -n 'printf' interrupt.c driver/*.c | grep -v '#ifdef'",
+          "files": ["interrupt.c", "driver/keyboard.c", "driver/vbe.c"],
+          "notes": "Fixed: All printf removed from interrupt handlers"
+        }
+      ]
+    },
+    "task_management": {
+      "name": "Task Management",
+      "description": "Process creation, scheduling, and termination",
+      "priority": "critical",
+      "features": [
+        {
+          "id": "TM-001",
+          "name": "Task Structure and State",
+          "description": "Define task_t structure with all required fields",
+          "status": "passing",
+          "test_steps": [
+            "Verify task_t has correct size and alignment",
+            "Check all critical fields are present (ESP, CR3, pid, state)",
+            "Verify task offsets match assembly definitions",
+            "Test task initialization sets correct defaults",
+            "Validate TASK_IFRAME offset is correct"
+          ],
+          "verification_command": "make calc-offset && ./check_task_offset",
+          "files": ["include/task.h", "task.c", "task_offsets.s", "gen_asm_offsets.c"],
+          "notes": "Working: TASK_IFRAME offset verified (156) in output_net.txt"
+        },
+        {
+          "id": "TM-002",
+          "name": "Task Creation",
+          "description": "Implement task_create() for new process creation",
+          "status": "passing",
+          "test_steps": [
+            "Create kernel task and verify it's added to task list",
+            "Verify unique PID assignment",
+            "Check parent/child relationships are set correctly",
+            "Test task creation with custom entry point",
+            "Verify initial register state is correct"
+          ],
+          "verification_command": "test_task_create() in kernel console",
+          "files": ["task.c", "include/task.h", "task_impl.s"],
+          "notes": "Working: User task loaded successfully in output_net.txt"
+        },
+        {
+          "id": "TM-003",
+          "name": "Context Switch",
+          "description": "Implement switch_to() for task switching",
+          "status": "failing",
+          "test_steps": [
+            "Create two tasks and yield between them",
+            "Verify ESP, CR3, and general registers are saved/restored",
+            "Test multiple switches don't corrupt state",
+            "Verify kernel stack switching works correctly",
+            "Test switch from kernel task to user task"
+          ],
+          "verification_command": "test_context_switch() in kernel console",
+          "files": ["task.c", "task_impl.s", "include/task.h"]
+        },
+        {
+          "id": "TM-004",
+          "name": "User Mode Execution",
+          "description": "Implement switch_to_user() for entering user mode",
+          "status": "passing",
+          "test_steps": [
+            "Create user task with ELF module",
+            "Verify IRET sets correct user CS/DS (0x1B/0x23)",
+            "Test user program executes from entry point",
+            "Verify user stack is set up correctly",
+            "Test user-kernel transitions via syscalls"
+          ],
+          "verification_command": "test_user_mode() in kernel console",
+          "files": ["task.c", "task_impl.s", "syscall.c", "include/task.h"],
+          "notes": "Working: lvglanet.elf loaded and transitioned to user mode"
+        },
+        {
+          "id": "TM-005",
+          "name": "Process Scheduler",
+          "description": "Implement fair scheduling algorithm",
+          "status": "failing",
+          "test_steps": [
+            "Create tasks with different priorities",
+            "Verify scheduler selects tasks fairly",
+            "Test time quantum enforcement",
+            "Verify CPU time accounting",
+            "Test preemptive scheduling with timer interrupts"
+          ],
+          "verification_command": "test_scheduler() in kernel console",
+          "files": ["sched.c", "task.c", "include/task.h"]
+        },
+        {
+          "id": "TM-006",
+          "name": "Signal Handling",
+          "description": "Implement POSIX-style signal delivery",
+          "status": "failing",
+          "test_steps": [
+            "Send signal to running process",
+            "Verify signal handler is invoked in user context",
+            "Test signal mask blocking",
+            "Test pending signals queue",
+            "Verify sigreturn restores context correctly"
+          ],
+          "verification_command": "test_signals() in kernel console",
+          "files": ["signal.c", "task.c", "include/signal.h"]
+        }
+      ]
+    },
+    "syscall_interface": {
+      "name": "System Call Interface",
+      "description": "User-kernel interface and system calls",
+      "priority": "high",
+      "features": [
+        {
+          "id": "SI-001",
+          "name": "System Call Entry/Exit",
+          "description": "Implement int $0x80 syscall mechanism",
+          "status": "failing",
+          "test_steps": [
+            "Test syscall entry from user mode",
+            "Verify syscall number is passed correctly",
+            "Verify arguments are retrieved from trapframe",
+            "Test return value is delivered correctly",
+            "Verify errno is set on errors"
+          ],
+          "verification_command": "test_syscall_entry() in user program",
+          "files": ["syscall.c", "vectors.s", "include/syscall.h"]
+        },
+        {
+          "id": "SI-002",
+          "name": "File Syscalls",
+          "description": "Implement open, read, write, close, lseek",
+          "status": "failing",
+          "test_steps": [
+            "Test opening existing file returns valid fd",
+            "Test reading from file returns correct data",
+            "Test writing to file works",
+            "Test closing file releases resources",
+            "Test lseek moves file position correctly"
+          ],
+          "verification_command": "test_file_syscalls() in user program",
+          "files": ["syscall.c", "fs/vfs.c", "include/syscall.h"]
+        },
+        {
+          "id": "SI-003",
+          "name": "Process Syscalls",
+          "description": "Implement fork, exec, exit, wait, getpid",
+          "status": "failing",
+          "test_steps": [
+            "Test fork creates child process",
+            "Test exec loads new program",
+            "Test exit terminates task cleanly",
+            "Test wait reaps zombie children",
+            "Test getpid returns correct PID"
+          ],
+          "verification_command": "test_process_syscalls() in user program",
+          "files": ["syscall.c", "task.c", "include/syscall.h"]
+        },
+        {
+          "id": "SI-004",
+          "name": "IPC Syscalls",
+          "description": "Implement pipe, shared memory, message queue",
+          "status": "failing",
+          "test_steps": [
+            "Test pipe creation and data transfer",
+            "Test pipe blocking on empty/full",
+            "Test shared memory mapping",
+            "Test message queue send/receive",
+            "Verify synchronization primitives work"
+          ],
+          "verification_command": "test_ipc() in user program",
+          "files": ["syscall.c", "include/syscall.h"]
+        }
+      ]
+    },
+    "device_drivers": {
+      "name": "Device Drivers",
+      "description": "Hardware device support (keyboard, mouse, network, etc)",
+      "priority": "high",
+      "features": [
+        {
+          "id": "DD-001",
+          "name": "Keyboard Driver",
+          "description": "Implement PS/2 keyboard driver with scancode translation",
+          "status": "passing",
+          "test_steps": [
+            "Press keys and verify scancodes are received",
+            "Verify scancode-to-ASCII translation works",
+            "Test shift, ctrl, alt modifier keys",
+            "Verify key press/release events are tracked",
+            "Test keyboard buffer doesn't overflow"
+          ],
+          "verification_command": "type in LVGL interface or shell",
+          "files": ["driver/keyboard.c", "include/keyboard.h"],
+          "notes": "Working: Removed printf from interrupt handler"
+        },
+        {
+          "id": "DD-002",
+          "name": "VBE Graphics Driver",
+          "description": "Implement VBE 2.0+ framebuffer driver",
+          "status": "passing",
+          "test_steps": [
+            "Query VBE mode list",
+            "Set 1024x768x32 graphics mode",
+            "Verify framebuffer address is correct",
+            "Test pixel plotting works",
+            "Test double buffering"
+          ],
+          "verification_command": "test_vbe() in kernel console",
+          "files": ["driver/vbe.c", "include/video.h"],
+          "notes": "Working: 1024x768x32 mode in output_net.txt"
+        },
+        {
+          "id": "DD-003",
+          "name": "USB Host Controller",
+          "description": "Implement USB UHCI/OHCI/EHCI support",
+          "status": "passing",
+          "test_steps": [
+            "Detect USB controllers on PCI bus",
+            "Initialize host controller",
+            "Enumerate USB devices",
+            "Test USB device descriptors are read",
+            "Verify USB transactions complete successfully"
+          ],
+          "verification_command": "usb_scan in kernel console",
+          "files": ["driver/usb_hcd.c", "driver/usb.c", "pci.c"],
+          "notes": "Working: UHCI controller and USB mouse detected in output_net.txt"
+        },
+        {
+          "id": "DD-004",
+          "name": "USB Mouse Driver",
+          "description": "Implement USB HID mouse driver",
+          "status": "passing",
+          "test_steps": [
+            "Detect USB mouse on enumeration",
+            "Set boot protocol for mouse",
+            "Read mouse input reports",
+            "Verify X/Y coordinates are calculated",
+            "Test mouse movement updates cursor"
+          ],
+          "verification_command": "test_mouse() in kernel console",
+          "files": ["driver/usb_mouse.c", "driver/usb.c"],
+          "notes": "Working: USB mouse initialized in output_net.txt"
+        },
+        {
+          "id": "DD-005",
+          "name": "Serial Port Driver",
+          "description": "Implement UART 16550 driver for debugging",
+          "status": "failing",
+          "test_steps": [
+            "Initialize COM1 port with 115200 baud",
+            "Test character transmission",
+            "Test character reception with interrupt",
+            "Verify TX/RX buffers don't overflow",
+            "Test serial console output"
+          ],
+          "verification_command": "echo test > /dev/ttyS0",
+          "files": ["driver/uart.c", "include/uart.h"]
+        },
+        {
+          "id": "DD-006",
+          "name": "E1000 Network Driver",
+          "description": "Implement Intel E1000 gigabit Ethernet driver",
+          "status": "failing",
+          "test_steps": [
+            "Detect E1000 device on PCI bus",
+            "Initialize NIC and set up RX/TX rings",
+            "Test packet transmission",
+            "Test packet reception with interrupts",
+            "Verify checksum offload works"
+          ],
+          "verification_command": "net_test in user program",
+          "files": ["net/e1000.c", "net/core.c", "include/net.h"]
+        }
+      ]
+    },
+    "filesystem": {
+      "name": "File System",
+      "description": "File storage and management",
+      "priority": "medium",
+      "features": [
+        {
+          "id": "FS-001",
+          "name": "Virtual File System (VFS)",
+          "description": "Implement VFS layer with file/inode/dentry",
+          "status": "failing",
+          "test_steps": [
+            "Create VFS mount point",
+            "Test file registration with VFS",
+            "Test file lookup by path",
+            "Verify inode cache works",
+            "Test dentry cache reduces lookups"
+          ],
+          "verification_command": "test_vfs() in kernel console",
+          "files": ["fs/vfs.c", "include/vfs.h"]
+        },
+        {
+          "id": "FS-002",
+          "name": "RAMFS",
+          "description": "Implement in-memory filesystem",
+          "status": "passing",
+          "test_steps": [
+            "Mount ramfs at /ram",
+            "Create file and write data",
+            "Read file and verify data matches",
+            "Test directory creation",
+            "Test file deletion"
+          ],
+          "verification_command": "mount_ramfs() && ls /ram",
+          "files": ["fs/ramfs.c", "fs/vfs.c"],
+          "notes": "Working: ramfs initialized and test files created in output_net.txt"
+        },
+        {
+          "id": "FS-003",
+          "name": "FAT32 Support",
+          "description": "Implement FAT32 filesystem driver",
+          "status": "failing",
+          "test_steps": [
+            "Detect FAT32 partition on disk",
+            "Read and parse FAT tables",
+            "Test reading root directory",
+            "Test reading file from FAT32",
+            "Test writing to FAT32 file"
+          ],
+          "verification_command": "mount_fat32() && ls /fat",
+          "files": ["fs/fat32.c (TODO)", "fs/vfs.c"]
+        }
+      ]
+    },
+    "networking": {
+      "name": "Networking",
+      "description": "Network protocol stack and drivers",
+      "priority": "medium",
+      "features": [
+        {
+          "id": "NET-001",
+          "name": "Network Core",
+          "description": "Implement network buffer management and interface layer",
+          "status": "passing",
+          "test_steps": [
+            "Create network interface (eth0)",
+            "Test sk_buff allocation",
+            "Test packet transmission through interface",
+            "Test packet reception and queuing",
+            "Verify network statistics are tracked"
+          ],
+          "verification_command": "ifconfig in shell",
+          "files": ["net/core.c", "include/net.h"],
+          "notes": "Working: Network stack initialized in output_net.txt"
+        },
+        {
+          "id": "NET-002",
+          "name": "ARP Protocol",
+          "description": "Implement ARP for IP-to-MAC resolution",
+          "status": "failing",
+          "test_steps": [
+            "Send ARP request for gateway",
+            "Receive ARP reply and cache entry",
+            "Verify ARP cache timeout works",
+            "Test ARP for unknown host",
+            "Test gratuitous ARP"
+          ],
+          "verification_command": "arp -a in shell",
+          "files": ["net/arp.c (TODO)", "net/core.c"]
+        },
+        {
+          "id": "NET-003",
+          "name": "IP Protocol",
+          "description": "Implement IPv4 packet handling",
+          "status": "failing",
+          "test_steps": [
+            "Send IP packet to remote host",
+            "Verify IP checksum is correct",
+            "Test IP fragmentation",
+            "Test IP reassembly",
+            "Verify TTL is decremented"
+          ],
+          "verification_command": "ping 8.8.8.8 in shell",
+          "files": ["net/ip.c (TODO)", "net/core.c"]
+        },
+        {
+          "id": "NET-004",
+          "name": "UDP Protocol",
+          "description": "Implement UDP transport layer",
+          "status": "failing",
+          "test_steps": [
+            "Create UDP socket",
+            "Send UDP packet to remote host",
+            "Receive UDP packet",
+            "Verify UDP checksum is correct",
+            "Test UDP broadcast"
+          ],
+          "verification_command": "udp_client.py in test",
+          "files": ["net/udp.c (TODO)", "net/core.c"]
+        },
+        {
+          "id": "NET-005",
+          "name": "TCP Protocol",
+          "description": "Implement TCP transport layer",
+          "status": "failing",
+          "test_steps": [
+            "Establish TCP connection (3-way handshake)",
+            "Send data over TCP",
+            "Test TCP retransmission",
+            "Test flow control with window size",
+            "Test connection termination"
+          ],
+          "verification_command": "tcp_client in shell",
+          "files": ["net/tcp.c (TODO)", "net/core.c"]
+        },
+        {
+          "id": "NET-006",
+          "name": "WiFi Support",
+          "description": "Implement 802.11 WiFi stack",
+          "status": "failing",
+          "test_steps": [
+            "Scan for WiFi networks",
+            "Associate with AP",
+            "Authenticate with WPA2",
+            "Test data transmission over WiFi",
+            "Verify WiFi statistics"
+          ],
+          "verification_command": "wifi_scan in shell",
+          "files": ["net/wifi/*.c", "net/wifi/ieee80211.c"]
+        }
+      ]
+    },
+    "graphics": {
+      "name": "Graphics",
+      "description": "VBE framebuffer and GUI support",
+      "priority": "medium",
+      "features": [
+        {
+          "id": "GR-001",
+          "name": "Framebuffer Graphics",
+          "description": "Implement basic framebuffer drawing primitives",
+          "status": "failing",
+          "test_steps": [
+            "Set 1024x768x32 mode",
+            "Test fill_rect works",
+            "Test draw_line works",
+            "Test draw_pixel works",
+            "Verify colors are correct (RGBA)"
+          ],
+          "verification_command": "test_graphics() in kernel console",
+          "files": ["driver/vbe.c", "user/gui.c"]
+        },
+        {
+          "id": "GR-002",
+          "name": "LVGL Integration",
+          "description": "Integrate LVGL graphics library",
+          "status": "passing",
+          "test_steps": [
+            "Initialize LVGL library",
+            "Create and register display driver",
+            "Test basic widget (label) renders",
+            "Test button widget responds to input",
+            "Verify double buffering works"
+          ],
+          "verification_command": "Run lvglanet.elf and see GUI",
+          "files": ["lvgl/lvgl_port.c", "user/gui.c"],
+          "notes": "Working: LVGL displays correctly with keyboard input"
+        },
+        {
+          "id": "GR-003",
+          "name": "Font Rendering",
+          "description": "Implement TrueType/font rendering",
+          "status": "failing",
+          "test_steps": [
+            "Load font file",
+            "Render text string to framebuffer",
+            "Test character spacing",
+            "Test multi-line text",
+            "Verify anti-aliasing works"
+          ],
+          "verification_command": "test_font() in GUI",
+          "files": ["user/gui.c", "include/font.h (TODO)"]
+        },
+        {
+          "id": "GR-004",
+          "name": "Image Decoding",
+          "description": "Implement PNG/JPEG image decoding",
+          "status": "failing",
+          "test_steps": [
+            "Load PNG file from disk",
+            "Decode PNG to pixel buffer",
+            "Draw decoded image to framebuffer",
+            "Test different image sizes",
+            "Verify alpha channel works"
+          ],
+          "verification_command": "test_image() in GUI",
+          "files": ["user/stb_image_os.c (TODO)", "user/gui.c"]
+        },
+        {
+          "id": "GR-005",
+          "name": "Video Player",
+          "description": "Implement video playback with audio",
+          "status": "failing",
+          "test_steps": [
+            "Load video file",
+            "Decode video frames",
+            "Render frames at 30 FPS",
+            "Synchronize with audio playback",
+            "Verify playback controls work"
+          ],
+          "verification_command": "video_player in GUI",
+          "files": ["user/video_player.c", "user/gui.c", "include/video_player.h"]
+        }
+      ]
+    }
+  }
+}
