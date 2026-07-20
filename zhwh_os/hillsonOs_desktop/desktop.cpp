@@ -119,7 +119,6 @@ int main(void) {
     // Keyboard state
     bool shift = false;
     bool e0prefix = false;
-    bool f0release = false;
 
     // Main event loop
     while (1) {
@@ -172,18 +171,13 @@ int main(void) {
                 e0prefix = false;
             }
 
-            // Track shift state (S1: 2A/36 make, AA/B6 break; S2: 12/59 make, F0 12/F0 59 break)
-            if (sc == 0x12 || sc == 0x59) shift = true;   // Set2 LShift/RShift make
+            // Track shift state (Set1 only: translation enabled in keyboard controller)
             if (sc == 0x2A || sc == 0x36) shift = true;   // Set1 LShift/RShift make
-            if (sc == 0xAA || sc == 0xB6) shift = false;  // Set1 break
+            if (sc == 0xAA || sc == 0xB6) shift = false;  // Set1 LShift/RShift break
 
             // Handle key press (not release)
-            // Release codes have bit 7 set in Set1, 0xF0 prefix in Set2
-            bool isRelease = (sc & 0x80) || (sc == 0xF0);
-            if (sc == 0xF0) { f0release = true; continue; }
-            if (f0release) { f0release = false; continue; } // skip Set2 release byte
-
-            if (!isRelease && !(sc & 0x80)) {
+            // With controller translation enabled, release codes have bit 7 set (Set1 style)
+            if (!(sc & 0x80)) {
                 // Show scancode for debugging
                 g_lastScancode = sc;
 
@@ -191,9 +185,9 @@ int main(void) {
                 int rawSc = (sc & 0x7F);
                 if (sc & 0xE000) rawSc = sc & 0xFF; // extended key, use low byte
 
-                // ===== Global shortcuts (Set1 | Set2) =====
-                // ESC (S1:0x01, S2:0x76)
-                if (rawSc == 0x01 || rawSc == 0x76) {
+                // ===== Global shortcuts (Set1 only: keyboard translation enabled) =====
+                // ESC (0x01)
+                if (rawSc == 0x01) {
                     if (desktop.windowCount() == 0) break;
                     QDesktopWindow *fw = desktop.focusedWindow();
                     if (fw) {
@@ -216,8 +210,8 @@ int main(void) {
                     if (cn[0]=='Q' && cn[1]=='T' && cn[2]=='e' && cn[3]=='r') isTerm = true;
                 }
 
-                // Tab (S1:0x0F, S2:0x0D)
-                if (rawSc == 0x0F || rawSc == 0x0D) {
+                // Tab (0x0F)
+                if (rawSc == 0x0F) {
                     if (desktop.windowCount() > 1) {
                         QDesktopWindow *cur = desktop.focusedWindow();
                         int ci = -1;
@@ -235,10 +229,10 @@ int main(void) {
                 if (!isTerm) {
                     int arrowStep = 40;
                     bool cursorMoved = false;
-                    if (rawSc == 0x4B || rawSc == 0x6B) { mx -= arrowStep; cursorMoved = true; }
-                    if (rawSc == 0x4D || rawSc == 0x74) { mx += arrowStep; cursorMoved = true; }
-                    if (rawSc == 0x48 || rawSc == 0x75) { my -= arrowStep; cursorMoved = true; }
-                    if (rawSc == 0x50 || rawSc == 0x72) { my += arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x4B) { mx -= arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x4D) { mx += arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x48) { my -= arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x50) { my += arrowStep; cursorMoved = true; }
                     if (cursorMoved) {
                         if (mx < 0) mx = 0; if (my < 0) my = 0;
                         if (mx >= (int)fb.width) mx = fb.width - 1;
@@ -256,7 +250,7 @@ int main(void) {
                 }
 
                 // Enter / Space: click (unless terminal focused)
-                if (!isTerm && (rawSc == 0x1C || rawSc == 0x5A || rawSc == 0x39 || rawSc == 0x29)) {
+                if (!isTerm && (rawSc == 0x1C || rawSc == 0x5A || rawSc == 0x39)) {
                     if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
                         drawCursor(lcx, lcy);
                     desktop.handleMouse(mx, my, 1, &needRender);
@@ -266,14 +260,14 @@ int main(void) {
                     continue;
                 }
 
-                // F1 (S1:0x3B, S2:0x05) — toggle debug overlay, force repaint
-                if (rawSc == 0x3B || rawSc == 0x05) {
+                // F1 (0x3B) — toggle debug overlay, force repaint
+                if (rawSc == 0x3B) {
                     needRender = true;
                     continue;
                 }
 
-                // F5 (S1:0x3F, S2:0x03)
-                if (rawSc == 0x3F || rawSc == 0x03) {
+                // F5 (0x3F)
+                if (rawSc == 0x3F) {
                     QDesktopWindow *fw = desktop.focusedWindow();
                     if (fw && fw->content()) {
                         const char *cn = fw->content()->className();

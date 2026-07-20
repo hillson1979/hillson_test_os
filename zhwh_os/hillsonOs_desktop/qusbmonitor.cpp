@@ -141,17 +141,18 @@ void QUsbMonitor::scrollDown() {
 }
 
 void QUsbMonitor::paintEvent(QPainter *painter) {
+    int x = m_x, y = m_y;
     painter->setColor(COLOR_BLACK);
-    painter->fillRect(0, 0, m_w, m_h);
+    painter->fillRect(x, y, m_w, m_h);
 
     if (!m_text || m_textLen == 0) {
         painter->setColor(COLOR_GRAY);
-        painter->drawText(8, 8, "No USB data. Press Refresh.");
+        painter->drawText(x+8, y+8, "No USB data. Press Refresh.");
         return;
     }
 
-    painter->setColor(0x0000FF00);  // green text on black
-    int ly = 4;
+    painter->setColor(0x0000FF00);
+    int ly = y + 4;
     int col = 0;
     int maxLines = (m_h - 4) / 10;
 
@@ -177,7 +178,7 @@ void QUsbMonitor::paintEvent(QPainter *painter) {
         // Draw character
         if (col < 120) {
             char tmp[2] = {*p, 0};
-            painter->drawText(4 + col * 8, ly, tmp);
+            painter->drawText(x + 4 + col * 8, ly, tmp);
         }
         col++;
         p++;

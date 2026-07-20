@@ -175,11 +175,6 @@ bool QTerminal::keyPress(int sc, bool sh) {
     int raw = sc & 0x7F;
     if (sc & 0xE000) raw = sc & 0xFF;
 
-    // Dedup: skip if same scancode as last event (within short time)
-    static int lastSc = -1;
-    if (sc == lastSc) return true; // skip duplicate
-    lastSc = sc;
-
     // Enter
     if (raw == 0x1C || raw == 0x5A) {
         m_cmdBuf[m_cmdLen] = 0;
@@ -197,7 +192,9 @@ bool QTerminal::keyPress(int sc, bool sh) {
     if (ch >= 32 && ch <= 126) {
         if (m_cmdLen < 250) {
             m_cmdBuf[m_cmdLen++] = ch;
-            appendOutput(&ch);
+            // appendOutput expects a null-terminated string — wrap ch in a proper buffer
+            char tmp[2] = {ch, 0};
+            appendOutput(tmp);
         }
         return true;
     }
@@ -205,13 +202,14 @@ bool QTerminal::keyPress(int sc, bool sh) {
 }
 
 void QTerminal::paintEvent(QPainter *painter) {
+    int x = m_x, y = m_y;
     painter->setColor(m_bgColor);
-    painter->fillRect(0, 0, m_w, m_h);
+    painter->fillRect(x, y, m_w, m_h);
     if (!m_buf || m_bufLen == 0) return;
 
     painter->setColor(0x0000FF00);
     int maxLines = (m_h - 4) / 10;
-    int ly = 4, col = 0, drawn = 0;
+    int ly = y + 4, col = 0, drawn = 0;
     char *p = m_buf;
     // Skip scrolled lines
     int skip = m_scrollOffset;
@@ -223,7 +221,7 @@ void QTerminal::paintEvent(QPainter *painter) {
     while (*p && drawn < maxLines && ly < m_h - 8) {
         if (*p == '\n') { ly += 10; col = 0; drawn++; p++; continue; }
         if (*p == '\r') { p++; continue; }
-        if (col < 120) { char t[2]={*p,0}; painter->drawText(4+col*8, ly, t); }
+        if (col < 120) { char t[2]={*p,0}; painter->drawText(x+4+col*8, ly, t); }
         col++; p++;
     }
 }

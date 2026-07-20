@@ -78,44 +78,42 @@ QDesktopWindow::HitZone QDesktopWindow::hitTest(int px, int py) const {
 }
 
 void QDesktopWindow::paintEvent(QPainter *painter) {
+    int x = m_x, y = m_y;  // absolute screen position (set by render())
+
     // Window background
     painter->setColor(0x00E0E0E0);
-    painter->fillRect(0, 0, m_w, m_h);
+    painter->fillRect(x, y, m_w, m_h);
 
     // Title bar
     uint32_t titleColor = m_focused ? 0x000060C0 : 0x00808080;
     painter->setColor(titleColor);
-    painter->fillRect(BORDER_W, BORDER_W, m_w - 2*BORDER_W, TITLE_H);
+    painter->fillRect(x + BORDER_W, y + BORDER_W, m_w - 2*BORDER_W, TITLE_H);
 
     // Title text
     if (m_title) {
         painter->setColor(COLOR_WHITE);
-        painter->drawText(BORDER_W + 4, BORDER_W + 4, m_title);
+        painter->drawText(x + BORDER_W + 4, y + BORDER_W + 4, m_title);
     }
 
     // Close button [X]
-    int cx = closeX(), cy = closeY();
+    int cx = x + closeX(), cy = y + closeY();
     painter->setColor(0x00CC0000);
     painter->fillRect(cx, cy, closeW(), closeH());
     painter->setColor(COLOR_WHITE);
     painter->drawText(cx + 5, cy + 3, "X");
 
-    // Border (focused = brighter)
+    // Border
     uint32_t borderColor = m_focused ? 0x004080FF : 0x00606060;
     painter->setColor(borderColor);
-    // Top edge
-    painter->fillRect(0, 0, m_w, BORDER_W);
-    // Bottom edge
-    painter->fillRect(0, m_h - BORDER_W, m_w, BORDER_W);
-    // Left edge
-    painter->fillRect(0, 0, BORDER_W, m_h);
-    // Right edge
-    painter->fillRect(m_w - BORDER_W, 0, BORDER_W, m_h);
+    painter->fillRect(x, y, m_w, BORDER_W);
+    painter->fillRect(x, y + m_h - BORDER_W, m_w, BORDER_W);
+    painter->fillRect(x, y, BORDER_W, m_h);
+    painter->fillRect(x + m_w - BORDER_W, y, BORDER_W, m_h);
 
     // Content area background
     painter->setColor(COLOR_WHITE);
-    int cx2 = BORDER_W;
-    int cy2 = TITLE_H + BORDER_W;
+    int cx2 = x + BORDER_W;
+    int cy2 = y + TITLE_H + BORDER_W;
     int cw2 = m_w - 2*BORDER_W;
     int ch2 = m_h - TITLE_H - 2*BORDER_W;
     painter->fillRect(cx2, cy2, cw2, ch2);
@@ -124,7 +122,7 @@ void QDesktopWindow::paintEvent(QPainter *painter) {
     if (m_content && m_content->isVisible()) {
         painter->setClipRect(cx2, cy2, cw2, ch2);
         painter->setColor(COLOR_BLACK);
-        m_content->render(painter, m_x + cx2, m_y + cy2);
+        m_content->render(painter, cx2, cy2);
         painter->clearClip();
     }
 }
