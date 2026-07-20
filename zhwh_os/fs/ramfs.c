@@ -55,6 +55,7 @@ static void *krealloc(void *ptr, uint32_t new_size) {
 // ================================
 static uint32_t ramfs_inode_counter = 1;  // inode 编号计数器
 static struct super_block *ramfs_sb = NULL;  // ramfs 超级块
+static inode_t *g_kern_log_inode = 0;
 
 // ================================
 // Inode 管理
@@ -498,6 +499,19 @@ void fs_init(void) {
     // 获取根目录 inode
     inode_t *root = sb->s_root;
 
+    // Save kernel log: point i_data at klog buffer directly
+    {
+        extern void klog_read(char *buf, int max);
+        extern void *klog_get_buf(void);
+        dentry_t *kd;
+        if (ramfs_create(root, "kern.log", 0644 | S_IFREG, &kd) == 0 && kd) {
+            g_kern_log_inode = kd->d_inode;
+            kd->d_inode->i_data = klog_get_buf();
+            kd->d_inode->i_size = 16384;
+            printf("[fs] Created kern.log\n");
+        }
+    }
+
     printf("[fs] Creating test files...\n");
 
     // 创建 /test.txt
@@ -581,4 +595,13 @@ void fs_init(void) {
     }
 
     printf("[fs] === Kernel Test Complete ===\n\n");
+}
+
+// === klog to file support ===
+void klog_save_to_ramfs(void) {
+    if (!g_kern_log_inode) return;
+    extern int klog_get_len(void);
+    int len = klog_get_len();
+    if (len > 16384) len = 16384;
+    g_kern_log_inode->i_size = len;
 }

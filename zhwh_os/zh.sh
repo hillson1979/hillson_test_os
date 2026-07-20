@@ -9,21 +9,37 @@ cp kernel.bin iso/boot/
 [ -f test/net_shell.elf ] && cp test/net_shell.elf iso/boot/
 [ -f test/gui_shell.elf ] && cp test/gui_shell.elf iso/boot/
 [ -f test/lvglanet.elf ] && cp test/lvglanet.elf iso/boot/
+[ -f qt/cpp_test.elf ] && cp qt/cpp_test.elf iso/boot/
+[ -f qt/sigslot_test.elf ] && cp qt/sigslot_test.elf iso/boot/
+[ -f qt/gui_test.elf ] && cp qt/gui_test.elf iso/boot/
+[ -f qt/editor_test.elf ] && cp qt/editor_test.elf iso/boot/
+[ -f text_editor/text_editor.elf ] && cp -f text_editor/text_editor.elf iso/boot/editor_test.elf
+[ -f qt/fb_test.elf ] && cp qt/fb_test.elf iso/boot/
+[ -f hillsonOs_desktop/desktop.elf ] && cp hillsonOs_desktop/desktop.elf iso/boot/
 [ -f test/syscall_test.elf ] && cp test/syscall_test.elf iso/boot/
+[ -f test/simple_keyboard.elf ] && cp test/simple_keyboard.elf iso/boot/
+[ -f test/text_test.elf ] && cp test/text_test.elf iso/boot/
 
 cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
-set default=5
+set default=0
 
-# 加载视频模块并设置图形模式
-insmod all_video
-insmod gfxterm
+insmod vbe
 insmod multiboot2
 set gfxmode=1024x768x32
-set gfxpayload=keep
 terminal_output gfxterm
-videoinfo
 
+menuentry "HillsonOS Desktop" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/desktop.elf
+    boot
+}
+
+menuentry "My OS - Text Mode Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/text_test.elf
+    boot
+}
 
 menuentry "My OS - File System Test" {
     multiboot2 /boot/kernel.bin
@@ -55,11 +71,48 @@ menuentry "My OS - LVGL + Network Test (Video Player)" {
     boot
 }
 
+menuentry "My OS - Simple Keyboard Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/simple_keyboard.elf
+    boot
+}
+
+menuentry "My OS - Framebuffer Raw Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/fb_test.elf
+    boot
+}
+
+menuentry "My OS - Text Editor (Interactive)" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/editor_test.elf
+    boot
+}
+
+menuentry "My OS - GUI Framebuffer Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/gui_test.elf
+    boot
+}
+
+menuentry "My OS - C++ Signal/Slot Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/sigslot_test.elf
+    boot
+}
+
+menuentry "My OS - C++ Runtime Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/cpp_test.elf
+    boot
+}
+
 menuentry "My OS - System Call Test" {
     multiboot2 /boot/kernel.bin
     module2 /boot/syscall_test.elf
     boot
 }
+
 
 EOF
 grub-mkrescue -o os.iso iso

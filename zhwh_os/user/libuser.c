@@ -223,29 +223,59 @@ int printf(const char *fmt, ...) {
     return buf_idx;
 }
 
-// ⚠️ 声明汇编包装函数，避免内联汇编的寄存器冲突问题
-extern int syscall_write(int fd, const char *buf, int len);
-extern int syscall_fork(void);
-extern void syscall_exit(int code) __attribute__((noreturn));
-extern void syscall_yield(void);
-extern int syscall_open(const char *pathname, int flags);
-extern int syscall_close(int fd);
-extern int syscall_read(int fd, char *buf, int len);
-extern int syscall_lseek(int fd, int offset, int whence);
+// 系统调用号定义
+#define SYS_WRITE 11
+#define SYS_FORK 12
+#define SYS_EXIT 2
+#define SYS_YIELD 3
+#define SYS_OPEN 20
+#define SYS_CLOSE 21
+#define SYS_READ 22
+#define SYS_LSEEK 23
+#define SYS_NET_PING 30
+#define SYS_NET_IFCONFIG 31
+#define SYS_WIFI_SCAN 32
+#define SYS_WIFI_CONNECT 33
+#define SYS_WIFI_DISCONNECT 34
+#define SYS_WIFI_STATUS 35
+#define SYS_WIFI_INIT 36
+#define SYS_WIFI_FW_BEGIN 37
+#define SYS_WIFI_FW_CHUNK 38
+#define SYS_WIFI_FW_END 39
+#define SYS_EXECV 41
 
 // write 系统调用
 int write(int fd, const char *buf, int len) {
-    return syscall_write(fd, buf, len);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WRITE), "b"(fd), "c"(buf), "d"(len)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // fork 系统调用
 int fork(void) {
-    return syscall_fork();
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_FORK)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // exit 系统调用
 void exit(int code) {
-    syscall_exit(code);
+    __asm__ volatile (
+        "int $0x80"
+        :
+        : "a"(SYS_EXIT), "b"(code)
+        : "memory", "cc"
+    );
     // 永远不会到达这里
     while (1) {
         __asm__ volatile("hlt");
@@ -254,45 +284,95 @@ void exit(int code) {
 
 // yield - 让出CPU
 void yield(void) {
-    syscall_yield();
+    __asm__ volatile (
+        "int $0x80"
+        :
+        : "a"(SYS_YIELD)
+        : "memory", "cc"
+    );
 }
 
 // 文件系统系统调用
 int open(const char *pathname, int flags) {
-    return syscall_open(pathname, flags);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_OPEN), "b"(pathname), "c"(flags)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int close(int fd) {
-    return syscall_close(fd);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_CLOSE), "b"(fd)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int read(int fd, char *buf, int len) {
-    return syscall_read(fd, buf, len);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_READ), "b"(fd), "c"(buf), "d"(len)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int lseek(int fd, int offset, int whence) {
-    return syscall_lseek(fd, offset, whence);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_LSEEK), "b"(fd), "c"(offset), "d"(whence)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // getcwd 系统调用
 extern int getcwd(char *buf, int size);
 
-// 网络系统调用包装函数
-extern int syscall_net_ping(const char *ip_addr, const char *dev_name);
-extern int syscall_net_ifconfig(void);
-
 // net_ping - 发送 ping（可选指定设备）
 int net_ping(const char *ip_addr) {
-    return syscall_net_ping(ip_addr, NULL);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_NET_PING), "b"(ip_addr), "c"(0)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // net_ping_dev - 发送 ping（指定设备）
 int net_ping_dev(const char *ip_addr, const char *dev_name) {
-    return syscall_net_ping(ip_addr, dev_name);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_NET_PING), "b"(ip_addr), "c"(dev_name)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int net_ifconfig(void) {
-    return syscall_net_ifconfig();
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_NET_IFCONFIG)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // 🔥 lspci - 直接使用内联汇编实现系统调用
@@ -426,19 +506,30 @@ int net_ifup(const char *dev_name) {
     return ret;
 }
 
-// 🔥 接收 UDP 数据系统调用
-int net_recv_udp(char *buf, int len, int *port) {
+// 🔥 绑定 UDP 端口系统调用
+int net_bind_udp(int port) {
     int ret;
-    int port_val = 0;
     __asm__ volatile (
         "int $0x80"
-        : "=a"(ret), "=c"(port_val)
-        : "a"(53),         // SYS_NET_RECV_UDP = 53
-          "b"(buf),        // 缓冲区
-          "d"(len)         // 长度
+        : "=a"(ret)
+        : "a"(52),         // SYS_NET_BIND = 52
+          "b"(port)        // 端口号
         : "memory", "cc"
     );
-    if (port) *port = port_val;
+    return ret;
+}
+
+// 🔥 接收 UDP 数据系统调用
+int net_recv_udp(char *buf, int len) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(53),         // SYS_NET_RECV_UDP = 53
+          "b"(buf),        // 缓冲区
+          "c"(len)         // 最大长度
+        : "memory", "cc"
+    );
     return ret;
 }
 
@@ -455,48 +546,91 @@ int net_recv_udp(char *buf, int len, int *port) {
 // }
 
 // WiFi 系统调用包装函数
-extern int syscall_wifi_init(void);
-extern int syscall_wifi_scan(void);
-extern int syscall_wifi_connect(const char *ssid, const char *password);
-extern int syscall_wifi_disconnect(void);
-extern void syscall_wifi_status(void);
-extern int syscall_wifi_load_firmware(const char *path, int fd);
-
 int wifi_init(void) {
-    return syscall_wifi_init();
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_INIT)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int wifi_scan(void) {
-    return syscall_wifi_scan();
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_SCAN)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int wifi_connect(const char *ssid, const char *password) {
-    return syscall_wifi_connect(ssid, password);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_CONNECT), "b"(ssid), "c"(password)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int wifi_disconnect(void) {
-    return syscall_wifi_disconnect();
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_DISCONNECT)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 void wifi_status(void) {
-    syscall_wifi_status();
+    __asm__ volatile (
+        "int $0x80"
+        :
+        : "a"(SYS_WIFI_STATUS)
+        : "memory", "cc"
+    );
 }
 
 // WiFi 固件加载（分块安全版本）
-extern int syscall_wifi_fw_begin(uint32_t size);
-extern int syscall_wifi_fw_chunk(const void *ptr, uint32_t len, uint32_t offset);
-extern int syscall_wifi_fw_end(void);
-
 int wifi_fw_load_begin(uint32_t size) {
-    return syscall_wifi_fw_begin(size);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_FW_BEGIN), "b"(size)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int wifi_fw_load_chunk(const void *ptr, uint32_t len, uint32_t offset) {
-    return syscall_wifi_fw_chunk(ptr, len, offset);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_FW_CHUNK), "b"(ptr), "c"(len), "d"(offset)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 int wifi_fw_load_end(void) {
-    return syscall_wifi_fw_end();
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_WIFI_FW_END)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // 便捷函数：一次性加载整个固件（内部使用分块）
@@ -524,10 +658,15 @@ int wifi_fw_load(const uint8_t *fw, uint32_t size) {
 }
 
 // 进程控制系统调用包装函数
-extern int syscall_execv(const char *path, char *const argv[]);
-
 int execv(const char *path, char *const argv[]) {
-    return syscall_execv(path, argv);
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_EXECV), "b"(path), "c"(argv)
+        : "memory", "cc"
+    );
+    return ret;
 }
 
 // 🔥 MSI 测试系统调用包装
@@ -563,6 +702,78 @@ int e1000_loopback_test_interrupt(void) {
         : "a"(62)  // SYS_NET_LOOPBACK_TEST_INT = 62
         : "memory", "cc"
     );
+    return ret;
+}
+
+// 🔥 GUI 系统调用实现
+
+/**
+ * @brief 获取帧缓冲区信息
+ */
+int gui_get_fb_info(fb_info_t *info) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(70), "b"(info)  // SYS_GUI_FB_INFO = 70
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+/**
+ * @brief 位图传输到帧缓冲区
+ */
+int gui_fb_blit(int x, int y, int width, int height, const void *data) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(71), "b"(x), "c"(y), "d"(width), "S"(height), "D"(data)  // SYS_GUI_FB_BLIT = 71
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+/**
+ * @brief 读取输入事件
+ */
+int gui_read_input(input_event_t *event) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(72), "b"(event), "c"(0)  // SYS_GUI_INPUT_READ = 72
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+/**
+ * @brief 轮询 USB 鼠标事件
+ */
+int usb_mouse_poll(void *report) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(73), "b"(report)  // SYS_USB_MOUSE_POLL = 73
+        : "memory", "cc"
+    );
+    return ret;
+}
+
+int usb_mouse_info(uint8_t *ep, uint8_t *maxpkt, uint8_t *interval) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(76), "b"(0), "c"(0), "d"(0)
+        : "memory", "cc"
+    );
+    if (ep) *ep = (uint8_t)(ret & 0xFF);
+    if (maxpkt) *maxpkt = (uint8_t)((ret>>8) & 0xFF);
+    if (interval) *interval = (uint8_t)((ret>>16) & 0xFF);
     return ret;
 }
 

@@ -476,40 +476,18 @@ void handle_idle_state(uint8_t cpu) {
 
 task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
 {
-        /*
-	task_t* newtask =(task_t*)kmalloc_early(sizeof (struct task_t));//phys_to_virt(pmm_alloc_page());//
+        // 使用 kmalloc_early 替代伙伴系统来分配任务结构体
+        // 理由：kmalloc_early 分配的内存地址固定，不会产生高内存地址的问题
+        // 从而避免了 map_highmem_physical 映射失败导致的系统崩溃
+        task_t* newtask =(task_t*)kmalloc_early(PAGE_SIZE);//phys_to_virt(pmm_alloc_page());//
 
-	if (!newtask) {
-		printf("Out of memory starting new taskess\n");
-		return NULL;
-	}
+        if (!newtask) {
+            printf("Out of memory starting new taskess\n");
+            return NULL;
+        }
         memset(newtask, 0, PAGE_SIZE);
-	char* error = "Unknown error";*/
-	// 分配 1 页（使用伙伴系统）
-        uint32_t page_no = buddy_alloc(0);  // order 0 = 1 page
-        if (!page_no) {
-            printf("[task_load] Failed to allocate page from buddy system\n");
-            return NULL;
-        }
-
-        // ⚠️⚠️⚠️ 关键修复：使用 map_highmem_physical 映射高内存页
-        // 原因：buddy_alloc 返回的页可能在 68MB+ 区域，没有直接映射
-        //       直接访问会导致页错误！
-        uint32_t phys_addr = page_no * PAGE_SIZE;
-        extern void* map_highmem_physical(uint32_t, uint32_t, uint32_t);
-        void *page = map_highmem_physical(phys_addr, PAGE_SIZE, PAGE_PRESENT | PAGE_WRITABLE);
-
-        if (!page) {
-            printf("[task_load] Failed to map physical page 0x%x\n", phys_addr);
-            return NULL;
-        }
-
-        printf("[task_load] Allocated and mapped: phys=0x%x, virt=0x%x\n", phys_addr, page);
-
-        memset(page, 0, PAGE_SIZE);
 
         // 任务结构体放在页首
-        task_t *newtask = (task_t*)page;
         // 只在第一次创建用户任务时设置全局 th_u
         if (th_u == NULL) {
             th_u = newtask;
@@ -519,7 +497,7 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
 
         // 栈放在页尾（从高地址往下长）
         // 注意: kmalloc_early 返回的是内核虚拟地址
-        newtask->kstack = (uint32_t*)((uint8_t*)page + PAGE_SIZE);
+        newtask->kstack = (uint32_t*)((uint8_t*)newtask + PAGE_SIZE);
 
         // ⚠️ kstack 已经指向页末尾（栈顶），所以 esp0 = kstack
         // 在用户态→内核态切换时，CPU会使用这个地址作为内核栈指针

@@ -8,6 +8,7 @@
 #include "page.h"
 #include "lapic.h"
 #include "net.h"
+#include "font8x8.h"
 #include "pci.h"
 #include "x86/io.h"  // 🔥 添加：引入 outl/inl 函数
 
@@ -28,6 +29,9 @@
 #define SYS_WIFI_FW_END 39
 #define SYS_WIFI_LOAD_FIRMWARE 40
 //#define SYS_EXECV 41  // 暂时禁用
+#define SYS_NET_BIND 52       // 🔥 绑定 UDP 端口
+#define SYS_NET_RECV_UDP 53    // 🔥 接收 UDP 数据
+#define UDP_RX_BUF_SIZE (200 * 1024)  // 200KB，用于临时内核缓冲区
 #define SYS_LSPCI 42  // 🔥 新增：列出 PCI 设备
 #define SYS_NET_INIT_RTL8139 43  // 🔥 新增：初始化 RTL8139
 #define SYS_NET_INIT_E1000 44   // 🔥 新增：初始化 E1000
@@ -48,6 +52,7 @@
 #define SYS_GUI_FB_BLIT 71      // 位图传输到帧缓冲区
 #define SYS_GUI_INPUT_READ 72   // 读取输入设备事件
 #define SYS_USB_MOUSE_POLL 73   // 轮询 USB 鼠标事件
+#define SYS_USB_MOUSE_INFO 76   // 获取 USB 鼠标端点信息
 
 // WiFi
 static uint8_t  *fw_buf      = NULL;
@@ -59,6 +64,7 @@ static uint32_t  fw_checksum = 0;
 static int usb_mouse_x = 512;
 static int usb_mouse_y = 384;
 static uint8_t usb_mouse_buttons = 0;
+static int mouse_last_x = -1, mouse_last_y = -1, mouse_last_buttons = -1;
 
 // 🔥 当前选择的网络设备名称（空字符串表示自动选择）
 // 🔥 改为非 static，以便网络模块可以访问
@@ -105,7 +111,7 @@ typedef struct trapframe {
 
 /*  copy_from_user */
 int copy_from_user(char *dst, const char *src, uint32_t n) {
-    // /
+    // 从用户空间拷贝到内核空间
     for (uint32_t i = 0; i < n; ++i) dst[i] = src[i];
     return 0;
 }
@@ -210,30 +216,28 @@ static void sys_exit(int code) {
     }
 }
 
-enum {
-    SYS_PRINTF = 1,
-    SYS_EXIT,
-    SYS_YIELD,
-    SYS_GET_MEM_STATS,
-    SYS_READ_MEM,
-    SYS_GET_MEM_USAGE,
-    SYS_GETCHAR,      // = 7 
-    SYS_PUTCHAR,      // = 8 ()
-    SYS_GET_FRAMEBUFFER,  //  framebuffer
-    SYS_GETCWD,       //
-    SYS_WRITE,        //  SYS_FORK = 11
-    SYS_FORK,         // fork  (11)
-    SYS_OPEN = 20,    // open
-    SYS_CLOSE,        // close
-    SYS_READ,         // read
-    SYS_LSEEK,        // lseek
-    // 网络和 WiFi 系统调用使用宏定义（见上方）
-    SYS_EXECV = 41,    // execv
-};
+// 系统调用号定义（与 user/libuser.h 保持一致）
+#define SYS_PRINTF 1
+#define SYS_EXIT 2
+#define SYS_YIELD 3
+#define SYS_GET_MEM_STATS 4
+#define SYS_READ_MEM 5
+#define SYS_GET_MEM_USAGE 6
+#define SYS_GETCHAR 7
+#define SYS_PUTCHAR 8
+#define SYS_GET_FRAMEBUFFER 10
+#define SYS_GETCWD 9
+#define SYS_WRITE 11
+#define SYS_FORK 12
+#define SYS_OPEN 20
+#define SYS_CLOSE 21
+#define SYS_READ 22
+#define SYS_LSEEK 23
+#define SYS_EXECV 41
 
 void syscall_dispatch(struct trapframe *tf) {
-    //  
-    // printf("[syscall_dispatch] ENTER: tf=%p\n", tf);
+     
+    // printf("[syscall_dispatch] ENTER: tf=%x\n", tf);
     // printf("  eax=%d (syscall num), ebx=0x%x (arg1), ecx=0x%x (arg2), edx=0x%x (arg3)\n",
     //        tf->eax, tf->ebx, tf->ecx, tf->edx);
     // printf("  trapno=%d, eip=0x%x, cs=0x%x, ds=0x%x\n", tf->trapno, tf->eip, tf->cs, tf->ds);
@@ -259,7 +263,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     "orl $0x40000, (%%esp)\n"    // AC(bit 18)
                     "popfl\n"                     // EFLAGS(AC=1)
 
-                    "movb (%1), %0\n"             // 
+                    "movb (%1), %0\n"             //
 
                     "pushfl\n"
                     "andl $~0x40000, (%%esp)\n"  // AC
@@ -274,11 +278,18 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             kbuf[i] = '\0';
 
-            //   vga_putc 
+            //   vga_putc
             for (int j = 0; j < i; j++) {
                 vga_putc(kbuf[j]);
             }
-            tf->eax = i;  // 
+
+            // 同时输出到串口
+            extern void uart_putc(char c);
+            for (int j = 0; j < i; j++) {
+                uart_putc(kbuf[j]);
+            }
+
+            tf->eax = i;  //
             break;
         }
         case SYS_EXIT:
@@ -1388,8 +1399,34 @@ void syscall_dispatch(struct trapframe *tf) {
         }
         case SYS_NET_POLL_RX: {
             // 🔥 轮询RX（通用接口）
-            // TODO: 需要添加设备名称参数
-            printf("[syscall] POLL_RX called (TODO: needs device parameter)\n");
+            // 自动选择非loopback设备
+            extern net_device_t *net_device_get_default(void);
+            extern int net_get_device_count(void);
+            extern net_device_t **net_get_all_devices(void);
+
+            net_device_t *dev = NULL;
+            int count = net_get_device_count();
+            net_device_t **devices = net_get_all_devices();
+
+            // 自动选择：查找第一个非loopback设备（以太网设备）
+            for (int i = 0; i < count; i++) {
+                if (devices[i] && devices[i]->send != NULL) {
+                    if (strcmp(devices[i]->name, "lo") != 0) {
+                        dev = devices[i];
+                        printf("[syscall] Polling on device: %s\n", dev->name);
+                        break;
+                    }
+                }
+            }
+
+            if (dev) {
+                // 调用该设备的轮询函数（兼容 e1000）
+                extern void e1000_poll_rx(net_device_t *dev);
+                e1000_poll_rx(dev);
+            } else {
+                printf("[syscall] No network device available\n");
+            }
+
             tf->eax = 0;
             break;
         }
@@ -1578,34 +1615,14 @@ void syscall_dispatch(struct trapframe *tf) {
             info.pitch = vbe_get_pitch();
             info.bpp = vbe_get_bpp();
 
-            printf("[GUI FB INFO] fb_phys=%p, fb_virt=%p, %dx%d, pitch=%d, bpp=%d\n",
+            printf("[GUI FB INFO] fb_phys=0x%x, fb_virt=0x%x, %d x %d, pitch=%d, bpp=%d\n",
                    fb_phys, info.fb_addr, info.width, info.height, info.pitch, info.bpp);
 
-            // 🔥 重要: 将framebuffer映射到用户地址空间
-            extern void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags);
+            // 🔥 重要: 帧缓冲区已经在系统启动时由 VBE 驱动映射好了
+            // vbe.c 的 vbe_init_from_multiboot 函数已经在 0xF0000000 地址建立了映射
+            // 并且已经设置了 USER 权限，所以这里不需要再次映射
+            printf("[GUI FB INFO] Framebuffer already mapped at 0x%x (by VBE driver)\n", 0xF0000000);
 
-            uint32_t fb_virt = 0xF0000000;
-            uint32_t fb_size = info.pitch * info.height;
-            uint32_t num_pages = (fb_size + 4095) / 4096;
-
-            // 获取当前任务的页目录物理地址
-            extern task_t *current_task[];
-            task_t *task = current_task[logical_cpu_id()];
-            uint32_t user_pde_phys = (uint32_t)(task->cr3);
-
-            printf("[GUI FB INFO] Mapping framebuffer to user space...\n");
-            printf("[GUI FB INFO]   user_pde_phys = 0x%x\n", user_pde_phys);
-            printf("[GUI FB INFO]   fb_virt = 0x%x, fb_phys = 0x%x\n", fb_virt, fb_phys);
-            printf("[GUI FB INFO]   num_pages = %d\n", num_pages);
-
-            // 逐页映射到用户地址空间
-            for (uint32_t i = 0; i < num_pages; i++) {
-                uint32_t phys = fb_phys + i * 4096;
-                uint32_t virt = fb_virt + i * 4096;
-                map_page(user_pde_phys, virt, phys, 0x7);  // USER | WRITE | PRESENT
-            }
-
-            printf("[GUI FB INFO] ✓ Framebuffer mapped to user space!\n");
 
             // 拷贝到用户空间
             struct fb_info *user_info = (struct fb_info *)tf->ebx;
@@ -1679,10 +1696,7 @@ void syscall_dispatch(struct trapframe *tf) {
             //         ecx = 事件类型 (1=键盘, 2=鼠标)
             // 返回：eax = 1 有事件, 0 无事件
 
-            static int call_count = 0;
-            static int keyboard_call_count = 0;
             static int mouse_call_count = 0;
-            call_count++;
 
             // 定义输入事件结构（必须与用户空间一致）
             struct input_event {
@@ -1696,24 +1710,75 @@ void syscall_dispatch(struct trapframe *tf) {
             uint32_t event_type = tf->ecx;
 
             if (event_type == 1) {
-                keyboard_call_count++;
-                if (keyboard_call_count % 100 == 0) {
-                    printf("[SYS_GUI_INPUT_READ] Keyboard call #%d\n", keyboard_call_count);
-                }
-            } else if (event_type == 2) {
-                mouse_call_count++;
-                if (mouse_call_count % 100 == 0) {
-                    printf("[SYS_GUI_INPUT_READ] Mouse call #%d\n", mouse_call_count);
-                }
-            }
-
-            if (event_type == 1) {
                 // 键盘事件 - 使用非阻塞方式读取
                 extern int keyboard_scancode_available(void);
                 extern int keyboard_get_scancode_nonblock(void);
 
                 if (keyboard_scancode_available()) {
                     int scancode = keyboard_get_scancode_nonblock();
+                    // F1 toggle: kernel debug overlay
+                    static int f1_overlay_visible = 0;
+                    if (scancode == 0x3B) {
+                        if (f1_overlay_visible) {
+                            // Toggle OFF: pass F1 through to userspace (editor redraws)
+                            f1_overlay_visible = 0;
+                            // fall through to normal event handling below
+                        } else {
+                            // Toggle ON: draw EHCI enumeration data overlay
+                            f1_overlay_visible = 1;
+                            volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
+                            extern uint16_t vbe_get_pitch(void);
+                            int pitch = vbe_get_pitch();
+                            if (pitch > 0) {
+                                int ppitch = pitch / 4;
+                                // Clear screen
+                                for (int dy = 0; dy < 768; dy++)
+                                    for (int dx = 0; dx < 1024; dx++)
+                                        fb[dy*ppitch + dx] = 0x00000000;
+                                extern const unsigned char font8x8_data[95][8];
+                                // === Draw EHCI enumeration data full screen ===
+                                extern const char *ehci_display_get(void);
+                                const char *ehci_data = ehci_display_get();
+                                if (ehci_data && ehci_data[0]) {
+                                    int ly = 0, epos = 0;
+                                    while (ehci_data[epos] && ly < 760) {
+                                        int eend = epos;
+                                        while (ehci_data[eend] && ehci_data[eend] != '\n') eend++;
+                                        for (int i = 0; i < (eend-epos) && i < 120; i++) {
+                                            char ch = ehci_data[epos+i];
+                                            if (ch < 32 || ch > 126) ch = ' ';
+                                            const unsigned char *g = font8x8_data[(unsigned char)ch - 32];
+                                            for (int r = 0; r < 8; r++) {
+                                                unsigned char bits = g[r];
+                                                for (int c = 0; c < 8; c++)
+                                                    if (bits & (0x80 >> c))
+                                                        fb[(ly+r)*ppitch + 2 + i*8 + c] = 0x0000FF00;
+                                            }
+                                        }
+                                        ly += 10;
+                                        epos = eend;
+                                        while (ehci_data[epos] == '\n') epos++;
+                                    }
+                                } else {
+                                    // No data yet - show message
+                                    const char *msg = "No EHCI enum data yet. Boot with EHCI mouse attached.";
+                                    for (int i = 0; msg[i] && i < 120; i++) {
+                                        const unsigned char *g = font8x8_data[(unsigned char)msg[i] - 32];
+                                        for (int r = 0; r < 8; r++) {
+                                            unsigned char bits = g[r];
+                                            for (int c = 0; c < 8; c++)
+                                                if (bits & (0x80 >> c))
+                                                    fb[(0+r)*ppitch + 2 + i*8 + c] = 0x0000FF00;
+                                        }
+                                    }
+                                }
+                            }
+                            event.type = 0; event.x = 0; event.y = 0; event.pressed = 0;
+                            copy_to_user((void*)tf->ebx, &event, sizeof(event));
+                            tf->eax = 0;
+                            break;
+                        } // end else (overlay ON)
+                    }
                     event.type = 1;
                     event.x = scancode;
                     event.y = 0;
@@ -1726,39 +1791,15 @@ void syscall_dispatch(struct trapframe *tf) {
                         break;
                     }
 
-                    // 打印键盘事件（每次都打印）
-                    //printf("[SYS_GUI_INPUT_READ] KEY: scancode=0x%x\n", scancode);
-
                     tf->eax = 1;  // 有事件
                 } else {
                     tf->eax = 0;  // 无事件
-
-                    // 每1000次打印一次"无事件"
-                    if (keyboard_call_count % 1000 == 0) {
-                        //printf("[SYS_GUI_INPUT_READ] No keyboard event (call=%d)\n", keyboard_call_count);
-                    }
                 }
             } else if (event_type == 2) {
                 // 🔥 方案B：鼠标事件 - 状态机 + 边沿触发
                 extern int usb_mouse_get_count(void);
                 extern int usb_mouse_read(int mouse_index, void *report);
                 extern int usb_mouse_data_available(int mouse_index);
-
-                // 🔥 鼠标状态机（保存上次返回给用户态的状态）
-                static struct {
-                    int last_returned_x;
-                    int last_returned_y;
-                    uint32_t last_returned_buttons;
-                    int initialized;
-                } mouse_event_state = {0};
-
-                // 🔥 初始化（使用当前全局状态作为初始值）
-                if (!mouse_event_state.initialized) {
-                    mouse_event_state.last_returned_x = usb_mouse_x;
-                    mouse_event_state.last_returned_y = usb_mouse_y;
-                    mouse_event_state.last_returned_buttons = usb_mouse_buttons;
-                    mouse_event_state.initialized = 1;
-                }
 
                 int new_data_from_usb = 0;
 
@@ -1772,6 +1813,18 @@ void syscall_dispatch(struct trapframe *tf) {
                         } mouse_report;
 
                         int bytes = usb_mouse_read(0, &mouse_report);
+
+                        // 🔥 详细调试：打印读取结果和报告内容
+                        static int debug_read_count = 0;
+                        if (debug_read_count < 20) {
+                            debug_read_count++;
+                            printf("[SYS] USB Read #%d: bytes=%d, report=%02x %02x %02x\n",
+                                   debug_read_count, bytes,
+                                   mouse_report.buttons,
+                                   (uint8_t)mouse_report.x,
+                                   (uint8_t)mouse_report.y);
+                        }
+
                         if (bytes > 0) {
                             // 有新USB数据，更新全局状态
                             int old_buttons = usb_mouse_buttons;
@@ -1790,54 +1843,75 @@ void syscall_dispatch(struct trapframe *tf) {
 
                             // 🔥 调试：打印USB原始数据
                             static int usb_read_count = 0;
-                            if (++usb_read_count <= 5 || (old_buttons != usb_mouse_buttons)) {
+                            if (++usb_read_count <= 10 || (old_buttons != usb_mouse_buttons)) {
                                 printf("[SYS] USB RAW: btn=%d->%d x=%d y=%d\n",
                                        old_buttons, usb_mouse_buttons,
                                        mouse_report.x, mouse_report.y);
                             }
+                        } else {
+                            // 🔥 调试：读取失败的情况
+                            static int read_fail_count = 0;
+                            if (read_fail_count < 10) {
+                                read_fail_count++;
+                                printf("[SYS] USB Read FAIL: bytes=%d\n", bytes);
+                            }
+                        }
+                    } else {
+                        // 🔥 调试：无数据可用的情况
+                        static int no_data_count = 0;
+                        if (no_data_count < 5) {
+                            no_data_count++;
+                            printf("[SYS] USB No data available\n");
                         }
                     }
                 }
 
-                // 🔥 关键：比较当前全局状态与上次返回给用户的状态
-                // 如果有差异，就返回事件（边沿触发）
-                int state_changed =
-                    (usb_mouse_x != mouse_event_state.last_returned_x ||
-                     usb_mouse_y != mouse_event_state.last_returned_y ||
-                     usb_mouse_buttons != mouse_event_state.last_returned_buttons);
+                // 🔥 详细调试日志
+                static int debug_count = 0;
+                if (debug_count < 20) {
+                    printf("[SYS_GUI_INPUT_READ] MOUSE DEBUG #%d:\n", ++debug_count);
+                    printf("  usb_mouse_count=%d, x=%d, y=%d, btn=%x\n",
+                           usb_mouse_get_count(), usb_mouse_x, usb_mouse_y, usb_mouse_buttons);
+                    printf("  usb_data_available=%d, new_data_from_usb=%d\n",
+                           usb_mouse_get_count() > 0 ? usb_mouse_data_available(0) : -1,
+                           new_data_from_usb);
+                }
 
-                if (state_changed) {
-                    // 🔥 返回当前状态给用户
+                // PS/2 mouse fallback
+                int ps2_x=0, ps2_y=0, ps2_btn=0;
+                extern int ps2mouse_poll(int *x, int *y, int *btn);
+                if(ps2mouse_poll(&ps2_x, &ps2_y, &ps2_btn)){
+                    event.type = 2;
+                    event.x = ps2_x; event.y = ps2_y;
+                    event.pressed = ps2_btn;
+                    goto send_event;
+                }
+                // USB mouse
+                if (usb_mouse_x != mouse_last_x ||
+                    usb_mouse_y != mouse_last_y ||
+                    (int)usb_mouse_buttons != mouse_last_buttons) {
+
                     event.type = 2;
                     event.x = usb_mouse_x;
                     event.y = usb_mouse_y;
-                    event.pressed = usb_mouse_buttons;
+                    event.pressed = usb_mouse_buttons & 0x07;  // bits: L=1, R=2, M=4
+                    goto send_event;
 
-                    // 🔥 更新"上次返回"的状态
-                    mouse_event_state.last_returned_x = usb_mouse_x;
-                    mouse_event_state.last_returned_y = usb_mouse_y;
-                    mouse_event_state.last_returned_buttons = usb_mouse_buttons;
-
-                    // 拷贝到用户空间
-                    struct input_event *user_event = (struct input_event *)tf->ebx;
-                    if (copy_to_user(user_event, &event, sizeof(event)) != 0) {
-                        tf->eax = -1;
-                        break;
-                    }
-
-                    // 打印鼠标事件
-                    printf("[SYS_GUI_INPUT_READ] MOUSE: x=%d y=%d btn=%d (changed)\n",
-                           usb_mouse_x, usb_mouse_y, usb_mouse_buttons);
-
-                    tf->eax = 1;  // 有事件
-                } else {
-                    tf->eax = 0;  // 无事件
-
-                    // 每1000次打印一次"无事件"
-                    if (mouse_call_count % 1000 == 0) {
-                        printf("[SYS_GUI_INPUT_READ] No mouse event (call=%d)\n", mouse_call_count);
-                    }
+                    mouse_last_x = usb_mouse_x;
+                    mouse_last_y = usb_mouse_y;
+                    mouse_last_buttons = (int)usb_mouse_buttons;
+                    goto send_event;
                 }
+                tf->eax = 0; // no USB data
+                goto no_event;
+
+            send_event:
+                { struct input_event *ue = (struct input_event *)tf->ebx;
+                  if(copy_to_user(ue, &event, sizeof(event))==0) tf->eax=1; else {tf->eax=-1; break;} }
+                break;
+            no_event:
+                tf->eax = 0;
+                break;
             } else {
                 // 其他事件类型暂不支持
                 tf->eax = -1;
@@ -1896,6 +1970,146 @@ void syscall_dispatch(struct trapframe *tf) {
             }
 
             tf->eax = 1;  // 有数据
+            break;
+        }
+        case SYS_USB_MOUSE_INFO: {
+            // SYS_USB_MOUSE_INFO (76): 获取 USB 鼠标端点信息
+            // 参数: ebx=ep指针, ecx=maxpkt指针, edx=interval指针
+            extern uint8_t g_usb_mouse_ep;
+            extern uint8_t g_usb_mouse_maxpkt;
+            extern uint8_t g_usb_mouse_interval;
+            extern uint32_t g_td_ctrl;
+            extern uint8_t g_dma_bytes[8];
+            extern int g_usb_setproto_result;
+            if (tf->ebx == 1) {
+                uint32_t d = g_dma_bytes[0]|(g_dma_bytes[1]<<8)|(g_dma_bytes[2]<<16)|(g_dma_bytes[3]<<24);
+                tf->eax = (int)d;
+            } else if (tf->ebx == 3) {
+                extern uint32_t g_ehci_fl_phys;
+                tf->eax = (int)g_ehci_fl_phys;
+            } else if (tf->ebx == 4) {
+                extern uint32_t g_ehci_qh_phys;
+                tf->eax = (int)g_ehci_qh_phys;
+            } else if (tf->ebx == 2) {
+                // Return DMA bytes 4-7
+                uint32_t d = g_dma_bytes[4]|(g_dma_bytes[5]<<8)|(g_dma_bytes[6]<<16)|(g_dma_bytes[7]<<24);
+                tf->eax = (int)d;
+            } else {
+                // ebx=0: return packed USB info
+                uint32_t info = g_usb_mouse_ep | (g_usb_mouse_maxpkt<<8) | (g_usb_mouse_interval<<16) | ((g_usb_setproto_result & 0xFF) << 24);
+                tf->eax = (int)info;
+            }
+            break;
+        }
+        case 77: {
+            // SYS_KLOG_READ: ecx=0→read klog, ecx=1→read ehci, ecx=2→draw to FB
+            extern void klog_read(char *buf, int max);
+            char buf[2048];
+            if (tf->ecx == 2) {
+                // Draw klog to framebuffer line by line (kernel space, safe)
+                klog_read(buf, sizeof(buf));
+                volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
+                extern uint16_t vbe_get_pitch(void);
+                int pitch = vbe_get_pitch();
+                int ppitch = pitch / 4;  // pitch is bytes, ppitch is pixels per row
+                int start_y = 0;
+                // Clear top half
+                for (int dy = 0; dy < 420; dy++)
+                    for (int dx = 0; dx < 1024; dx++)
+                        fb[(start_y+dy)*ppitch + dx] = 0x00000000;
+                // Display lines from bottom of klog (show last ~40 lines)
+                int line_y = start_y;
+                int pos = 0;
+                while (buf[pos] && line_y < 400) {
+                    // Find end of line
+                    int end = pos;
+                    while (buf[end] && buf[end] != '\n' && buf[end] != '\r') end++;
+                    // Draw this line
+                    for (int i = 0; i < (end-pos) && i < 120; i++) {
+                        char ch = buf[pos+i];
+                        if (ch < 32 || ch > 126) ch = ' ';
+                        const unsigned char *g = font8x8_data[(unsigned char)ch - 32];
+                        for (int r = 0; r < 8; r++) {
+                            unsigned char bits = g[r];
+                            for (int c = 0; c < 8; c++)
+                                if (bits & (0x80 >> c))
+                                    fb[(line_y+r)*ppitch + 2 + i*8 + c] = 0x0000FF00;
+                        }
+                    }
+                    line_y += 10;
+                    // Skip to next line
+                    pos = end;
+                    while (buf[pos] == '\n' || buf[pos] == '\r') pos++;
+                }
+                tf->eax = 0;
+            } else if (tf->ecx == 1) {
+                extern char *g_ehci_debug_buf;
+                extern int g_ehci_debug_len;
+                int len = g_ehci_debug_len;
+                if (len > 2047) len = 2047;
+                if (g_ehci_debug_buf && len > 0) {
+                    memcpy(buf, g_ehci_debug_buf, len);
+                    buf[len] = 0;
+                } else {
+                    buf[0] = 0;
+                }
+                copy_to_user((void*)tf->ebx, buf, 2048);
+                tf->eax = 0;
+            } else {
+                klog_read(buf, 2048);
+                copy_to_user((void*)tf->ebx, buf, 2048);
+                tf->eax = 0;
+            }
+            break;
+        }
+        case SYS_NET_BIND: {
+            // SYS_NET_BIND (52): 绑定 UDP 端口
+            // 参数: ebx = 端口号（主机字节序）
+            // 返回: eax = 0 成功, -1 失败
+
+            uint16_t port = (uint16_t)tf->ebx;
+            printf("[syscall] SYS_NET_BIND: port=%d\n", port);
+
+            extern void net_bind_udp_port(uint16_t port);
+            net_bind_udp_port(port);
+
+            tf->eax = 0;
+            break;
+        }
+        case SYS_NET_RECV_UDP: {
+            // SYS_NET_RECV_UDP (53): 接收 UDP 数据
+            // 参数: ebx = 缓冲区指针, ecx = 最大长度
+            // 返回: eax = 接收到的字节数, -1 无数据, -2 错误
+
+            printf("[syscall] [SYS_NET_RECV_UDP] 1\n");
+
+            extern int net_recv_udp_internal(char *buf, int len, int *port);
+
+            char *user_buf = (char *)tf->ebx;
+            int max_len = (int)tf->ecx;
+            int temp_port = 0;
+
+            // 临时内核缓冲区
+            char temp_buf[UDP_RX_BUF_SIZE];
+
+            int ret = net_recv_udp_internal(temp_buf, max_len, &temp_port);
+
+            printf("[syscall] [SYS_NET_RECV_UDP] 2 ret=%d\n", ret);
+
+            if (ret <= 0) {
+                tf->eax = ret;
+                break;
+            }
+
+            // 复制数据到用户空间
+            if (copy_to_user(user_buf, temp_buf, ret) != 0) {
+                tf->eax = -2;
+                break;
+            }
+
+            printf("[syscall] [SYS_NET_RECV_UDP] 3\n");
+
+            tf->eax = ret;
             break;
         }
         default:

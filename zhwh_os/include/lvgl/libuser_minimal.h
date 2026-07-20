@@ -38,6 +38,18 @@ typedef struct {
 int printf(const char *format, ...);
 void exit(int code);
 
+// 系统调用包装
+static inline int gui_get_fb_info(fb_info_t *info) {
+    int ret;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(SYS_GUI_FB_INFO), "b"(info)
+        : "memory", "cc"
+    );
+    return ret;
+}
+
 // 文件操作函数
 static inline int write(int fd, const char *buf, int len) {
     int ret;

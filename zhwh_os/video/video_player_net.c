@@ -1,6 +1,7 @@
 #include "video_player.h"
 #include "net.h"
 #include <string.h>
+extern int printf(const char *fmt, ...);
 
 /* ====== 简单的inet_addr实现 ====== */
 static uint32_t inet_addr_simple(const char *cp)
@@ -30,6 +31,7 @@ static uint32_t inet_addr_simple(const char *cp)
 /* ====== 网络配置 ====== */
 static int video_sock = -1;
 static int is_udp = 1;
+int udp_port=0;
 
 /* ====== 简单帧头协议 ====== */
 typedef struct {
@@ -48,16 +50,20 @@ int net_recv_init(const char *bind_ip, int port, int use_udp)
     int sock;
     int reuse = 1;
 
-    is_udp = use_udp;
+    printf("[VIDEO] net_recv_init: bind=%s, port=%d, UDP=%d\n",
+           bind_ip, port, use_udp);
 
     /* 创建socket */
     sock = socket(AF_INET, is_udp ? SOCK_DGRAM : SOCK_STREAM, 0);
     if (sock < 0) {
+        printf("[VIDEO] ERROR: socket creation failed\n");
         return -1;
     }
+    printf("[VIDEO] Socket created, fd=%d\n", sock);
 
     /* 设置SO_REUSEADDR */
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    printf("[VIDEO] SO_REUSEADDR option set\n");
 
     /* 绑定端口 */
     memset(&addr, 0, sizeof(addr));
@@ -66,19 +72,25 @@ int net_recv_init(const char *bind_ip, int port, int use_udp)
     addr.sin_port = htons(port);
 
     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        printf("[VIDEO] ERROR: bind failed\n");
         close(sock);
         return -2;
     }
+    printf("[VIDEO] Socket bound to %s:%d\n", bind_ip, port);
 
     /* TCP模式：listen */
     if (!is_udp) {
+        printf("[VIDEO] TCP mode: calling listen\n");
         if (listen(sock, 1) < 0) {
+            printf("[VIDEO] ERROR: listen failed\n");
             close(sock);
             return -3;
         }
+        printf("[VIDEO] Listen successful\n");
     }
 
     video_sock = sock;
+    printf("[VIDEO] net_recv_init complete\n");
     return 0;
 }
 
@@ -107,12 +119,18 @@ int net_recv_frame(uint8_t *buf, int maxlen)
     int received = 0;
     int n;
 
+    printf("[VIDEO] into net_recv_frame \n");
+
     /* 接收帧头 */
     if (is_udp) {
         /* UDP：直接recv */
+        printf("[VIDEO] [net_recv_frame] 1 \n");
+
         n = recv(video_sock, buf, maxlen, 0);
         return n;
     }
+
+    printf("[VIDEO] [net_recv_frame] 2 \n");
 
     /* TCP：先读帧头 */
     while (received < sizeof(frame_header_t)) {
@@ -122,6 +140,7 @@ int net_recv_frame(uint8_t *buf, int maxlen)
         received += n;
     }
 
+    printf("[VIDEO] [net_recv_frame] 3 \n");
     /* 验证魔数 */
     if (header.magic != FRAME_MAGIC) {
         return -2;
@@ -132,6 +151,7 @@ int net_recv_frame(uint8_t *buf, int maxlen)
         return -3;
     }
 
+    printf("[VIDEO] [net_recv_frame] 4 \n");
     /* 接收JPEG数据 */
     received = 0;
     while (received < header.frame_len) {
@@ -139,7 +159,7 @@ int net_recv_frame(uint8_t *buf, int maxlen)
         if (n <= 0) return -4;
         received += n;
     }
-
+    printf("[VIDEO] [net_recv_frame] 5 \n");
     return received;
 }
 

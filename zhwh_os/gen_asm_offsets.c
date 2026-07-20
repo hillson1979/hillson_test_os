@@ -61,8 +61,26 @@ struct task_mm {
 
 // 陷阱帧（部分定义，只需要知道它是指针）
 struct trapframe {
-    uint32_t regs[20];
-};
+    uint32_t edi;
+    uint32_t esi;
+    uint32_t ebp;
+    uint32_t oesp;
+    uint32_t ebx;
+    uint32_t edx;
+    uint32_t ecx;
+    uint32_t eax;
+    uint32_t ds;
+    uint32_t es;
+    uint32_t fs;
+    uint32_t gs;
+    uint32_t trapno;
+    uint32_t err;
+    uint32_t eip;
+    uint32_t cs;
+    uint32_t eflags;
+    uint32_t esp;
+    uint32_t ss;
+} __attribute__((packed));
 
 // 完整的 task_t 定义（必须与 task.h 完全一致！）
 struct task_t {

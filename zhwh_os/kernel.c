@@ -79,8 +79,14 @@ uint32_t get_esp(void) {
 int
 kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 {
-        
-        
+        // 🔥 真机调试：最早VGA输出，写在vga_init清屏之前
+        volatile uint16_t *vega = (volatile uint16_t *)0xC00B8000;
+        for (int i = 0; i < 80*25; i++) vega[i] = (0x2F << 8) | ' ';
+        vega[0] = (0x4F << 8) | 'K';
+        vega[1] = (0x4F << 8) | 'O';
+        vega[2] = (0x4F << 8) | 'K';
+
+
         // 🔥 内核栈溢出检测：在栈底设置哨兵
         extern uint32_t stack_base;
         extern uint32_t stack_top;
@@ -235,8 +241,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("[DEBUG] Current ESP=0x%x, EBP=0x%x\n", current_esp, current_ebp);
         printf("[FPU] Re-initialized before STI\n");
 
-        // ⚠️ 暂时注释掉 STI，避免中断处理程序的问题导致系统崩溃
-        // 启用全局中断（重要！）
+        // 启用全局中断（重要！USB 鼠标需要中断）
         __asm__ volatile("sti");
         printf("Global interrupts ENABLED\n");
 
@@ -303,31 +308,20 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("8254 PIT Timer disabled ✅\n");
 
         // 🔥🔥🔥 额外保险：确保 LAPIC Timer 也完全禁用
-        // 即使 lapicinit() 中已经禁用了，再次确认
-        extern volatile uint32_t* lapic;
+        // 注释掉 — 物理机写 LAPIC timer 寄存器可能卡住，且 timer 已是 masked
+        /* extern volatile uint32_t* lapic;
         if (lapic) {
             printf("Disabling LAPIC Timer (additional safety)...\n");
-            // LAPIC Timer 寄存器偏移（来自 lapic.h）
-            // #define TIMER 0x320
-            // #define TICR  0x380
             volatile uint32_t *lapic_timer = lapic + 0x320/4;
             volatile uint32_t *lapic_ticr = lapic + 0x380/4;
-
-            // 读取当前 Timer 配置
             uint32_t timer_conf = *lapic_timer;
             printf("LAPIC Timer config: 0x%x\n", timer_conf);
-
-            // 设置 Timer 为 MASKED 模式（bit 16 = 1）
-            *lapic_timer = 0x10000;  // MASKED = 1 << 16
-
-            // 设置初始计数为 0（停止计数）
+            *lapic_timer = 0x10000;
             *lapic_ticr = 0;
-
-            // 验证
             uint32_t timer_after = *lapic_timer;
             printf("LAPIC Timer after disable: 0x%x\n", timer_after);
             printf("LAPIC Timer disabled ✅\n");
-        }
+        } */
 
         // 初始化文件系统
         extern void fs_init(void);
@@ -352,6 +346,12 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         } else {
             printf("USB initialization failed (may not be critical)\n");
         }
+        // Save klog to ramfs so editor can open /kern.log
+        extern void klog_save_to_ramfs(void);
+        klog_save_to_ramfs();
+
+        // PS/2 touchpad hangs on some systems — disabled
+        // extern int ps2mouse_init(void); ps2mouse_init();
 
         // 测试 USB 鼠标驱动
         printf("\n========================================\n");
@@ -432,7 +432,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // 不要在这里重复配置，避免覆盖之前的设置
 
         // 在VGA上显示测试消息，确认系统正常运行
-        volatile uint16_t* vga = (volatile uint16_t*)0xB8000;
+        volatile uint16_t* vga = (volatile uint16_t*)0xC00B8000;
         vga[10] = (0x0E << 8) | 'T';
         vga[11] = (0x0E << 8) | 'E';
         vga[12] = (0x0E << 8) | 'S';
@@ -519,8 +519,9 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                     uint8_t fb_type = fb_bytes[29];
 
                     printf("✓ Manual parsing successful!\n");
-                    printf("  Parsed values: addr=0x%x, %dx%d, bpp=%d, type=%d\n",
-                           (uint32_t)fb_addr, fb_width, fb_height, fb_bpp, fb_type);
+                    printf("  Parsed values: addr_hi=0x%x addr_lo=0x%x, %dx%d, bpp=%d, type=%d\n",
+                           (uint32_t)(fb_addr >> 32), (uint32_t)fb_addr,
+                           fb_width, fb_height, fb_bpp, fb_type);
 
                     // 检测是否为文本模式 (使用手动解析的正确值)
                     if (fb_type != 1) {  // 必须是 RGB 图形模式
@@ -564,6 +565,24 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                                                         uint32_t height, uint32_t pitch, uint8_t bpp);
                     vbe_init_from_multiboot(fb_addr, fb_width, fb_height, fb_pitch, fb_bpp);
                     printf("✓ VBE driver initialized from Multiboot2 info\n");
+
+                    // 🔥 内核执行进度指示
+                    // 阶段2：VBE初始化成功 - 显示绿色块
+                    if (vbe_is_available()) {
+                        volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
+                        uint16_t w, h;
+                        vbe_get_resolution(&w, &h);
+                        uint16_t pitch = vbe_get_pitch();
+                        uint32_t pitch_pixels = pitch / 4;
+
+                        // 绘制小的绿色方块在右上角，表示VBE初始化成功
+                        for (int y = 0; y < 30; y++) {
+                            for (int x = w - 30; x < w; x++) {
+                                fb[y * pitch_pixels + x] = 0xFF00FF00;  // 绿色
+                            }
+                        }
+                        printf("✓ Progress indicator: VBE initialized (green square)\n");
+                    }
                     break;
                 }
                 fb_tag = (multiboot_tag_t *)((uint8_t *)fb_tag + ((fb_tag->size + 7) & ~7));
@@ -655,13 +674,31 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("=== kmalloc/kfree tests completed ===\n\n");
         */
 
+        // 🔥 内核执行进度指示
+        // 阶段3：准备启动用户任务 - 显示蓝色块
+        if (vbe_is_available()) {
+            volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
+            uint16_t w, h;
+            vbe_get_resolution(&w, &h);
+            uint16_t pitch = vbe_get_pitch();
+            uint32_t pitch_pixels = pitch / 4;
+
+            // 绘制小的蓝色方块在左下角，表示准备启动用户任务
+            for (int y = h - 30; y < h; y++) {
+                for (int x = 0; x < 30; x++) {
+                    fb[y * pitch_pixels + x] = 0xFF0000FF;  // 蓝色
+                }
+            }
+            printf("✓ Progress indicator: Ready to start user task (blue square)\n");
+        }
+
         // 启动用户进程
         printf("start user task \n");
-        // 屏蔽之后的日志
-        #if 0
+        // 启动用户进程
+        printf("start user task \n");
 
-        // 调试：输出multiboot2模块信息
-        dump_multiboot2_modules(mb_info_addr);
+        // 调试：输出multiboot2模块信息（已禁用，避免系统崩溃）
+        // dump_multiboot2_modules(mb_info_addr);
 
         // 重要：先手动调用 user_task_main 进行初始化（页表、模块加载等）
         // 初始化完成后，user_task_main 会返回
@@ -675,16 +712,23 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         th_u->state = PS_CREATED;
         printf("[kernel_main] User task initialized, state=PS_CREATED\n");
 
-        printf("user task 0x%x kernel task 0x%x\n",th_u,th_k);
-        #endif
+        // 🔥 内核执行进度指示
+        // 阶段4：用户任务启动成功 - 显示黄色块
+        if (vbe_is_available()) {
+            volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
+            uint16_t w, h;
+            vbe_get_resolution(&w, &h);
+            uint16_t pitch = vbe_get_pitch();
+            uint32_t pitch_pixels = pitch / 4;
 
-        // 实际需要的代码（不打印日志）
-        user_task_main(th_u);
-        printf("[kernel_main] Before start_task: ESP=0x%x\n", (uint32_t)get_esp());
-        start_task(th_u, user_task_main);
-        printf("[kernel_main] After start_task: ESP=0x%x, about to set state\n", (uint32_t)get_esp());
-        th_u->state = PS_CREATED;
-        printf("[kernel_main] After setting state: ESP=0x%x, state=%d\n", (uint32_t)get_esp(), th_u->state);
+            // 绘制小的黄色方块在右下角，表示用户任务启动成功
+            for (int y = h - 30; y < h; y++) {
+                for (int x = w - 30; x < w; x++) {
+                    fb[y * pitch_pixels + x] = 0xFFFFFF00;  // 黄色
+                }
+            }
+            printf("✓ Progress indicator: User task ready (yellow square)\n");
+        }
 
         /*
         // 创建第二个用户进程（测试调度）- 已弃用

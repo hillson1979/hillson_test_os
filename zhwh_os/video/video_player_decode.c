@@ -12,12 +12,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-/* ====== JPEG解码到RGB565 ====== */
+/* ====== JPEG解码到XRGB8888 (32位颜色) ====== */
 int jpeg_decode_to_rgb565(uint8_t *jpeg, int len, uint16_t *out)
 {
     int w, h, ch;
     uint8_t *rgb;
     int i;
+    uint32_t *out32 = (uint32_t *)out;  // 强制转换为 32 位指针
 
     /* 从内存解码JPEG */
     rgb = stbi_load_from_memory(jpeg, len, &w, &h, &ch, 3);
@@ -31,14 +32,14 @@ int jpeg_decode_to_rgb565(uint8_t *jpeg, int len, uint16_t *out)
         return -2;  // 尺寸不匹配
     }
 
-    /* 转换RGB888到RGB565 */
+    /* 转换RGB888到XRGB8888 (32位颜色) */
     for (i = 0; i < w * h; i++) {
         uint8_t r = rgb[i * 3 + 0];
         uint8_t g = rgb[i * 3 + 1];
         uint8_t b = rgb[i * 3 + 2];
 
-        /* RGB565: RRRRRGGGGGGBBBBB */
-        out[i] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        /* XRGB8888: 0x00RRGGBB */
+        out32[i] = 0xFF000000 | (r << 16) | (g << 8) | b;  // 0xFF为不透明
     }
 
     stbi_image_free(rgb);

@@ -8,6 +8,9 @@
 #define SYS_PRINTF 1
 #define SYS_EXIT 2
 #define SYS_YIELD 3
+#define SYS_GET_MEM_STATS 4
+#define SYS_READ_MEM 5
+#define SYS_GET_MEM_USAGE 6
 #define SYS_GETCHAR 7
 #define SYS_PUTCHAR 8
 #define SYS_GETCWD 9
@@ -27,8 +30,9 @@
 #define SYS_WIFI_INIT 36   // WiFi 初始化
 #define SYS_WIFI_FW_BEGIN 37   // WiFi 固件加载：开始
 #define SYS_WIFI_FW_CHUNK 38   // WiFi 固件加载：传输块
-#define SYS_WIFI_FW_END   39   // WiFi 固件加载：结束
+#define SYS_WIFI_FW_END 39   // WiFi 固件加载：结束
 #define SYS_WIFI_LOAD_FIRMWARE 40 // WiFi 固件加载（完整）
+#define SYS_NET_RECV_UDP 53    // 🔥 接收 UDP 数据
 //#define SYS_EXECV 41     // execv 系统调用（暂时禁用）
 #define SYS_LSPCI 42      // 🔥 新增：列出 PCI 设备
 #define SYS_NET_INIT_RTL8139 43  // 🔥 新增：初始化 RTL8139
@@ -36,7 +40,8 @@
 #define SYS_NET_SEND_UDP 45     // 🔥 新增：发送 UDP 包
 #define SYS_NET_SET_DEVICE 46   // 🔥 设置当前使用的网卡
 #define SYS_NET_POLL_RX 47      // 🔥 轮询RX（通用）
-#define SYS_NET_DUMP_REGS 48    // 🔥 转储网卡寄存器状态
+#define SYS_NET_DUMP_REGS 48
+#define SYS_GUI_INPUT_READ 72    // 🔥 转储网卡寄存器状态
 #define SYS_NET_ARP 49          // 🔥 ARP 命令（显示/扫描 ARP 缓存）
 #define SYS_NET_DUMP_RX_REGS 50 // 🔥 转储 RX 寄存器（详细）
 #define SYS_NET_IFUP 51        // 🔥 启动网络接口
@@ -45,8 +50,10 @@
 #define SYS_MSI_TEST 60        // 🔥 MSI 测试
 #define SYS_NET_LOOPBACK_TEST 61  // 🔥 E1000 硬件 loopback 测试（轮询）
 #define SYS_NET_LOOPBACK_TEST_INT 62  // 🔥 E1000 硬件 loopback 测试（中断）
+#define SYS_USB_MOUSE_INFO 76         // 获取 USB 鼠标端点信息
 
 // GUI 系统调用
+#define SYS_NET_BIND 52       // 🔥 绑定 UDP 端口
 #define SYS_GUI_FB_INFO 70      // 获取帧缓冲区信息
 #define SYS_GUI_FB_BLIT 71      // 位图传输到帧缓冲区
 #define SYS_GUI_INPUT_READ 72   // 读取输入设备事件
@@ -131,7 +138,8 @@ int net_dump_regs(const char *dev_name);  // 🔥 转储网卡寄存器状态（
 int net_arp(const char *dev_name, int scan);  // 🔥 ARP 命令（指定设备，scan=1 扫描并更新缓存，scan=0 仅显示）
 int net_dump_rx_regs(const char *dev_name);  // 🔥 转储 RX 寄存器（指定设备）
 int net_ifup(const char *dev_name);  // 🔥 启动网络接口
-int net_recv_udp(char *buf, int len, int *port);  // 🔥 接收 UDP 数据（阻塞）
+int net_bind_udp(int port);  // 🔥 绑定 UDP 端口
+int net_recv_udp(char *buf, int len);  // 🔥 接收 UDP 数据（阻塞）
 // int net_raw_dump_rx_desc(void);  // 🔥 暂时注释掉
 
 // 用户缓冲区描述符（用于安全传递大块数据）
@@ -170,16 +178,17 @@ typedef struct {
 } fb_info_t;
 
 typedef struct {
-    int x;             // 鼠标 X 坐标
-    int y;             // 鼠标 Y 坐标
-    int left_btn;      // 左键状态 (0=释放, 1=按下)
-    int right_btn;     // 右键状态
-    int middle_btn;    // 中键状态
+    uint32_t type;      // 1=键盘, 2=鼠标
+    int x;             // 鼠标 X 或 键码
+    int y;             // 鼠标 Y 或 保留
+    uint32_t pressed;  // 按键状态或保留
 } input_event_t;
 
 int gui_get_fb_info(fb_info_t *info);           // 获取帧缓冲区信息
 int gui_fb_blit(int x, int y, int width, int height, const void *data);  // 位图传输
 int gui_read_input(input_event_t *event);      // 读取输入事件
+int usb_mouse_poll(void *report);               // 轮询 USB 鼠标事件
+int usb_mouse_info(uint8_t *ep, uint8_t *maxpkt, uint8_t *interval);  // 获取鼠标端点信息
 
 // 字符串和内存工具函数
 #include "stddef.h"  // for size_t

@@ -85,6 +85,8 @@ void video_player_init(void);
 void video_player_task(void);
 const video_stats_t* video_player_get_stats(void);
 void video_player_reset_stats(void);
+lv_img_dsc_t* video_player_get_current_image(void);  // 获取当前显示的图像描述符
+lv_obj_t* video_player_get_image_obj(void);          // 获取视频图像对象
 
 /* ====== 网络 API ====== */
 int net_recv_init(const char *bind_ip, int port, int use_udp);
@@ -98,7 +100,7 @@ int jpeg_decode_to_rgb565(uint8_t *jpeg, int len, uint16_t *out);
 const char* jpeg_decoder_version(void);
 
 /* ====== 依赖的外部接口 ====== */
-extern int net_recv_frame(uint8_t *buf, int maxlen);
+//extern int net_recv_frame(uint8_t *buf, int maxlen);
 extern int jpeg_decode_to_rgb565(uint8_t *jpeg, int len, uint16_t *out);
 
 #endif /* VIDEO_PLAYER_H */

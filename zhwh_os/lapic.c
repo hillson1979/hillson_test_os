@@ -129,11 +129,10 @@ lapicinit(void)
 
   // ✅ Enable Local APIC Timer for scheduling (IH-005)
   // Configure timer for periodic interrupts at IRQ_TIMER
-  lapicw(TIMER, PERIODIC | (T_IRQ0 + IRQ_TIMER));
-  // Set initial count to approximately 100 Hz (10ms intervals)
-  // Assuming bus frequency ~100 MHz, 10000000 counts = 100 ms = 10 Hz
-  // For more accurate timing, should calibrate against PIT
-  lapicw(TICR, 10000000);
+  // 🔥 使用非常慢的频率（约0.1Hz）来避免中断过载
+  // 暂时禁用定时器中断，直到调度器稳定
+  lapicw(TIMER, MASKED | (T_IRQ0 + IRQ_TIMER));
+  lapicw(TICR, 0);
 
   // Disable logical interrupt lines.
   lapicw(LINT0, MASKED);

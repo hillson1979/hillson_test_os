@@ -15,7 +15,7 @@
 alltraps:
     # --- 1. 保存段寄存器（先压，在低地址） ---
     # ⚠️ 必须先压段寄存器，遵循 xv6 标准
-    cli
+    #cli
     pushl %ds
     pushl %es
     pushl %fs
@@ -37,12 +37,11 @@ alltraps:
     movw %ax, %gs
 
     # --- 4. 调用 C 层的 do_irq_handler ---
-    
+
     pushl %esp
     call do_irq_handler
     addl $4, %esp
 
-    # --- 4.5 检查 need_resched 标志，实现调度 ---
     pushl %esp
     call check_and_schedule
     addl $4, %esp

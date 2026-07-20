@@ -16,7 +16,7 @@ extern void alltraps(void);
 extern task_t* current_task[8];
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
-extern uint64_t vectors[];  // in vectors.S: array of 256 entry pointers
+extern uint32_t vectors[];  // in vectors.S: array of 256 entry pointers
 //struct spinlock tickslock;
 uint32_t ticks;
 void
@@ -32,19 +32,33 @@ tvinit(void)
     if(i==36){
         printf("[tvinit] IRQ36 gate: offset=0x%x, seg=0x%x, type=%d, dpl=%d, p=%d\n",
                (uint32_t)vectors[36], SEG_KCODE<<3,idt[36].type, idt[36].dpl, idt[36].p);
-        sti();
+        // 🔥 移除 sti() - 在IDT初始化期间启用中断会导致系统崩溃
     }
   }
   // 
 
-  SETGATE(idt[T_SYSCALL], 1, SEG_KCODE<<3, vectors[T_SYSCALL], DPL_USER);
+  // 🔥🔥 详细调试：在使用 vectors[T_SYSCALL] 之前检查其值
+  printf("[tvinit] Debug before SETGATE:\n");
+  printf("  vectors base address=0x%x\n", (uint32_t)vectors);
+  printf("  vectors[T_SYSCALL] addr=0x%x (direct)\n", (uint32_t)(&vectors[T_SYSCALL]));
+  printf("  vectors[T_SYSCALL] value=0x%x (direct)\n", vectors[T_SYSCALL]);
+
+  // 使用临时变量存储 vectors[T_SYSCALL] 的值
+  uint32_t tmp_vector = vectors[T_SYSCALL];//vectors[T_SYSCALL];
+  printf("  tmp_vector stored as=0x%x\n", tmp_vector);
+
+  // 设置系统调用门
+  SETGATE(idt[T_SYSCALL], 1, SEG_KCODE<<3, tmp_vector, DPL_USER);
 
   // 调试：打印系统调用门的设置
   printf("[tvinit] System call gate (IDT[%d]):\n", T_SYSCALL);
   printf("  offset=0x%x, seg=0x%x, type=%d, dpl=%d, present=%d\n",
-         (uint32_t)vectors[T_SYSCALL], SEG_KCODE<<3,
+         tmp_vector, SEG_KCODE<<3,
          idt[T_SYSCALL].type, idt[T_SYSCALL].dpl, idt[T_SYSCALL].p);
-  printf("  vector128 address=0x%p\n", vectors[T_SYSCALL]);
+  printf("  vector128 address=0x%x (tmp variable)\n", tmp_vector);
+
+  // 🔥 再次检查 vectors[T_SYSCALL] 的值
+  printf("[tvinit] After SETGATE - vectors[T_SYSCALL]=0x%x\n", vectors[T_SYSCALL]);
 
   // 🔥 诊断：打印关键 IDT 项（Trap 13, Trap 19, IRQ 0）
   printf("[tvinit] Trap 13 (GP Fault): offset=0x%x, seg=0x%x, type=%d, dpl=%d, p=%d\n",
@@ -305,6 +319,42 @@ void handle_page_fault(struct trapframe *tf) {
         printf("[PF] Kernel page fault, halting\n");
         printf("[PF] This is a KERNEL BUG - fault in kernel mode!\n");
         printf("[PF] fault_addr=0x%x, eip=0x%x, cs=0x%x\n", fault_va, tf->eip, tf->cs);
+
+        // 🔥 Blue screen: write crash info to VGA text buffer
+        {
+            volatile uint16_t *vga = (volatile uint16_t *)0xC00B8000;
+            // Fill screen: blue bg, white text
+            for (int y = 0; y < 25; y++)
+                for (int x = 0; x < 80; x++)
+                    vga[y*80 + x] = 0x1F00 | ' ';
+            // Title
+            const char *title = "KERNEL PANIC: Page Fault";
+            for (int i = 0; title[i]; i++) vga[0*80 + 2 + i] = 0x1F00 | title[i];
+            // Info lines
+            char info[80];
+            // Line 2: fault address
+            int y = 2;
+            for (int i = 0; i < 80; i++) info[i] = ' '; info[79] = 0;
+            info[0] = 'F'; info[1] = 'A'; info[2] = ':'; info[3] = ' ';
+            uint32_t va = fault_va;
+            for (int i = 7; i >= 0; i--) { info[4+i] = "0123456789ABCDEF"[va & 0xF]; va >>= 4; }
+            for (int i = 0; i < 80; i++) vga[y*80 + i] = 0x1F00 | info[i];
+            // Line 3: EIP
+            y = 3; va = tf->eip;
+            info[0] = 'E'; info[1] = 'I'; info[2] = 'P'; info[3] = ':';
+            for (int i = 7; i >= 0; i--) { info[4+i] = "0123456789ABCDEF"[va & 0xF]; va >>= 4; }
+            for (int i = 0; i < 80; i++) vga[y*80 + i] = 0x1F00 | info[i];
+            // Line 4: error code
+            y = 4; va = err;
+            info[0] = 'E'; info[1] = 'R'; info[2] = 'R'; info[3] = ':';
+            for (int i = 7; i >= 0; i--) { info[4+i] = "0123456789ABCDEF"[va & 0xF]; va >>= 4; }
+            for (int i = 0; i < 80; i++) vga[y*80 + i] = 0x1F00 | info[i];
+            // Line 6: halt message
+            y = 6;
+            const char *halt = "System halted. Press reset or power cycle.";
+            for (int i = 0; halt[i]; i++) vga[y*80 + 2 + i] = 0x1F00 | halt[i];
+        }
+
         // 停止系统
         __asm__ volatile("cli; hlt; jmp .");
     }
@@ -350,6 +400,14 @@ void do_irq_handler(struct trapframe *tf) {
     // ⚠️⚠️⚠️ 调试：打印原始 trapframe 内存
     // ⚠️⚠️⚠️ 重要：printf 会破坏段寄存器！只能用于调试，不能在生产代码中使用！
     // ⚠️⚠️⚠️ 如果启用 printf，必须在 printf 后恢复正确的段寄存器值
+    // printf("\n========== TRAP %d DEBUG ==========\n", tf->trapno);
+    // printf("  EIP=0x%x, CS=0x%x, EFLAGS=0x%x\n", tf->eip, tf->cs, tf->eflags);
+    // printf("  ERR=0x%x, ESP=0x%x\n", tf->err, tf->esp);
+    // printf("  EAX=0x%x, EBX=0x%x, ECX=0x%x, EDX=0x%x\n", tf->eax, tf->ebx, tf->ecx, tf->edx);
+    // printf("  ESI=0x%x, EDI=0x%x, EBP=0x%x\n", tf->esi, tf->edi, tf->ebp);
+    // printf("  DS=0x%x, ES=0x%x, FS=0x%x, GS=0x%x\n", tf->ds, tf->es, tf->fs, tf->gs);
+    // printf("====================================\n");
+    
     #ifdef DEBUG_IRQ_PRINT
     printf("\n[ do_irq_handler] TRAP %d DEBUG ==========\n", tf->trapno);
 
@@ -504,30 +562,26 @@ void do_irq_handler(struct trapframe *tf) {
             lapiceoi();
             break;
         }
-        // 🔥 WiFi 卡中断处理（IRQ 16-23，常见 PCI 设备 IRQ 范围）
-        case T_IRQ0 + 16:  // 48
-        case T_IRQ0 + 17:  // 49
-        case T_IRQ0 + 18:  // 50
-        case T_IRQ0 + 19:  // 51
-        case T_IRQ0 + 20:  // 52
-        case T_IRQ0 + 21:  // 53
-        case T_IRQ0 + 22:  // 54
-        case T_IRQ0 + 23:  // 55
-        {
-            // 🔥 调试：打印 WiFi 中断到达
-            printf("[IRQ] WiFi interrupt received! trapno=%d (IRQ%d)\n",
-                   tf->trapno, tf->trapno - T_IRQ0);
-
-            // 调用 WiFi 驱动中断处理程序
-            extern void atheros_interrupt_handler(void);
-            atheros_interrupt_handler();
-            // 使用 lapiceoi() 发送 EOI
+        // PS/2 mouse interrupt (IRQ12 → trap 44)
+        case T_IRQ0 + 12:
+            extern void ps2mouse_handler(void);
+            ps2mouse_handler();
             lapiceoi();
             break;
-        }
+        // EHCI interrupt handler removed — IOAPIC not configured for USB IRQ
+        /* case T_IRQ0 + 16 ... T_IRQ0 + 23: ehci_intr_handler(); */
+        // WiFi 中断已禁用
+        /* case T_IRQ0 + 16: case T_IRQ0 + 17: case T_IRQ0 + 18: case T_IRQ0 + 19:
+           case T_IRQ0 + 20: case T_IRQ0 + 21: case T_IRQ0 + 22: case T_IRQ0 + 23:
+        {
+            extern void atheros_interrupt_handler(void);
+            atheros_interrupt_handler();
+            lapiceoi();
+            break;
+        } */
 
         // 🔥 E1000 网卡中断（常见 IRQ: 5, 9, 10, 11, 36）
-
+        case 43: //qemu 专用
         case 36:  // trapno 36 = IRQ 4
         {
             //printf(">>> got vector 36 from LAPIC (IRQ 4)!\n");
@@ -570,7 +624,7 @@ void do_irq_handler(struct trapframe *tf) {
         // 🔥 UHCI USB控制器中断处理（IRQ 9-11 常见范围）
         case T_IRQ0 + 9:
         case T_IRQ0 + 10:
-        case T_IRQ0 + 11:
+        //case T_IRQ0 + 11:
         {
             // 🔥 调试：显示UHCI中断
             printf("[IRQ] UHCI interrupt received! trapno=%d (IRQ%d)\n",

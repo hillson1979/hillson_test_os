@@ -33,6 +33,7 @@ static uint8_t udp_rx_buffer[UDP_RX_BUF_SIZE];
 static int udp_rx_len = 0;
 static int udp_rx_ready = 0;
 static uint16_t udp_rx_port = 0;  // 接收到的源端口
+static uint16_t udp_bound_dport = 0;  // 绑定的目标端口（我们监听的端口）
 
 // 🔥 本机 MAC 地址（全局变量，用于接收包过滤）
 uint8_t local_mac[ETH_ALEN] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};  // 默认值，会被设备初始化覆盖
@@ -684,6 +685,14 @@ int icmp_send_echo(net_device_t *dev, uint32_t dst_ip, uint16_t id, uint16_t seq
 }
 
 /**
+ * @brief UDP绑定（设置监听的端口）
+ */
+void net_bind_udp_port(uint16_t port) {
+    udp_bound_dport = port;
+    printf("[net] Bound to UDP port: %d\n", port);
+}
+
+/**
  * @brief UDP输入处理
  */
 int udp_input(net_device_t *dev, uint8_t *data, uint32_t len) {
@@ -698,6 +707,12 @@ int udp_input(net_device_t *dev, uint8_t *data, uint32_t len) {
     uint16_t dport = ntohs(udp->udp_dport);
     uint8_t *udp_data = data + sizeof(udp_hdr_t);
     uint32_t udp_data_len = len - sizeof(udp_hdr_t);
+
+    // 🔥 关键修复：检查数据包的目标端口是否匹配我们绑定的端口
+    if (udp_bound_dport != 0 && dport != udp_bound_dport) {
+        // printf("[net] UDP packet dropped: received dport=%d, bound=%d\n", dport, udp_bound_dport);
+        return 0;  // 不匹配，丢弃包
+    }
 
     // 🔥 新增：调用视频播放器钩子（弱引用，仅在用户态存在）
     extern int video_udp_hook(uint16_t dport, uint8_t *data, uint32_t len) __attribute__((weak));
@@ -1387,23 +1402,23 @@ void print_ip(uint32_t ip) {
  * @brief 内部 UDP 接收函数（供系统调用使用）
  * @param buf 接收缓冲区
  * @param len 缓冲区长度
- * @param port 输出参数，返回源端口
+ * @param port 输出参数，返回源端口（可以为 NULL）
  * @return 接收到的字节数，-1 表示无数据，-2 表示错误
  */
 int net_recv_udp_internal(char *buf, int len, int *port) {
-    extern uint8_t udp_rx_buffer[];
-    extern int udp_rx_len;
-    extern int udp_rx_ready;
-    extern uint16_t udp_rx_port;
+    // 这些变量在同一文件中定义，不需要 extern
+    printf("[net] [net_recv_udp_internal] udp_rx_port is %d, port ptr is 0x%x\n",
+           udp_rx_port, (void*)port);
 
     if (!udp_rx_ready) {
         return -1;  // 无数据
     }
+    printf("[net] [net_recv_udp_internal] 1, data ready: %d bytes\n", udp_rx_len);
 
     if (len < udp_rx_len) {
         return -2;  // 缓冲区太小
     }
-
+    printf("[net] [net_recv_udp_internal] 2, copying data\n");
     // 复制数据
     memcpy(buf, udp_rx_buffer, udp_rx_len);
     if (port) {
@@ -1411,6 +1426,7 @@ int net_recv_udp_internal(char *buf, int len, int *port) {
     }
 
     int ret = udp_rx_len;
+    printf("[net] [net_recv_udp_internal] 3 ret=%d\n", ret);
     udp_rx_ready = 0;  // 清除标志
     udp_rx_len = 0;
 

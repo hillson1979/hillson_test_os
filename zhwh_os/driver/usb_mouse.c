@@ -101,7 +101,7 @@ int usb_mouse_init(int controller_id, uint8_t dev_addr, uint8_t interface,
         return -1;
     }
 
-    printf("[USB Mouse] Initializing mouse at address %d\n", dev_addr);
+    printf("[USB Mouse] Initializing mouse at address %d (ep=0x%x)\n", dev_addr, endpoint_in);
 
     usb_mouse_device_t *mouse = &usb_mice[num_usb_mice];
     memset(mouse, 0, sizeof(usb_mouse_device_t));
@@ -113,12 +113,11 @@ int usb_mouse_init(int controller_id, uint8_t dev_addr, uint8_t interface,
     mouse->controller_id = controller_id;  // 🔥 保存控制器ID
     mouse->transfer_active = 0;              // 🔥 初始化为未激活
 
-    // Set boot protocol
-    if (usb_mouse_set_boot_protocol(controller_id, dev_addr, interface) != 0) {
-        return -1;
-    }
-
-    // Set idle rate
+    // Set boot protocol (skip if device doesn't support it)
+    extern uint8_t g_usb_if_proto;
+    // Force SET_PROTOCOL(BOOT) even for non-boot mice
+    int ret = usb_mouse_set_boot_protocol(controller_id, dev_addr, interface);
+    printf("[USB Mouse] SET_PROTOCOL returned %d\n", ret);
     usb_mouse_set_idle(controller_id, dev_addr, interface);
 
     mouse->initialized = 1;
@@ -135,7 +134,11 @@ int usb_mouse_init(int controller_id, uint8_t dev_addr, uint8_t interface,
             is_low_speed = 0;  // Assume full-speed
         }
 
-        int ret = usb_mouse_periodic_init(controller_id, dev_addr, endpoint_in, is_low_speed);
+        int ret;
+        extern int g_using_ehci;
+        extern int ehci_mouse_setup(uint8_t addr, uint8_t ep, int ls);
+        if(g_using_ehci) ret = ehci_mouse_setup(dev_addr, endpoint_in, is_low_speed);
+        else ret = usb_mouse_periodic_init(controller_id, dev_addr, endpoint_in, is_low_speed);
         if (ret < 0) {
             printf("[USB Mouse] WARNING: Failed to initialize periodic polling\n");
             mouse->periodic_initialized = 0;
@@ -148,8 +151,11 @@ int usb_mouse_init(int controller_id, uint8_t dev_addr, uint8_t interface,
         mouse->periodic_initialized = 1;
     }
 
-    printf("[USB Mouse] Mouse initialized successfully (total: %d)\n",
-           num_usb_mice);
+    extern int g_using_ehci;
+    extern uint32_t g_ehci_qh_phys;
+    printf("[USB MOUSE] INIT OK total=%d ehci=%d QH=0x%x\n", num_usb_mice, g_using_ehci, g_ehci_qh_phys);
+    // Print EHCI regs for debug
+    extern uint32_t g_ehci_fl_phys; g_ehci_fl_phys=0; // will be set by poll
 
     return num_usb_mice - 1;  // Return mouse index
 }

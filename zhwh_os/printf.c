@@ -39,7 +39,8 @@ void printf(const char* fmt, ...) {
 
     while (*fmt) {
         if (*fmt != '%') {
-            vga_putc(*fmt++);
+            char c = *fmt++;
+            vga_putc(c);
             continue;
         }
 

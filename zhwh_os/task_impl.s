@@ -281,13 +281,13 @@ task_to_user_mode_with_task:
 
     # 🔥 关键修复：在切换栈之前恢复中断！
     # 原因：printf 需要中断工作，否则键盘输入无法被处理
-    sti
+    #sti
 
     # 验证 EBX 的值
-    pushl %ebx
-    pushl $task_to_user_mode_ebx_msg
-    call printf
-    addl $8, %esp
+    #pushl %ebx
+    #pushl $task_to_user_mode_ebx_msg
+    #call printf
+    #addl $8, %esp
 
     # 获取 task->tf 指针
     movl TASK_IFRAME(%ebx), %ecx     # ecx = task->tf
@@ -296,7 +296,7 @@ task_to_user_mode_with_task:
 
     # 🔥 关键：在切换栈之前再次关中断！
     # 原因：切换栈期间不能有中断
-    cli
+    #cli
 
     # 切换到 task->tf 所指的栈
     movl %ecx, %esp             # ESP = task->tf
@@ -314,24 +314,28 @@ task_to_user_mode_with_task:
     #   然后压：       [48:trapno, 52:err]
     #   最后硬件压：   [56:eip, 60:cs, 64:eflags, 68:esp, 72:ss]
 
-    # 先恢复段寄存器（offset 0-12）
-    popl %ds                  # offset 0
-    popl %es                  # offset 4
-    popl %fs                  # offset 8
-    popl %gs                  # offset 12
+    # 恢复通用寄存器（pusha 的逆序）
+    popl %edi                 # offset 0
+    popl %esi                 # offset 4
+    popl %ebp                 # offset 8
+    addl $4, %esp             # 跳过 oesp (offset 12)
+    popl %ebx                 # offset 16（用户态 EBX）
+    popl %edx                 # offset 20
+    popl %ecx                 # offset 24
+    popl %eax                 # offset 28
 
-    # 恢复通用寄存器（pusha 的逆序，offset 16-44）
-    popl %eax                 # offset 16
-    popl %ecx                 # offset 20
-    popl %edx                 # offset 24
-    popl %ebx                 # offset 28（用户态 EBX）
-    addl $4, %esp             # 跳过 oesp (offset 32)
-    popl %ebp                 # offset 36
-    popl %esi                 # offset 40
-    popl %edi                 # offset 44
+    # 恢复段寄存器
+    popl %ds                  # offset 32
+    popl %es                  # offset 36
+    popl %fs                  # offset 40
+    popl %gs                  # offset 44
 
     # 跳过 trapno 和 err（offset 48-52）
     addl $8, %esp
+
+    # 🔥 关键修复：在执行 iret 之前恢复中断！
+    # 原因：用户程序可能需要中断工作（如键盘输入）
+    #sti
 
     # ⚠️⚠️⚠️ 执行 iret，恢复用户态
     # iret 会从栈上弹出：EIP, CS, EFLAGS, ESP, SS

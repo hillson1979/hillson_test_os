@@ -277,6 +277,11 @@ int vbe_set_graphics_mode(uint16_t width, uint16_t height, uint8_t bpp) {
  */
 void vbe_init_from_multiboot(uint64_t fb_addr, uint32_t width, uint32_t height,
                               uint32_t pitch, uint8_t bpp) {
+    // ⚠️ 如果真机显存超过4GB，这里截断会导致帧缓冲映射到错误地址
+    if ((uint32_t)(fb_addr >> 32) != 0) {
+        printf("[VBE] WARNING: fb_addr=0x%x%08x > 4GB, truncation may cause issues!\n",
+               (uint32_t)(fb_addr >> 32), (uint32_t)fb_addr);
+    }
     vbe_framebuffer = (uint32_t)fb_addr;
     vbe_width = (uint16_t)width;
     vbe_height = (uint16_t)height;
@@ -309,52 +314,27 @@ void vbe_init_from_multiboot(uint64_t fb_addr, uint32_t width, uint32_t height,
         uint32_t phys = fb_phys + i * 4096;
         uint32_t virt = fb_virt + i * 4096;
 
-        // 使用内核页目录物理地址进行映射
-        // 0x7 = PRESENT | WRITE | USER - 允许用户模式访问
-        map_page(kernel_page_directory_phys, virt, phys, 0x7);  // WRITE | PRESENT | USER
+        map_page(kernel_page_directory_phys, virt, phys, 0x7 | 0x10);  // +PCD (uncacheable)
     }
 
     printf("[VBE] ✓ Framebuffer mapped successfully!\n");
 
-    // 测试: 画4个大的彩色方块 (每个占1/4屏幕)
+    // 清除屏幕并回读验证
     volatile uint32_t *fb = (volatile uint32_t *)fb_virt;
-    uint32_t half_width = vbe_width / 2;
-    uint32_t half_height = vbe_height / 2;
     uint32_t pitch_pixels = vbe_pitch / 4;
 
-    printf("[VBE] Drawing test pattern (4 colored quadrants)...\n");
+    // 写一个测试像素
+    fb[100 * pitch_pixels + 100] = 0x00FF0000;  // 红色
+    uint32_t verify = fb[100 * pitch_pixels + 100];
+    printf("[VBE] Write test: wrote=0x00FF0000, read=0x%x %s\n",
+           verify, (verify == 0x00FF0000) ? "OK" : "FAIL!");
 
-    // 左上: 红色
-    for (uint32_t y = 0; y < half_height; y++) {
-        for (uint32_t x = 0; x < half_width; x++) {
-            fb[y * pitch_pixels + x] = 0xFFFF0000;  // 红色
+    // 清除屏幕
+    for (uint32_t y = 0; y < vbe_height; y++) {
+        for (uint32_t x = 0; x < vbe_width; x++) {
+            fb[y * pitch_pixels + x] = 0x00000000;  // 黑色
         }
     }
 
-    // 右上: 绿色
-    for (uint32_t y = 0; y < half_height; y++) {
-        for (uint32_t x = half_width; x < vbe_width; x++) {
-            fb[y * pitch_pixels + x] = 0xFF00FF00;  // 绿色
-        }
-    }
-
-    // 左下: 蓝色
-    for (uint32_t y = half_height; y < vbe_height; y++) {
-        for (uint32_t x = 0; x < half_width; x++) {
-            fb[y * pitch_pixels + x] = 0xFF0000FF;  // 蓝色
-        }
-    }
-
-    // 右下: 白色
-    for (uint32_t y = half_height; y < vbe_height; y++) {
-        for (uint32_t x = half_width; x < vbe_width; x++) {
-            fb[y * pitch_pixels + x] = 0xFFFFFFFF;  // 白色
-        }
-    }
-
-    printf("[VBE] ✓ Test pattern drawn!\n");
-    printf("[VBE]   Top-Left: RED\n");
-    printf("[VBE]   Top-Right: GREEN\n");
-    printf("[VBE]   Bottom-Left: BLUE\n");
-    printf("[VBE]   Bottom-Right: WHITE\n");
+    printf("[VBE] ✓ Screen cleared\n");
 }

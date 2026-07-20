@@ -210,48 +210,10 @@ void keyboard_init(void) {
     extern void ioapicenable(int irq, int cpunum);
     ioapicenable(1, 0);  // 启用 IRQ1，路由到 CPU 0
 
-    // 🔥 测试：轮询键盘，看看是否有任何数据
-    // 注意：这个测试会在键盘初始化后立即运行，此时用户可能还没有按下任何键
-    // 所以这个测试主要用于验证键盘硬件是否工作，而不是验证用户输入
-    printf("[KBD] Testing keyboard polling (will wait for key press or timeout)...\n");
-    printf("[KBD] Please press a key now to test keyboard hardware...\n");
-
-    // 🔥 调试：读取键盘端口状态
-    uint8_t status_before = inb(0x64);
-    printf("[KBD] Initial status port (0x64): 0x%x\n", status_before);
-    printf("[KBD]   OBF (bit 0): %d (should be 0 if no data)\n", status_before & 0x01);
-    printf("[KBD]   IBF (bit 1): %d (should be 0 if ready)\n", (status_before >> 1) & 0x01);
-    printf("[KBD]   SYSF (bit 2): %d\n", (status_before >> 2) & 0x01);
-    printf("[KBD]   CMD_DATA (bit 3): %d\n", (status_before >> 3) & 0x01);
-
-    int found = 0;
-    for (int i = 0; i < 10000000; i++) {  // 增加等待时间
-        uint8_t status = inb(0x64);
-        if (status & 0x01) {  // 输出缓冲区满
-            uint8_t scancode = inb(0x60);
-            printf("[KBD] ✓ Polled scancode: 0x%x (status=0x%x)\n", scancode, status);
-            found = 1;
-            break;
-        }
-        // 每 1000000 次循环打印一次进度
-        if (i % 1000000 == 0 && i > 0) {
-            printf("[KBD] Still waiting... (%d iterations)\n", i);
-        }
-    }
-
-    // 🔥 最终状态检查
-    uint8_t status_after = inb(0x64);
-    printf("[KBD] Final status port (0x64): 0x%x\n", status_after);
-
-    if (!found) {
-        printf("[KBD] No keyboard data detected during polling test\n");
-        printf("[KBD] This could mean:\n");
-        printf("[KBD]   1. No key was pressed during the test\n");
-        printf("[KBD]   2. Keyboard hardware is not connected\n");
-        printf("[KBD]   3. QEMU keyboard input is not properly configured\n");
-        printf("[KBD]   4. Keyboard controller is not sending IRQs\n");
-    }
-    printf("[KBD] Polling test complete\n");
+    // 🔥 暂时禁用长时间轮询测试，加速启动
+    // 测试：轮询键盘，看看是否有任何数据
+    printf("[KBD] Skipping long polling test for faster boot\n");
+    printf("[KBD] Keyboard initialization complete\n");
 }
 
 // 简单的十六进制转字符辅助函数
@@ -263,7 +225,7 @@ static char hex_char(uint8_t nibble) {
 // 简化的输出函数（不使用printf）
 static void keyboard_debug_print(uint8_t scancode) {
     // 直接写到VGA显存
-    volatile uint16_t* vga = (volatile uint16_t*)0xB8000;
+    volatile uint16_t* vga = (volatile uint16_t*)0xC00B8000;
     static int pos = 160; // 从第二行开始（避免覆盖启动信息）
 
     // 输出 "[KBD: XX] "
@@ -286,85 +248,40 @@ static void keyboard_debug_print(uint8_t scancode) {
 // 🔥 备份函数（已弃用，使用下面的新版本）
 // static void scancode_buffer_put_bak(uint8_t sc) { ... }
 
-// 扫描码事件结构（带时间戳）
-typedef struct {
-    uint8_t scancode;
-    uint32_t tick;   // 可选：记录按键时间，用于防抖或长按处理
-} kbd_event_t;
+// 🔥 原始扫描码缓冲区（用于 GUI 输入）
+static uint8_t scancode_buffer[KBD_BUFFER_SIZE];
+static int scancode_head = 0;
+static int scancode_tail = 0;
 
-// 🔥 使用64个元素的kbd_event_t缓冲区（而不是256字节）
-// 重新定义 KBD_BUFFER_SIZE 用于扫描码缓冲区
-#undef KBD_BUFFER_SIZE
-#define KBD_BUFFER_SIZE 64
-
-static volatile kbd_event_t scancode_buffer[KBD_BUFFER_SIZE];
-static volatile int scancode_head = 0;
-static volatile int scancode_tail = 0;
-static volatile uint32_t last_scancode_tick = 0;
-
-void scancode_buffer_put(uint8_t sc) {
+// 🔥 向扫描码缓冲区写入
+static void scancode_buffer_put(uint8_t sc) {
     int next_tail = (scancode_tail + 1) % KBD_BUFFER_SIZE;
-
-    // 队列满时丢弃最旧元素
     if (next_tail == scancode_head) {
-        scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
-        // 🔥 可选调试
-        // log_append("[KBD] Buffer full, oldest scancode dropped");
+        scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;  // 丢弃最旧的
     }
-
-    scancode_buffer[scancode_tail].scancode = sc;
-    extern uint32_t ticks;
-    scancode_buffer[scancode_tail].tick = ticks;
-
+    scancode_buffer[scancode_tail] = sc;
     scancode_tail = next_tail;
-    last_scancode_tick = ticks;
-}
-
-// 从缓冲区获取扫描码
-int scancode_buffer_get(uint8_t *sc) {
-    if (scancode_head == scancode_tail) return 0; // 队列空
-    *sc = scancode_buffer[scancode_head].scancode;
-    scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
-    return 1;
-}
-
-// 🔥 检查是否有扫描码可用（带调试信息）
-int keyboard_scancode_available_debug(void) {
-    int available = (scancode_head != scancode_tail);
-    if (available) {
-        extern uint32_t ticks;
-        printf("[KBD] Scancode available! last=%d, current=%d, age=%d ticks\n",
-               last_scancode_tick, ticks, ticks - last_scancode_tick);
-    }
-    return available;
 }
 
 // 键盘中断处理程序
 void keyboard_handler(void) {
-    // 🔥 调试：跟踪中断调用次数（每100次打印一次）
-    static int keyboard_handler_count = 0;
-    if (++keyboard_handler_count % 100 == 0) {
-        //printf("[KBD IRQ] keyboard_handler called %d times\n", keyboard_handler_count);
-    }
-
     // 读取扫描码
     uint8_t scancode = inb(KBD_DATA_PORT);
-    // ⚠️⚠️⚠️ 不能在中断处理程序中使用 printf！
-    // printf 会破坏段寄存器（DS/ES），导致系统崩溃
-    // printf("[KBD IRQ] scancode=0x%x\n", scancode);  // 🔥 临时启用，用于调试
 
     // 🔥 总是保存原始扫描码（包括按键释放事件 0x80）
     scancode_buffer_put(scancode);
 
-    // // 转换为 ASCII
-    // char c = scancode_to_ascii(scancode);
-    // // 如果是有效字符，放入缓冲区
-    // if (c != 0) {
-    //     keyboard_buffer_put(c);
-    // }
+    // 转换为 ASCII
+    char c = scancode_to_ascii(scancode);
+    //printf("---%c ---",c);
+
+    // 如果是有效字符，放入缓冲区
+    if (c != 0) {
+        keyboard_buffer_put(c);
+    }
 
     // ⚠️⚠️⚠️ 注意：不要在这里发送 EOI！
-    // EOI 由 interrupt.c 中的 lapiceei() 统一发送
+    // EOI 由 interrupt.c 中的 lapiceoi() 统一发送
 }
 
 // 从键盘缓冲区读取一个字符（使用中断驱动的 buffer）
@@ -395,10 +312,13 @@ int keyboard_scancode_available(void) {
     return (scancode_head != scancode_tail);
 }
 
-// 从缓冲区非阻塞获取扫描码
+// 🔥 非阻塞读取原始扫描码（用于 GUI 输入）
 int keyboard_get_scancode_nonblock(void) {
-    if (scancode_head == scancode_tail) return -1; // 空
-    uint8_t sc = scancode_buffer[scancode_head].scancode;
+    if (!keyboard_scancode_available()) {
+        return -1;
+    }
+
+    uint8_t sc = scancode_buffer[scancode_head];
     scancode_head = (scancode_head + 1) % KBD_BUFFER_SIZE;
     return sc;
 }

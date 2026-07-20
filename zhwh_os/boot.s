@@ -19,15 +19,14 @@ multiboot2_header_start:
 .long MULTIBOOT2_HEADER_LENGTH      /* header length */
 .long MULTIBOOT2_HEADER_CHECKSUM    /* checksum */
 
-/* Framebuffer 请求标签 */
+/* Framebuffer 请求标签 — OPTIONAL，支持图形模式但不强制 */
 .align 8
-.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER   /* type = 5 (framebuffer) */
-.short 1       /* flags = REQUIRED */
-.long 24                                  /* size */
-.long 1024                              /* width = 1024 */
-.long 768                                 /* height = 768 */
-.long 32           /* bpp (32 bits per pixel, XRGB8888) */
-.long 0            /* reserved (unused, must be 0) */
+.short MULTIBOOT_HEADER_TAG_FRAMEBUFFER   /* type = 5 */
+.short 0       /* flags = OPTIONAL */
+.long 24                                  /* size = 24 */
+.long 1024                              /* width */
+.long 768                                 /* height */
+.long 32           /* bpp (32 bits, XRGB8888) */
 
 .align 8
 .short 0
@@ -134,8 +133,11 @@ higher_half:
     # 分页后虚拟地址 = 物理地址 + VIRT_BASE
     # 从GDB输出来看，mb_magic的物理地址是0x106000，虚拟地址是0xc0106000
     # 所以我们直接使用虚拟地址从内存中读取
-    movl    0xc0106000, %eax
-    movl    0xc0106004, %ebx
+    #movl    0xc0106000, %eax
+    #movl    0xc0106004, %ebx
+
+    movl    mb_magic, %eax
+    movl    mb_info, %ebx
 
     # 现在将参数按正确顺序压栈传递给kernel_main
     push %ebx            # 参数2: multiboot2 info地址

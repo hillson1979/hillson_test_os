@@ -106,8 +106,10 @@ ioapicinit(void)
   acpi_context* acpi_ctx = acpi_get_context();
 
   if(acpi_ctx==NULL || acpi_ctx->madt.ioapic==NULL){
-    phys_addr=IOAPIC;    
-    printf("phys_addr IOAPIC is : 0x%x\n", phys_addr); 
+    phys_addr=IOAPIC;
+    printf("phys_addr IOAPIC is : 0x");
+    printf("%x", phys_addr);
+    printf("\n");
   }else{
   acpi_ioapic_t * temp=map_hardware_region(acpi_ctx->madt.ioapic,sizeof(acpi_ioapic_t),"IOAPIC ...");
   phys_addr=temp->ioapic_addr;

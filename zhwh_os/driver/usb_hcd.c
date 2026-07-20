@@ -14,6 +14,25 @@
 #include "page.h"
 #include "usb.h"
 #include "usb_hcd.h"
+#include "fbtext.h"
+
+// TD debug globals for user-space display
+uint32_t g_td_ctrl = 0;
+int g_td_polls = 0;
+int g_td_active = 0;
+uint8_t g_dma_bytes[8] = {0};
+int g_using_ohci = 0;
+int g_using_ehci = 0;
+
+int g_ehci_controller_id = -1;
+int g_ehci_mouse_port = -1;
+int g_using_uhci2 = 0;
+
+uint32_t g_ehci_fl_phys = 0;
+uint32_t g_ehci_qh_phys = 0;
+uint32_t g_ehci_cmd = 0;
+uint32_t g_ehci_sts = 0;
+uint32_t g_ehci_td0_phys = 0;
 
 // 外部声明 DMA 分配函数
 extern void *dma_alloc_coherent(size_t size, uint32_t *dma_handle);
@@ -73,7 +92,7 @@ typedef struct uhci_td {
 #define UHCI_TD_CTRL_IOS           (1 << 25)  // Isochronous Select
 #define UHCI_TD_CTRL_LS            (1 << 26)  // Low Speed
 #define UHCI_TD_CTRL_CERR_MASK     0x03       // Error Count bits
-#define UHCI_TD_CTRL_CERR_SHIFT    25          // CORRECTED: CERR is at bits 27-25, not 27-29
+#define UHCI_TD_CTRL_CERR_SHIFT    27          /* Error counter at bits 27-28 */
 #define UHCI_TD_CTRL_SPD           (1 << 29)  // Short Packet Detect
 #define UHCI_TD_CTRL_ERR_MASK      0x03       // Error bits
 #define UHCI_TD_CTRL_ERR_SHIFT     30
@@ -100,7 +119,7 @@ typedef struct uhci_td {
 #define UHCI_TD_CTRL_IOS           (1 << 25)  // Isochronous Select
 #define UHCI_TD_CTRL_LS            (1 << 26)  // Low Speed
 #define UHCI_TD_CTRL_CERR_MASK     0x03       // Error Count bits
-#define UHCI_TD_CTRL_CERR_SHIFT    25          // CORRECTED: CERR is at bits 27-25, not 27-29
+#define UHCI_TD_CTRL_CERR_SHIFT    27          /* Error counter at bits 27-28 */
 #define UHCI_TD_CTRL_SPD           (1 << 29)  // Short Packet Detect
 #define UHCI_TD_CTRL_ERR_MASK      0x03       // Error bits
 #define UHCI_TD_CTRL_ERR_SHIFT     30
@@ -408,24 +427,61 @@ int usb_hcd_init(void) {
         printf("[USB] Checking device %d: 0x%02x:0x%02x:0x%02x\n",
                i, (unsigned)class, (unsigned)subclass, (unsigned)prog_if);
 
-        if (class == 0x0C && subclass == 0x03 && prog_if == 0x00) {
-
+        if (class == 0x0C && subclass == 0x03) {
+          if (prog_if == 0x00) {
             printf("[USB] Found UHCI controller\n");
             pci_print_device(dev);
-
-            if (uhci_init_controller(dev, controller_id) == 0) {
-                controller_id++;
+            if (uhci_init_controller(dev, controller_id) == 0) controller_id++;
+          } else if (prog_if == 0x20 && controller_id==0) {
+            // Intel 6-series: companion UHCI at fn 0-2. Force try all.
+            printf("[USB] EHCI at %02x:%02x.%d — trying companions fn 0-2...\n",
+                   dev->bus_id, dev->dev_id, dev->fn_id);
+            int sf=dev->fn_id;
+            int companion_ok = 0;
+            for(int fn=0; fn<3; fn++){ if(fn==sf||fn==7)continue;
+                uint8_t cc=0,sc=0,pf=0;
+                cc=pci_read_config_byte(dev->bus_id,dev->dev_id,fn,0x0B);
+                sc=pci_read_config_byte(dev->bus_id,dev->dev_id,fn,0x0A);
+                pf=pci_read_config_byte(dev->bus_id,dev->dev_id,fn,0x09);
+                printf("[USB] fn%d: class=0x%02x:0x%02x:0x%02x\n",fn,cc,sc,pf);
+                if(cc!=0x0C||sc!=0x03) continue; // not USB
+                dev->fn_id=fn;
+                printf("[USB] Trying UHCI2 at fn%d...\n",fn);
+                extern int uhci2_init(pci_dev_t*);
+                if(uhci2_init(dev)==0){
+                    printf("[USB] *** UHCI2 OK at fn%d! ***\n",fn);
+                    g_using_uhci2=1; g_using_ehci=0; controller_id++;
+                    companion_ok = 1;
+                    break;
+                }
             }
+            dev->fn_id=sf;
+            // 🔥 If NO companion UHCI found (physical machine), use EHCI directly!
+            if (!companion_ok) {
+                printf("[USB] No UHCI companions — using EHCI natively\n");
+                extern int ehci_init(pci_dev_t*);
+                if (ehci_init(dev) == 0) {
+                    printf("[USB] *** EHCI init OK! ***\n");
+                    g_using_ehci = 1;
+                    
+                    g_ehci_controller_id = controller_id++;
+                } else {
+                    printf("[USB] EHCI init FAILED!\n");
+                }
+            }
+          }
         }
     }
 
-    if (num_uhci_controllers == 0) {
+    if (num_uhci_controllers == 0 && !g_using_ehci && !g_using_uhci2) {
         printf("[USB] WARNING: No USB controllers found\n");
-        printf("[USB] HINT: QEMU needs '-device piix3-usb-uhci' parameter\n");
+        printf("[USB] HINT: QEMU needs '-device piix3-usb-uhci'\n");
         return -1;
     }
 
-    printf("[USB] Found %d USB controller(s)\n", num_uhci_controllers);
+    printf("[USB] Found %d USB controller(s) (UHCI=%d, EHCI=%d)\n",
+           num_uhci_controllers + (g_using_ehci ? 1 : 0) + (g_using_uhci2 ? 1 : 0),
+           num_uhci_controllers, g_using_ehci ? 1 : 0);
     return 0;
 }
 
@@ -647,6 +703,25 @@ int usb_hcd_scan_ports(int controller_id) {
  */
 int usb_control_transfer(int controller_id, uint8_t dev_addr, uint8_t ep,
                          usb_device_request_t *req, void *data) {
+    // 🔥 EHCI async control transfer not working yet — skip to avoid hang
+    // if (g_using_ehci) {
+
+    //     /printf("[USB] EHCI control transfer skipped (async schedule WIP)\n");
+    //     return -1;
+    // }
+
+    if (g_using_ehci) {
+            return ehci_control_transfer(
+                dev_addr,
+                req->bmRequestType,
+                req->bRequest,
+                req->wValue,
+                req->wIndex,
+                req->wLength,
+                data
+            );
+    }
+
     if (controller_id >= num_uhci_controllers) {
         return -1;
     }
@@ -1147,11 +1222,18 @@ typedef struct {
     int toggle;                // DATA toggle bit (0 or 1)
     int is_low_speed;          // Is this a low-speed device?
     int active;                // Is periodic polling active?
+    uint32_t td_phys;          // Physical address of TD (for QH element_ptr reset)
     volatile int data_ready;   // 🔥 Data ready flag (set by IRQ, cleared by read)
     uint8_t last_report[8];   // 🔥 Last mouse report (for interrupt mode)
+
 } usb_mouse_periodic_t;
 
 static usb_mouse_periodic_t mouse_periodic = {0};
+
+#define UHCI_LINK_TERMINATE 0x00000001
+#define UHCI_LINK_QH        0x00000002
+#define UHCI_LINK_PTR_MASK  0xFFFFFFF0
+#define UHCI_LINK_TD   0x00000000
 
 int usb_mouse_periodic_init(int controller_id,
                             uint8_t dev_addr,
@@ -1176,10 +1258,15 @@ int usb_mouse_periodic_init(int controller_id,
     memset(td, 0, sizeof(*td));
     mouse_periodic.td[0] = td;
 
+    uint32_t _td_phys = ctrl->td_pool_phys + ((uint32_t)td - (uint32_t)ctrl->td_pool);
+    mouse_periodic.td_phys = _td_phys;
+
+    // 🔥 修复：从端点地址中提取端点号（去除方向位）
+    uint8_t ep_num = ep & 0x0F;  // 只取低 4 位作为端点号
     td->token =
         (USB_PID_IN << UHCI_TD_TOKEN_PID_SHIFT) |
         (dev_addr   << UHCI_TD_TOKEN_DEVADDR_SHIFT) |
-        (ep         << UHCI_TD_TOKEN_ENDPT_SHIFT) |
+        (ep_num     << UHCI_TD_TOKEN_ENDPT_SHIFT) |
         ((len - 1)  << UHCI_TD_TOKEN_MAXLEN_SHIFT) |
         (mouse_periodic.toggle << UHCI_TD_TOKEN_DATA_TOGGLE_SHIFT);
 
@@ -1191,11 +1278,12 @@ int usb_mouse_periodic_init(int controller_id,
         (low_speed ? UHCI_TD_CTRL_LS : 0) |
         (3 << UHCI_TD_CTRL_CERR_SHIFT);
 
-    td->link_ptr =  UHCI_LINK_TERMINATE;
 
     uint32_t td_phys =
         ctrl->td_pool_phys +
         ((uint32_t)td - (uint32_t)ctrl->td_pool);
+
+    td->link_ptr = UHCI_LINK_TERMINATE;
 
 
     /* Allocate QH */
@@ -1204,9 +1292,120 @@ int usb_mouse_periodic_init(int controller_id,
     mouse_periodic.qh = qh;
 
     qh->element_ptr = td_phys;
-    //qh->ctrl = low_speed ? UHCI_QH_CTRL_LS : 0;
-    if (low_speed)
-    qh->element_ptr |= UHCI_QH_HEAD_LS;  // 0x04，标记低速
+
+    uint32_t qh_phys =
+        ctrl->qh_pool_phys +
+        ((uint32_t)qh - (uint32_t)ctrl->qh_pool);
+
+    // 🔥 直接链接到所有帧，每帧都执行
+    uint32_t old = ctrl->frame_list[0];
+
+    // 🔥 对于低速设备，QH 的 link_ptr 需要设置 LS 位 (bit 26)
+    if (low_speed) {
+        qh->link_ptr = old | UHCI_QH_HEAD_LS;
+        printf("[USB Mouse] Setting QH LS bit for low speed device\n");
+    } else {
+        qh->link_ptr = old;
+    }
+
+    for (int i = 0; i < 1024; i++) {
+        ctrl->frame_list[i] = (qh_phys & ~0xF) | UHCI_LINK_QH;
+    }
+
+    // 保存 interrupt QH 信息，供以后使用
+    ctrl->intr_qh = qh;
+    ctrl->intr_qh_phys = qh_phys;
+    ctrl->intr_qh_active = 1;
+
+    asm volatile("mfence" ::: "memory");
+
+    /* Restart controller to pick up modified frame list */
+    {
+        uint16_t cmd = uhci_read_reg(ctrl, UHCI_USBCMD);
+        uhci_write_reg(ctrl, UHCI_USBCMD, cmd & ~UHCI_USBCMD_RUN);
+        for (volatile int d = 0; d < 1000; d++);
+        uhci_write_reg(ctrl, UHCI_USBCMD, cmd | UHCI_USBCMD_RUN);
+    }
+
+    // BIG blue block at init — bottom-right corner, won't be covered
+    {
+        volatile uint32_t *fb4 = (volatile uint32_t *)0xF0000000;
+        for (int dy = 0; dy < 60; dy++)
+            for (int dx = 0; dx < 60; dx++)
+                fb4[(700+dy)*1024 + 960 + dx] = 0x000000FF;  // blue
+    }
+
+    mouse_periodic.active = 1;
+
+    printf("[USB Mouse] Periodic IN scheduled (addr=%d ep=%d)\n",
+           dev_addr, ep);
+
+    return 0;
+}
+
+int usb_mouse_periodic_init_bak(int controller_id,
+                            uint8_t dev_addr,
+                            uint8_t ep,
+                            int low_speed)
+{
+    uhci_controller_t *ctrl = &uhci_controllers[controller_id];
+
+    int len = 3; // boot mouse report
+
+    memset(&mouse_periodic, 0, sizeof(mouse_periodic));
+    mouse_periodic.toggle = 0; // 🔥 interrupt endpoint starts with DATA0
+    mouse_periodic.is_low_speed = low_speed;
+
+    /* DMA buffer */
+    mouse_periodic.dma_buffer =
+        dma_alloc_coherent(len, &mouse_periodic.dma_buffer_phys);
+    memset(mouse_periodic.dma_buffer, 0, len);
+
+    /* Allocate TD */
+    uhci_td_t *td = uhci_alloc_td(ctrl);
+    memset(td, 0, sizeof(*td));
+    mouse_periodic.td[0] = td;
+
+    uint32_t _td_phys = ctrl->td_pool_phys + ((uint32_t)td - (uint32_t)ctrl->td_pool);
+    mouse_periodic.td_phys = _td_phys;
+
+    // 🔥 修复：从端点地址中提取端点号（去除方向位）
+    uint8_t ep_num = ep & 0x0F;  // 只取低 4 位作为端点号
+    td->token =
+        (USB_PID_IN << UHCI_TD_TOKEN_PID_SHIFT) |
+        (dev_addr   << UHCI_TD_TOKEN_DEVADDR_SHIFT) |
+        (ep_num     << UHCI_TD_TOKEN_ENDPT_SHIFT) |
+        ((len - 1)  << UHCI_TD_TOKEN_MAXLEN_SHIFT) |
+        (mouse_periodic.toggle << UHCI_TD_TOKEN_DATA_TOGGLE_SHIFT);
+
+    td->buffer = mouse_periodic.dma_buffer_phys;
+
+    td->ctrl_status =
+        UHCI_TD_CTRL_ACT |
+        UHCI_TD_CTRL_IOC |   // 🔥必须
+        (low_speed ? UHCI_TD_CTRL_LS : 0) |
+        (3 << UHCI_TD_CTRL_CERR_SHIFT);
+
+    
+
+    uint32_t td_phys =
+        ctrl->td_pool_phys +
+        ((uint32_t)td - (uint32_t)ctrl->td_pool);
+
+    td->link_ptr = td_phys;//UHCI_LINK_TERMINATE;
+
+
+    /* Allocate QH */
+    uhci_qh_t *qh = uhci_alloc_qh(ctrl);
+    memset(qh, 0, sizeof(*qh));
+    mouse_periodic.qh = qh;
+
+    qh->element_ptr = td_phys;
+    // 🔥 对于低速设备，QH 的 element_ptr 需要设置 LS 标志（bit 2）
+    // if (low_speed) {
+    //     qh->element_ptr |= (1 << 2);
+    // }
+    
 
     uint32_t qh_phys =
         ctrl->qh_pool_phys +
@@ -1221,19 +1420,19 @@ int usb_mouse_periodic_init(int controller_id,
         intr_qh->link_ptr = (qh_phys & ~0xF) | UHCI_LINK_QH;//qh_phys | 0x02;  // 链接鼠标 QH
         printf("[USB Mouse] Linked to interrupt QH (phys=0x%x)\n", qh_phys);
     } else {
-        // 没有其他中断 QH，直接链接到帧列表
-        // for (int i = 0; i < 1024; i += 10) {
-        //     qh->link_ptr = ctrl->frame_list[i];
-        //     ctrl->frame_list[i] = qh_phys | 0x02;  // QH type
-        // }
-        
+        uint32_t old = ctrl->frame_list[0];
 
-        for (int i = 0; i < 1024; i += 10) {
-            ctrl->frame_list[i] = qh_phys | UHCI_LINK_QH;
+        for (int i = 0; i < 1024; i++) {
+            ctrl->frame_list[i] = (qh_phys & ~0xF) | UHCI_LINK_QH;
         }
 
+        qh->link_ptr = old;
+
+        // 保存 interrupt QH 信息，供以后使用
+        ctrl->intr_qh = qh;
+        ctrl->intr_qh_phys = qh_phys;
         ctrl->intr_qh_active = 1;
-        printf("[USB Mouse] Linked to frame_list (every 10 frames)\n");
+        printf("[USB Mouse] Linked to frame_list\n");
     }
 
     asm volatile("mfence" ::: "memory");
@@ -1242,6 +1441,19 @@ int usb_mouse_periodic_init(int controller_id,
 
     printf("[USB Mouse] Periodic IN scheduled (addr=%d ep=%d)\n",
            dev_addr, ep);
+
+    // 🔥 关键调试：验证调度链接状态
+    printf("[USB Mouse Debug] QH phys=0x%x\n", qh_phys);
+    printf("[USB Mouse Debug] QH element_ptr=0x%x, link_ptr=0x%x\n",
+           qh->element_ptr, qh->link_ptr);
+    printf("[USB Mouse Debug] TD phys=0x%x, token=0x%x, link=0x%x\n",
+           td_phys, td->token, td->link_ptr);
+
+    // 打印前8个帧列表条目
+    printf("[USB Mouse Debug] Frame List first 8 entries:\n");
+    for (int i = 0; i < 8; i++) {
+        printf("FL[%d] = 0x%x\n", i, ctrl->frame_list[i]);
+    }
 
     return 0;
 }
@@ -1258,6 +1470,9 @@ int usb_mouse_periodic_init(int controller_id,
 
 int usb_mouse_periodic_poll(uint8_t *report)
 {
+    if(g_using_uhci2){extern int uhci2_poll(uint8_t*);return uhci2_poll(report);}
+    if(g_using_ehci){extern int ehci_poll(uint8_t*);return ehci_poll(report);}
+
     if (!mouse_periodic.active)
         return 0;
 
@@ -1265,6 +1480,135 @@ int usb_mouse_periodic_poll(uint8_t *report)
         return -1;
 
     uhci_td_t *td = mouse_periodic.td[0];
+
+    // Save for user-space debug
+    g_td_ctrl = td->ctrl_status;
+    g_td_polls++;
+
+    // BIG colored block on screen — impossible to miss
+    {
+        volatile uint32_t *fb3 = (volatile uint32_t *)0xF0000000;
+        int bx = 940, by = 10, bw = 80, bh = 80;
+        int active = (td->ctrl_status & UHCI_TD_CTRL_ACT) ? 1 : 0;
+        uint32_t clr = active ? 0x00FF0000 : 0x0000FF00;  // red=stuck, green=ok
+        for (int dy = 0; dy < bh; dy++)
+            for (int dx = 0; dx < bw; dx++)
+                if (by+dy < 768) fb3[(by+dy)*1024 + bx + dx] = clr;
+        g_td_active = active;
+    }
+
+    // ALWAYS show text — TD status and DMA buffer contents
+    {
+        volatile uint32_t *fbt = (volatile uint32_t *)0xF0000000;
+        char tbuf[50]; int ti = 0;
+        int actv = (td->ctrl_status & UHCI_TD_CTRL_ACT) ? 1 : 0;
+        const char *tp = actv ? "ACT" : "OK ";
+        while(*tp) tbuf[ti++]=*tp;
+        // Show first 4 bytes of DMA buffer
+        tbuf[ti++]=' ';
+        unsigned char *dm = (unsigned char *)mouse_periodic.dma_buffer;
+        for(int bi=0;bi<4;bi++){
+            unsigned char b = dm[bi];
+            tbuf[ti++]="0123456789ABCDEF"[b>>4];
+            tbuf[ti++]="0123456789ABCDEF"[b&0xF]; tbuf[ti++]=' ';
+        }
+        tbuf[ti]=0;
+        uint32_t clr = actv ? 0x00000000 : 0x0000FF00;
+        fb_draw_text(fbt, 250, 4, tbuf, clr, 1024);
+    }
+
+    // Show DMA phys addr once
+    { static int once=0; if(!once){ once=1;
+        volatile uint32_t *fs = (volatile uint32_t*)0xF0000000;
+        char tb[40]; int ti=0;
+        const char *hp = "DMA=0x"; while(*hp) tb[ti++]=*hp++;
+        uint32_t pa = mouse_periodic.dma_buffer_phys;
+        for(int n=28;n>=0;n-=4) tb[ti++]="0123456789ABCDEF"[(pa>>n)&0xF];
+        tb[ti]=0;
+        for(int ci=0;ci<ti;ci++){ char ch=tb[ci]; if(ch<32||ch>126) continue;
+            extern const unsigned char font8x8_data[95][8];
+            const unsigned char *g=font8x8_data[(unsigned char)ch-32];
+            for(int r=0;r<8;r++){ unsigned char b=g[r];
+                for(int c=0;c<8;c++) if(b&(0x80>>c)) fs[(100+r)*1024+4+ci*8+c]=0x00FFFF00;
+            }
+        }
+    }}
+
+    // Always save DMA content on TD completion
+    for(int _i=0;_i<8;_i++) g_dma_bytes[_i] = ((uint8_t*)mouse_periodic.dma_buffer)[_i];
+
+    /* still active */
+    if (td->ctrl_status & UHCI_TD_CTRL_ACT) {
+        return 0;
+    }
+
+    uint32_t errors = (td->ctrl_status >> UHCI_TD_CTRL_ERR_SHIFT) & UHCI_TD_CTRL_ERR_MASK;
+    int actlen_raw = td->ctrl_status & ACTLEN_MASK;
+    int actlen = (actlen_raw == ACTLEN_MASK) ? 0 : (actlen_raw + 1);
+
+    if (errors == 0 && actlen >= 3) {
+        /* Valid mouse report (3+ bytes — some mice send 4 with wheel) */
+        memcpy(report, mouse_periodic.dma_buffer, actlen < 8 ? actlen : 8);
+        memset(mouse_periodic.dma_buffer, 0, actlen < 8 ? actlen : 8);
+
+        /* Only flip toggle on SUCCESS */
+        mouse_periodic.toggle ^= 1;
+
+        static int poll_count = 0;
+        if (++poll_count <= 20) {
+            printf("[USB Mouse] POLL #%d: btn=%d x=%d y=%d len=%d\n",
+                   poll_count, report[0] & 0x07, (int8_t)report[1], (int8_t)report[2], actlen);
+        }
+    } else {
+        /* No valid data — keep toggle unchanged */
+        memset(report, 0, 3);
+        actlen = 0;
+    }
+
+    /* Update token toggle bit */
+    td->token =
+        (td->token & ~(1 << UHCI_TD_TOKEN_DATA_TOGGLE_SHIFT)) |
+        (mouse_periodic.toggle << UHCI_TD_TOKEN_DATA_TOGGLE_SHIFT);
+
+    /* Re-arm TD with FRESH status (don't inherit old error bits) */
+    td->ctrl_status =
+        UHCI_TD_CTRL_ACT |
+        UHCI_TD_CTRL_IOC |
+        UHCI_TD_CTRL_SPD |
+        (mouse_periodic.is_low_speed ? UHCI_TD_CTRL_LS : 0) |
+        (3 << UHCI_TD_CTRL_CERR_SHIFT);
+
+    td->buffer = mouse_periodic.dma_buffer_phys;
+
+    /* Reset QH element_ptr — UHCI overwrites it on TD completion */
+    if (mouse_periodic.qh) {
+        mouse_periodic.qh->element_ptr = mouse_periodic.td_phys;
+    }
+
+    asm volatile("mfence" ::: "memory");
+
+    return actlen;
+}
+
+int usb_mouse_periodic_poll_bak(uint8_t *report)
+{
+    if (!mouse_periodic.active)
+        return 0;
+
+    if (!report)
+        return -1;
+
+    uhci_td_t *td = mouse_periodic.td[0];
+
+    /* 🔥 详细调试：每次 poll 都打印 TD 状态 */
+    static int debug_count = 0;
+    if (++debug_count <= 20) {
+        printf("[USB Mouse Poll] #%d: TD ctrl_status=0x%x, ACT=%d, LS=%d, token=0x%x\n",
+               debug_count, td->ctrl_status,
+               !!(td->ctrl_status & UHCI_TD_CTRL_ACT),
+               !!(td->ctrl_status & UHCI_TD_CTRL_LS),
+               td->token);
+    }
 
     /* still active */
     if (td->ctrl_status & UHCI_TD_CTRL_ACT) {
@@ -1276,50 +1620,51 @@ int usb_mouse_periodic_poll(uint8_t *report)
     if (errors != 0) {
         printf("[USB Mouse] TD error: errors=0x%x ctrl_status=0x%x\n",
                errors, td->ctrl_status);
+        // 🔥 错误后重新初始化 TD 来恢复
+        td->ctrl_status =
+            UHCI_TD_CTRL_ACT |
+            (mouse_periodic.is_low_speed ? UHCI_TD_CTRL_LS : 0) |
+            UHCI_TD_CTRL_IOC | (3 << UHCI_TD_CTRL_CERR_SHIFT);
         return -1;
     }
 
     /* Get actual length transferred */
     int actlen = (td->ctrl_status & ACTLEN_MASK) + 1;
 
-    /* Validate data length */
-    if (actlen < 3) {
-        printf("[USB Mouse] Warning: Short packet (%d bytes)\n", actlen);
-        // Still accept short packets for compatibility
-        memset(report, 0, 3);
-        if (actlen > 0 && mouse_periodic.dma_buffer) {
-            memcpy(report, mouse_periodic.dma_buffer, actlen);
-        }
-    } else {
+    /* 🔥 只接受完整的 3 字节鼠标报告 */
+    if (actlen == 3) {
         /* Copy data from DMA buffer to user buffer */
         memcpy(report, mouse_periodic.dma_buffer, 3);
-    }
 
-    /* Debug: Print mouse data (first 10 times) */
-    static int poll_count = 0;
-    if (++poll_count <= 10) {
-        printf("[USB Mouse] POLL #%d: btn=%d x=%d y=%d len=%d\n",
-               poll_count, report[0] & 0x07, (int8_t)report[1], (int8_t)report[2], actlen);
-        printf("[USB Mouse]   TD ctrl=0x%x token=0x%x\n",
-               td->ctrl_status, td->token);
+        /* Debug: Print mouse data (first 10 times) */
+        static int poll_count = 0;
+        if (++poll_count <= 10) {
+            printf("[USB Mouse] POLL #%d: btn=%d x=%d y=%d len=%d\n",
+                   poll_count, report[0] & 0x07, (int8_t)report[1], (int8_t)report[2], actlen);
+            printf("[USB Mouse]   TD ctrl=0x%x token=0x%x\n",
+                   td->ctrl_status, td->token);
+        }
+    } else {
+        /* 🔥 短包或零长度包忽略，但需要重新 arm TD */
+        printf("[USB Mouse] Warning: Invalid packet length (%d bytes)\n", actlen);
+        memset(report, 0, 3);
+        actlen = 0; // 标记无有效数据
     }
 
     /* Clear DMA buffer for next transfer */
     memset(mouse_periodic.dma_buffer, 0, 3);
 
     /* Toggle DATA bit for next transfer */
-    if (actlen > 0)
-        mouse_periodic.toggle ^= 1;
-
+    mouse_periodic.toggle ^= 1;
     td->token =
         (td->token & ~(1 << UHCI_TD_TOKEN_DATA_TOGGLE_SHIFT)) |
         (mouse_periodic.toggle << UHCI_TD_TOKEN_DATA_TOGGLE_SHIFT);
 
-    /* Re-arm TD */
+    /* Re-arm TD for next transfer */
     td->ctrl_status =
         UHCI_TD_CTRL_ACT |
         (mouse_periodic.is_low_speed ? UHCI_TD_CTRL_LS : 0) |
-        UHCI_TD_CTRL_IOC | (3 << UHCI_TD_CTRL_CERR_SHIFT);  /* IOC ensures interrupt on completion */
+        UHCI_TD_CTRL_IOC | (3 << UHCI_TD_CTRL_CERR_SHIFT);
 
     /* Memory barrier to ensure TD is written before controller reads it */
     asm volatile("mfence" ::: "memory");

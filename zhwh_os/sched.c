@@ -527,26 +527,11 @@ void schedule(void) {
 void efficient_scheduler_loop() {
     uint8_t cpu = logical_cpu_id();
 
-    // 🔥 调试：定期检查键盘状态
-    extern int keyboard_scancode_available(void);
-    extern uint32_t ticks;
-    static uint32_t last_kbd_check = 0;
-    static int kbd_check_count = 0;
-
     for (;;) {
         /* 主调度循环 */
         schedule();
 
         /* 处理空闲状态 */
         handle_idle_state(cpu);
-
-        // 🔥 每 1000 ticks 检查一次键盘状态
-        if (ticks - last_kbd_check >= 1000) {
-            last_kbd_check = ticks;
-            if (++kbd_check_count % 10 == 0) {  // 每 10 次检查打印一次
-                int available = keyboard_scancode_available();
-                printf("[SCHED] Keyboard check #%d: available=%d\n", kbd_check_count, available);
-            }
-        }
     }
 }

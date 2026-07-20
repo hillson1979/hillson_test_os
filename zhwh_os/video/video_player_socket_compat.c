@@ -132,3 +132,5 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     // 可选实现
     return 0;
 }
+
+// close() 函数已在 libuser.a 中定义，这里不需要重复定义！

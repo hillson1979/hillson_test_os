@@ -226,7 +226,7 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 // - 内核代码/数据占用约1MB (0x100000-0x200000)
 // - 可用空间: 2MB-4MB (0x200000-0x400000)
 static uint32_t early_pt_alloc_addr = 0x200000;  // 从2MB开始
-#define EARLY_PT_ALLOC_END 0x400000  // 到4MB结束(可分配512个页表)
+#define EARLY_PT_ALLOC_END 0x600000  // 到6MB结束(可分配1024个页表)
 
 static uint32_t alloc_early_page_table(void) {
     if (early_pt_alloc_addr >= EARLY_PT_ALLOC_END) {

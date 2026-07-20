@@ -61,9 +61,48 @@
 #define IRQ_SYS_BLOCK   123 // SYS_block=20
 #define IRQ_SPURIOUS    31
 
+struct trapframe {
+  // ⚠️ pusha 压入的通用寄存器在低地址（ESP指向这里）
+  // pusha 压入顺序：EDI, ESI, EBP, ESP(dummy), EBX, EDX, ECX, EAX
+  uint32_t edi;     // offset 0
+  uint32_t esi;     // offset 4
+  uint32_t ebp;     // offset 8
+  uint32_t oesp;    // offset 12 (pusha压入的原始ESP，无用)
+  uint32_t ebx;     // offset 16
+  uint32_t edx;     // offset 20
+  uint32_t ecx;     // offset 24
+  uint32_t eax;     // offset 28
+
+  // ⚠️ alltraps 压入的段寄存器（在pusha之后）
+  // 压栈顺序（trap_entry.S）: DS → ES → FS → GS
+  // 栈向下生长，先压入的在低地址，后压入的在高地址
+  // 实际内存布局：DS=32, ES=36, FS=40, GS=44
+  uint32_t ds;      // offset 32 (alltraps 先压入)
+  uint32_t es;      // offset 36
+  uint32_t fs;      // offset 40
+  uint32_t gs;      // offset 44 (alltraps 最后压入)
+
+  // vectors.S 压入的值 (8字节)
+  // ⚠️ vectors.S 的压栈顺序：
+  //    pushl $0       # errcode (第一条push)
+  //    pushl $128     # trapno (第二条push)
+  //    栈向下生长，所以 trapno 在 offset 48，errcode 在 offset 52
+  uint32_t trapno;   // trap number (vectors.S 后 push, offset 48，低地址)
+  uint32_t err;      // error code (vectors.S 先 push, offset 52，高地址)
+
+  // CPU 硬件压入的值 (12字节)
+  uint32_t eip;      // offset 56
+  uint32_t cs;       // offset 60
+  uint32_t eflags;   // offset 64
+
+  // 仅在特权级改变时压入 (8字节)
+  // ⚠️ 内核态异常时 CPU 不会压入这两项!
+  uint32_t esp;      // 用户态 ESP (offset 68)
+  uint32_t ss;       // 用户态 SS (offset 72)
+} __attribute__((packed));
 
 //  trapframe 定义
-struct trapframe {
+struct trapframe_ {
     // 段寄存器
     uint32_t ds;
     uint32_t es;
@@ -93,11 +132,14 @@ struct trapframe {
 } __attribute__((packed));
 
 struct trapframe_bak {
+    
+    // 段寄存器（和 pushl 顺序一致）
     uint32_t ds;
     uint32_t es;
     uint32_t fs;
     uint32_t gs;
 
+    // pusha 实际在内存中的顺序（低地址 → 高地址）
     uint32_t edi;
     uint32_t esi;
     uint32_t ebp;
@@ -107,15 +149,21 @@ struct trapframe_bak {
     uint32_t ecx;
     uint32_t eax;
 
+
+
+    // vector.S 压入
     uint32_t trapno;
     uint32_t err;
 
+    // CPU 自动压入
     uint32_t eip;
     uint32_t cs;
     uint32_t eflags;
     uint32_t esp;
     uint32_t ss;
-}__attribute__((packed));
+} __attribute__((packed));
+
+
 void
 tvinit(void);
 

@@ -8,6 +8,14 @@
 #include <stdint.h>
 #include "string.h"
 #include "printf.h"
+
+uint8_t g_usb_mouse_ep = 0x81;
+uint8_t g_usb_mouse_maxpkt = 8;
+uint8_t g_usb_mouse_interval = 10;
+uint8_t g_usb_if_proto = 0;  // HID interface protocol
+uint8_t g_usb_eps[4] = {0};   // endpoint addresses found
+int g_usb_ep_count = 0;
+int g_usb_setproto_result = -1;  // SET_PROTOCOL return value
 #include "usb.h"
 #include "usb_hcd.h"
 
@@ -34,6 +42,8 @@ typedef struct usb_device {
 static usb_device_t usb_devices[USB_MAX_DEVICES];
 static int num_usb_devices = 0;
 static uint8_t next_device_addr = 1;
+
+
 
 /**
  * @brief Get USB descriptor string
@@ -166,14 +176,33 @@ int usb_enumerate_device(int controller_id, uint8_t port) {
 
     // Device starts at address 0
     dev->address = 0;
+    extern void ehci_port_reset(int port);
+    ehci_port_reset(port);
+
+    // Init F1 display buffer
+    extern void ehci_display_clear(void);
+    extern void ehci_display_append(const char *s);
+    extern void ehci_display_hex(const uint8_t *data, int len);
+    extern void ehci_display_sprintf(const char *fmt, ...);
+    ehci_display_clear();
+    ehci_display_append("=== UHCI ENUM ===\n");
+    ehci_display_sprintf("ctrl=%d port=%d\n", controller_id, port);
 
     // Read device descriptor (still at address 0)
     if (usb_get_device_descriptor(controller_id, 0, &dev->device_desc) != 0) {
         printf("[USB] ERROR: Failed to read device descriptor\n");
+        ehci_display_append("GET_DEV_DESC FAILED\n");
         return -1;
     }
 
     usb_print_device_descriptor(&dev->device_desc);
+
+    // Write device descriptor to F1 display buffer
+    ehci_display_append("[DEV DESC]\n  DATA: ");
+    ehci_display_hex((uint8_t*)&dev->device_desc, 18);
+    ehci_display_sprintf("\n  idVendor=%04x idProduct=%04x Class=%02x\n",
+        dev->device_desc.idVendor, dev->device_desc.idProduct,
+        dev->device_desc.bDeviceClass);
 
     // Assign unique address
     if (usb_set_address(controller_id, 0, next_device_addr) != 0) {
@@ -205,19 +234,104 @@ int usb_enumerate_device(int controller_id, uint8_t port) {
 
         printf("[USB] Detected HID device\n");
 
+        // Read config descriptor to find real endpoint info
+        uint8_t cfg_buf[64];
+        memset(cfg_buf, 0, 64);
+        {
+            usb_device_request_t req2;
+            req2.bmRequestType = USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE;
+            req2.bRequest = 0x06;  // GET_DESCRIPTOR
+            req2.wValue = (0x02 << 8) | 0;  // CONFIGURATION descriptor, index 0
+            req2.wIndex = 0;
+            req2.wLength = 64;
+            int r2 = usb_control_transfer(controller_id, dev->address, 1, &req2, cfg_buf);
+            ehci_display_sprintf("[CFG DESC] r=%d\n", r2);
+            if (r2 > 0) {
+                ehci_display_append("  DATA: ");
+                ehci_display_hex(cfg_buf, r2 < 64 ? r2 : 64);
+                ehci_display_sprintf("\n  len=%d bNumIf=%d\n", r2, cfg_buf[4]);
+                // Parse endpoint from config descriptor
+                // wTotalLength at offset 2, bNumInterfaces at offset 4
+                // Interface descriptor starts at offset 9 (after config desc = 9 bytes)
+                int pos = 9;  // skip config descriptor header
+                int cfg_len = cfg_buf[2] | (cfg_buf[3] << 8);
+                printf("[USB] Config descriptor: total_len=%d\n", cfg_len);
+                while (pos < cfg_len && pos < 64) {
+                    uint8_t len = cfg_buf[pos];
+                    uint8_t type = cfg_buf[pos + 1];
+                    if (type == 0x04) {  // Interface
+                        uint8_t if_num = cfg_buf[pos + 2];
+                        uint8_t if_class = cfg_buf[pos + 5];
+                        uint8_t if_subclass = cfg_buf[pos + 6];
+                        uint8_t if_protocol = cfg_buf[pos + 7];
+                        g_usb_if_proto = if_protocol;
+                        printf("[USB]   Interface %d: class=0x%x sub=0x%x proto=0x%x\n",
+                               if_num, if_class, if_subclass, if_protocol);
+                        ehci_display_sprintf("  IF%d: class=%x sub=%x proto=%x\n",
+                            if_num, if_class, if_subclass, if_protocol);
+                    } else if (type == 0x05) {  // Endpoint
+                        uint8_t ep_addr = cfg_buf[pos + 2];
+                        uint16_t maxpkt = cfg_buf[pos + 4] | (cfg_buf[pos + 5] << 8);
+                        uint8_t interval = cfg_buf[pos + 6];
+                                        // Store for user-space query
+                        extern uint8_t g_usb_mouse_ep, g_usb_mouse_maxpkt, g_usb_mouse_interval;
+                        g_usb_mouse_ep = ep_addr;
+                        g_usb_mouse_maxpkt = maxpkt & 0xFF;
+                        g_usb_mouse_interval = interval;
+                        printf("[USB] *** MOUSE ENDPOINT: addr=0x%x maxpkt=%d interval=%d ***\n",
+                               ep_addr, maxpkt, interval);
+                        ehci_display_sprintf("  EP: addr=%02x attr=%02x maxpkt=%d interval=%d\n",
+                            ep_addr, cfg_buf[pos+3], maxpkt, interval);
+                    }
+                    pos += len;
+                    if (len == 0) break;
+                }
+            } else {
+                ehci_display_append("  FAILED\n");
+            }
+        }
+
         // Try to initialize as a USB mouse
-        // Standard HID mouse uses: interface=0, endpoint=1, max_packet=8
+        // Standard HID mouse uses: interface=0, endpoint=1 (IN=0x81), max_packet=8
+        // Read HID descriptor to verify endpoint and report length
+        {
+            uint8_t hid_desc[16];
+            memset(hid_desc, 0, 16);
+            usb_device_request_t rhid;
+            rhid.bmRequestType = 0x81;  // IN, Standard, Interface
+            rhid.bRequest = 0x06;       // GET_DESCRIPTOR
+            rhid.wValue = 0x2100;       // HID descriptor
+            rhid.wIndex = 0;            // interface 0
+            rhid.wLength = 9;
+            int rh = usb_control_transfer(controller_id, dev->address, 1, &rhid, hid_desc);
+            ehci_display_sprintf("[HID DESC] r=%d\n", rh);
+            if (rh > 0) {
+                int rpt_len = hid_desc[7] | (hid_desc[8] << 8);
+                printf("[USB] HID Report Descriptor length: %d bytes\n", rpt_len);
+                ehci_display_append("  DATA: ");
+                ehci_display_hex(hid_desc, rh < 9 ? rh : 9);
+                ehci_display_sprintf("\n  rpt_len=%d\n", rpt_len);
+                g_usb_mouse_interval = (uint8_t)(rpt_len & 0xFF);
+            } else {
+                printf("[USB] WARNING: Failed to read HID descriptor (ret=%d)\n", rh);
+                ehci_display_append("  FAILED\n");
+            }
+        }
+
         extern int usb_mouse_init(int controller_id, uint8_t dev_addr,
                                   uint8_t interface, uint8_t endpoint_in,
                                   uint8_t max_packet);
-        int mouse_idx = usb_mouse_init(controller_id, dev->address, 0, 1, 8);
+        int mouse_idx = usb_mouse_init(controller_id, dev->address, 0, g_usb_mouse_ep,g_usb_mouse_maxpkt);
         if (mouse_idx >= 0) {
             printf("[USB] USB mouse initialized (index=%d)\n", mouse_idx);
+            ehci_display_sprintf("MOUSE INIT OK idx=%d\n", mouse_idx);
         } else {
             printf("[USB] Not a USB mouse or initialization failed\n");
+            ehci_display_append("MOUSE INIT FAILED\n");
         }
     }
 
+    ehci_display_append("=== UHCI ENUM DONE ===\n");
     return dev->address;
 }
 
@@ -235,6 +349,16 @@ int usb_init(void) {
     if (usb_hcd_init() != 0) {
         printf("[USB] ERROR: Failed to initialize HCD\n");
         return -1;
+    }
+
+    // EHCI: mouse init → does its own enumeration via periodic schedule
+    extern int g_using_ehci;
+    extern int usb_mouse_init(int, uint8_t, uint8_t, uint8_t, uint8_t);
+    extern uint8_t g_usb_mouse_ep, g_usb_mouse_maxpkt;
+    if (g_using_ehci) {
+        uint8_t ep = g_usb_mouse_ep ? g_usb_mouse_ep : 0x81;
+        uint8_t mx = g_usb_mouse_maxpkt ? g_usb_mouse_maxpkt : 8;
+        usb_mouse_init(0, 1, 0, ep, mx);
     }
 
     // Scan for devices on each controller

@@ -39,6 +39,19 @@ static uint8_t vga_color = 0x0F; // 白字黑底
 static uint32_t vga_row = 0;
 static uint32_t vga_col = 0;
 
+// Kernel log ring buffer
+#define KLOG_SZ 16384
+static char klog[KLOG_SZ];
+static int klog_w = 0;
+void klog_read(char *buf, int max) {
+    int len = klog_w; if (len > max-1) len = max-1;
+    for (int i = 0; i < len; i++) buf[i] = klog[i];
+    buf[len] = 0;
+}
+void klog_clear(void) { klog_w = 0; klog[0] = 0; }
+void *klog_get_buf(void) { return klog; }
+int klog_get_len(void) { return klog_w; }
+
 #define C_BLACK           0
 #define C_BLUE            1
 #define C_GREEN           2
@@ -72,7 +85,10 @@ static void scroll() {
 }
 
 static void update_cursor() {
-  uint16_t loc =vga_row * 80 + vga_col;
+  // 边界保护：防止光标写到非法位置导致消失
+  if (vga_row >= 25) vga_row = 24;
+  if (vga_col >= 80) vga_col = 79;
+  uint16_t loc = vga_row * 80 + vga_col;
 
   outb(0x3D4, 14);
   outb(0x3D5, loc >> 8);
@@ -85,11 +101,15 @@ void vga_init(void) {
     serial_init();
     serial_puts("=== Serial initialized ===\r\n");
 
+    vga_row = 0;
+    vga_col = 0;
+
     for (uint32_t y = 0; y < VGA_HEIGHT; y++) {
         for (uint32_t x = 0; x < VGA_WIDTH; x++) {
             VGA_BUFFER[y * VGA_WIDTH + x] = (vga_color << 8) | ' ';
         }
     }
+    update_cursor();  // 光标复位到(0,0)
 }
 
 void disable_cursor(){
@@ -102,6 +122,9 @@ void vga_setcolor(uint8_t fg, uint8_t bg) {
 }
 
 void vga_putc(char c) {
+    // Capture to kernel log ring buffer
+    if (klog_w < KLOG_SZ - 1) { klog[klog_w++] = c; klog[klog_w] = 0; }
+    else { for(int i=0;i<KLOG_SZ/2;i++)klog[i]=klog[i+KLOG_SZ/2]; klog_w=KLOG_SZ/2; }
     // 输出到串口
     serial_putchar(c);
     if (c == '\n') {

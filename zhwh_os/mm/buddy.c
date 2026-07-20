@@ -23,30 +23,17 @@ int buddy_init_with_memory(uint32_t base_page, uint32_t total_pages,
 
     // 验证参数
     if (max_order > MAX_ORDER || min_order > max_order || total_pages == 0) {
-        printf("buddy_init: invalid parameters\n");
         return -1;
     }
 
-    printf("buddy_init: base_page=%u, total_pages=%u, max_order=%u\n",
-           base_page, total_pages, max_order);
-    printf("buddy_init: kernel_reserved_pages=%u (%u MB)\n",
-           kernel_reserved_pages, (kernel_reserved_pages * 4096) / (1024 * 1024));
-
     // 计算需要的块数量
     uint32_t max_blocks = total_pages + max_order;
-
-    printf("buddy_init: using pre-allocated memory at 0x%x\n", memory_start);
 
     // 使用预分配的内存
     uint8_t* mem_ptr = (uint8_t*)memory_start;
     uint32_t blocks_size = max_blocks * sizeof(buddy_block_t);
     uint32_t freelists_size = (max_order + 1) * sizeof(uint32_t);
     uint32_t nextfree_size = max_blocks * sizeof(uint32_t);
-
-    printf("buddy_init: max_blocks=%u, sizeof(buddy_block_t)=%u\n",
-           max_blocks, sizeof(buddy_block_t));
-    printf("buddy_init: blocks_size=%u, freelists_size=%u, nextfree_size=%u\n",
-           blocks_size, freelists_size, nextfree_size);
 
     buddy_blocks_array = (buddy_block_t*)mem_ptr;
     mem_ptr += blocks_size;
@@ -61,23 +48,10 @@ int buddy_init_with_memory(uint32_t base_page, uint32_t total_pages,
     buddy_sys.free_lists = free_lists_array;
     buddy_sys.next_free = next_free_array;
 
-    printf("buddy_init: buddy_blocks_array=%p\n", buddy_blocks_array);
-    printf("buddy_init: free_lists_array=%p\n", free_lists_array);
-    printf("buddy_init: next_free_array=%p\n", next_free_array);
-
-    printf("buddy_init: skipping write test, proceeding to memset...\n");
-
     // 初始化空闲链表
-    printf("buddy_init: free_lists=%p, size=%u bytes\n",
-           buddy_sys.free_lists, (max_order + 1) * sizeof(uint32_t));
-
     memset(buddy_sys.free_lists, 0xFF, (max_order + 1) * sizeof(uint32_t));
-    printf("buddy_init: memset free_lists done\n");
 
     memset(buddy_sys.next_free, 0xFF, max_blocks * sizeof(uint32_t));
-    printf("buddy_init: memset next_free done\n");
-
-    printf("buddy_init: creating initial free blocks\n");
 
     // 计算实际可用的最大 order
     uint32_t actual_order = max_order;
@@ -90,7 +64,6 @@ int buddy_init_with_memory(uint32_t base_page, uint32_t total_pages,
     }
 
     if (actual_pages == 0) {
-        printf("buddy_init: ERROR - no available pages\n");
         return -1;
     }
 
@@ -112,10 +85,6 @@ int buddy_init_with_memory(uint32_t base_page, uint32_t total_pages,
     buddy_sys.base_page = base_page;
     buddy_sys.total_pages = total_pages;
     buddy_sys.kernel_reserved_pages = kernel_reserved_pages;
-
-    printf("buddy_init: initialized 1 block (order %u = %u pages)\n",
-           actual_order, actual_pages);
-    printf("buddy_init: SUCCESS - buddy system ready\n");
 
     return 0;
 }
