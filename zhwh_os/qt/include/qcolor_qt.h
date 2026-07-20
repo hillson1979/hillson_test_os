@@ -50,14 +50,6 @@ public:
     bool operator==(const QColor &c) const { return m_rgb == c.m_rgb; }
     bool operator!=(const QColor &c) const { return m_rgb != c.m_rgb; }
 
-    // Named constructors
-    static QColor black()   { return QColor(QRgb_Black); }
-    static QColor white()   { return QColor(QRgb_White); }
-    static QColor red()     { return QColor(QRgb_Red); }
-    static QColor green()   { return QColor(QRgb_Green); }
-    static QColor blue()    { return QColor(QRgb_Blue); }
-    static QColor gray()    { return QColor(QRgb_Gray); }
-
 private:
     QRgb m_rgb;
 };
