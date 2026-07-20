@@ -11,6 +11,7 @@
 #include "qtexteditorapp.h"
 #include "qusbmonitor.h"
 #include "qsysinfo.h"
+#include "qterminal.h"
 
 extern "C" {
 #include "libuser_minimal.h"
@@ -48,6 +49,11 @@ static void launchSysInfo(void *userData) {
     createSysInfoApp(g_desktop);
 }
 
+static void launchTerminal(void *userData) {
+    if (!g_desktop) return;
+    createTerminalApp(g_desktop);
+}
+
 extern "C" void usbmon_refresh(void *w);
 extern "C" void sysinfo_refresh(void *w);
 
@@ -75,9 +81,13 @@ int main(void) {
     g_desktop = &desktop;
 
     // Add desktop icons
-    desktop.addIcon(20, 20,  "Editor",  0x004080C0, launchEditor,    nullptr);
-    desktop.addIcon(20, 110, "USB Mon", 0x0040A060, launchUsbMonitor, nullptr);
-    desktop.addIcon(20, 200, "SysInfo", 0x00804040, launchSysInfo,   nullptr);
+    desktop.addIcon(20, 20,  "Term",    0x0040A0A0, launchTerminal,   nullptr);
+    desktop.addIcon(20, 110, "Editor",  0x004080C0, launchEditor,    nullptr);
+    desktop.addIcon(20, 200, "USB Mon", 0x0040A060, launchUsbMonitor, nullptr);
+    desktop.addIcon(20, 290, "SysInfo", 0x00804040, launchSysInfo,   nullptr);
+
+    // Auto-open Terminal as default window
+    createTerminalApp(&desktop);
 
     // Initial render
     desktop.render(&painter);
@@ -87,14 +97,19 @@ int main(void) {
     int lcx = -1, lcy = -1;
     int pp = fb.pitch / 4;
 
-    // XOR cursor drawing helper
+    // XOR cursor drawing helper (big crosshair)
     auto drawCursor = [&](int cx, int cy) {
-        for (int dy = -8; dy <= 8; dy++)
+        for (int dy = -12; dy <= 12; dy++)
             if (cy + dy >= 0 && cy + dy < (int)fb.height)
                 fb_virt[(cy + dy) * pp + cx] ^= 0x00FFFFFF;
-        for (int dx = -8; dx <= 8; dx++)
+        for (int dx = -12; dx <= 12; dx++)
             if (cx + dx >= 0 && cx + dx < (int)fb.width)
                 fb_virt[cy * pp + (cx + dx)] ^= 0x00FFFFFF;
+        // filled center dot
+        for (int dy = -2; dy <= 2; dy++)
+            for (int dx = -2; dx <= 2; dx++)
+                if (cy+dy >= 0 && cy+dy < (int)fb.height && cx+dx >= 0 && cx+dx < (int)fb.width)
+                    fb_virt[(cy+dy)*pp + cx+dx] ^= 0x00FFFF00;
     };
 
     // Initial cursor
@@ -193,6 +208,14 @@ int main(void) {
                     continue;
                 }
 
+                // Check if focused window is terminal (needs raw key events)
+                bool isTerm = false;
+                QDesktopWindow *fw = desktop.focusedWindow();
+                if (fw && fw->content()) {
+                    const char *cn = fw->content()->className();
+                    if (cn[0]=='Q' && cn[1]=='T' && cn[2]=='e' && cn[3]=='r') isTerm = true;
+                }
+
                 // Tab (S1:0x0F, S2:0x0D)
                 if (rawSc == 0x0F || rawSc == 0x0D) {
                     if (desktop.windowCount() > 1) {
@@ -208,36 +231,44 @@ int main(void) {
                     continue;
                 }
 
-                // Arrow keys (S1: 48/50/4B/4D,  S2: 75/72/6B/74)
-                int arrowStep = 20;
-                bool cursorMoved = false;
-                if (rawSc == 0x4B || rawSc == 0x6B) { mx -= arrowStep; cursorMoved = true; } // Left
-                if (rawSc == 0x4D || rawSc == 0x74) { mx += arrowStep; cursorMoved = true; } // Right
-                if (rawSc == 0x48 || rawSc == 0x75) { my -= arrowStep; cursorMoved = true; } // Up
-                if (rawSc == 0x50 || rawSc == 0x72) { my += arrowStep; cursorMoved = true; } // Down
-                if (cursorMoved) {
-                    if (mx < 0) mx = 0; if (my < 0) my = 0;
-                    if (mx >= (int)fb.width) mx = fb.width - 1;
-                    if (my >= (int)fb.height) my = fb.height - 1;
+                // Arrow keys: move cursor (unless terminal focused)
+                if (!isTerm) {
+                    int arrowStep = 40;
+                    bool cursorMoved = false;
+                    if (rawSc == 0x4B || rawSc == 0x6B) { mx -= arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x4D || rawSc == 0x74) { mx += arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x48 || rawSc == 0x75) { my -= arrowStep; cursorMoved = true; }
+                    if (rawSc == 0x50 || rawSc == 0x72) { my += arrowStep; cursorMoved = true; }
+                    if (cursorMoved) {
+                        if (mx < 0) mx = 0; if (my < 0) my = 0;
+                        if (mx >= (int)fb.width) mx = fb.width - 1;
+                        if (my >= (int)fb.height) my = fb.height - 1;
+                        if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
+                            drawCursor(lcx, lcy);
+                        drawCursor(mx, my);
+                        lcx = mx; lcy = my;
+                        if (desktop.isDragging()) {
+                            desktop.updateDrag(mx, my);
+                            needRender = true;
+                        }
+                        continue;
+                    }
+                }
+
+                // Enter / Space: click (unless terminal focused)
+                if (!isTerm && (rawSc == 0x1C || rawSc == 0x5A || rawSc == 0x39 || rawSc == 0x29)) {
                     if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
                         drawCursor(lcx, lcy);
+                    desktop.handleMouse(mx, my, 1, &needRender);
+                    desktop.handleMouse(mx, my, 0, &needRender);
                     drawCursor(mx, my);
                     lcx = mx; lcy = my;
-                    if (desktop.isDragging()) {
-                        desktop.updateDrag(mx, my);
-                        needRender = true;
-                    }
                     continue;
                 }
 
-                // Enter (S1:0x1C, S2:0x5A) / Space (S1:0x39, S2:0x29)
-                if (rawSc == 0x1C || rawSc == 0x5A || rawSc == 0x39 || rawSc == 0x29) {
-                    if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
-                        drawCursor(lcx, lcy);
-                    desktop.handleMouse(mx, my, 1, &needRender);  // press
-                    desktop.handleMouse(mx, my, 0, &needRender);  // release
-                    drawCursor(mx, my);
-                    lcx = mx; lcy = my;
+                // F1 (S1:0x3B, S2:0x05) — toggle debug overlay, force repaint
+                if (rawSc == 0x3B || rawSc == 0x05) {
+                    needRender = true;
                     continue;
                 }
 
@@ -263,8 +294,9 @@ int main(void) {
 
         // Render if needed
         if (needRender) {
-            // Erase cursor before render
-            if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height) {
+            // Only erase cursor if it has moved (avoid flicker on keyboard events)
+            bool cursorMovedRender = (mx != lcx || my != lcy);
+            if (cursorMovedRender && lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height) {
                 drawCursor(lcx, lcy);
             }
             desktop.render(&painter);

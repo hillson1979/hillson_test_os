@@ -5,6 +5,8 @@
 #include "qdesktop.h"
 #include "qpainter.h"
 
+extern "C" void term_keyPress(void *w, int sc, bool sh);
+
 QDesktop::QDesktop(int fbWidth, int fbHeight)
     : QWidget(nullptr, "desktop")
 {
@@ -38,12 +40,20 @@ QDesktopWindow *QDesktop::window(int idx) const {
 QDesktopWindow *QDesktop::addWindow(const char *title, QWidget *content, int w, int h) {
     if (m_numWindows >= MAX_WINDOWS) return nullptr;
 
-    // Cascade windows: offset each new window
-    int cascade = (m_numWindows % 6) * 30;
-    int wx = 100 + cascade;
-    int wy = 60 + cascade;
-    if (wx + w > m_width - 20) wx = 100;
-    if (wy + h > m_height - TASKBAR_H - 20) wy = 60;
+    // Center first window, cascade subsequent ones
+    int wx, wy;
+    if (m_numWindows == 0) {
+        wx = (m_width - w) / 2;
+        wy = (m_height - TASKBAR_H - h) / 2;
+    } else {
+        int cascade = ((m_numWindows - 1) % 6) * 30;
+        wx = 100 + cascade;
+        wy = 60 + cascade;
+    }
+    if (wx + w > m_width - 20) wx = m_width - w - 20;
+    if (wy + h > m_height - TASKBAR_H - 20) wy = m_height - TASKBAR_H - h - 20;
+    if (wx < 0) wx = 0;
+    if (wy < 0) wy = 0;
 
     QDesktopWindow *win = new QDesktopWindow(this, "window", title);
     win->setGeometry(wx, wy, w, h);
@@ -313,10 +323,16 @@ bool QDesktop::handleKey(int scancode, bool shift, bool *needRender) {
     // Forward to focused window's content widget
     if (m_focusedWindow && m_focusedWindow->content()) {
         QWidget *content = m_focusedWindow->content();
-        // QTextEdit has keyPress method
-        extern bool qtextedit_keyPress(void *editor, int sc, bool sh);
-        if (content->className()[0] == 'Q' && content->className()[1] == 'T') {
-            // QTextEdit — use its keyPress
+        const char *cn = content->className();
+        // QTerminal (check before QTextEdit — both start with "QTe")
+        if (cn[0] == 'Q' && cn[1] == 'T' && cn[2] == 'e' && cn[3] == 'r') {
+            term_keyPress(content, scancode, shift);
+            *needRender = true;
+            return true;
+        }
+        // QTextEdit
+        if (cn[0] == 'Q' && cn[1] == 'T' && cn[2] == 'e') {
+            extern bool qtextedit_keyPress(void *editor, int sc, bool sh);
             qtextedit_keyPress(content, scancode, shift);
             *needRender = true;
             return true;

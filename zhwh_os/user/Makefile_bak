@@ -1,0 +1,32 @@
+# 编译器设置
+CC = gcc
+AS = gcc
+
+# 目标架构
+TARGET_ARCH = -m32
+
+# 编译选项
+CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector -fno-pic
+ASFLAGS = $(TARGET_ARCH) -fno-pic
+
+# 目标文件
+TARGETS = gui.o libuser.o
+
+# 默认目标
+all: $(TARGETS)
+
+# 编译 libuser.o
+libuser.o: libuser.c libuser.h
+	$(CC) $(CFLAGS) -c libuser.c -o libuser.o
+	@echo "Built: libuser.o"
+
+# 编译 gui.o
+gui.o: gui.c
+	$(CC) $(CFLAGS) -c gui.c -o gui.o
+	@echo "Built: gui.o"
+
+clean:
+	rm -f *.o $(TARGETS) *~
+	@echo "Cleaned"
+
+.PHONY: all clean

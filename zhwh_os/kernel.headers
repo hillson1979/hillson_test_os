@@ -1,0 +1,35 @@
+
+kernel.bin:     file format elf32-i386
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .init         000000bd  00100000  00100000  00001000  2**3
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .init.bss     00005008  00101000  00101000  00002000  2**0
+                  ALLOC
+  2 .text         0002ccba  c0107000  00107000  00002000  2**3
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  3 .rodata       001124c4  c0134000  00134000  0002f000  2**5
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .data         00096d54  c0247000  00247000  00142000  2**5
+                  CONTENTS, ALLOC, LOAD, DATA
+  5 .got.plt      0000000c  c02ddd54  002ddd54  001d8d54  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  6 modules       00000020  c02ddd60  002ddd60  001d8d60  2**5
+                  CONTENTS, ALLOC, LOAD, DATA
+  7 .bss          001459a8  c02de000  002de000  001d8d80  2**12
+                  ALLOC
+  8 .debug_info   0001e9a4  00000000  00000000  001d8d80  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  9 .debug_abbrev 0000740b  00000000  00000000  001f7724  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 10 .debug_aranges 000006a0  00000000  00000000  001feb2f  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 11 .debug_line   0000f966  00000000  00000000  001ff1cf  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 12 .debug_str    0000688b  00000000  00000000  0020eb35  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 13 .debug_line_str 000005e0  00000000  00000000  002153c0  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 14 .debug_rnglists 000001a1  00000000  00000000  002159a0  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS

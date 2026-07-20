@@ -4,6 +4,7 @@
 
 #include "keyboard.h"
 #include "x86/io.h"
+#include "font8x8.h"
 
 // 声明 printf 函数
 extern int printf(const char*, ...);
@@ -145,13 +146,11 @@ void keyboard_init(void) {
     unsigned char cfg = inb(0x60);
     printf("[KBD] Initial Controller Config: 0x%x\n", cfg);
 
-    // 4. 启用 IRQ1 (设置 bit 0)
-    cfg |= 0x01;
-
-    // 🔥🔥🔥 关键修复：启用键盘时钟（清除 bit 4）
-    // Bit 4 = 1 表示键盘时钟被禁用，需要清除它
-    cfg &= ~(1 << 4);
-    printf("[KBD] Modified Controller Config: 0x%x (enabled IRQ1, enabled keyboard clock)\n", cfg);
+    // 4. 启用 IRQ1 (设置 bit 0), 启用翻译 (bit 6), 启用键盘时钟 (清除 bit 4)
+    cfg |= 0x01;        // Enable IRQ1
+    cfg |= (1 << 6);    // Enable translation (Set2 → Set1)
+    cfg &= ~(1 << 4);   // Enable keyboard clock
+    printf("[KBD] Modified Controller Config: 0x%x (IRQ1, translation, clock enabled)\n", cfg);
 
     // 5. 写回 Config
     kbd_wait_input_clear();
@@ -273,7 +272,6 @@ void keyboard_handler(void) {
 
     // 转换为 ASCII
     char c = scancode_to_ascii(scancode);
-    //printf("---%c ---",c);
 
     // 如果是有效字符，放入缓冲区
     if (c != 0) {

@@ -1,6 +1,15 @@
-[kernel_main] Stack: base=0xC0424000 top=0xC04259A8 size=6 KB
+[kernel_main] Stack: base=0xC0423000 top=0xC0424AA8 size=6 KB
 === Serial initialized ===
 Kernel Booted with Multiboot 2!
+==================== TASK_IFRAME OFFSET CHECK ====================
+[include/task.h]  TASK_IFRAME (OFFSETOF) = 156
+[task_impl.s]     .set TASK_IFRAME, 156
+[interrupt_exit.s].set TASK_TF, 156
+[task_offsets.s]  .set TASK_IFRAME, 156
+================================================================
+OK: All TASK_IFRAME values are consistent (156)
+================================================================
+
 Magic: 0x36D76289
 Info addr: 0x106010
 cpuid is 0 
@@ -21,7 +30,7 @@ Kernel Booted with Multiboot 2!
 mm_init: starting memory management initialization
 mm_init: detected 126 MB physical memory (mem_upper=129912 KB)
 mm_init: initializing physical memory manager...
-pmm_init: kernel_end_phys=0x4239A8
+pmm_init: kernel_end_phys=0x422AA8
 pmm_init: placing buddy system data at 48MB physical (0x3000000)
 pmm_init: buddy system virtual address: 0xC3000000
 pmm_init: buddy system data size: 20 MB at phys=0x3000000-0x4400000
@@ -39,24 +48,9 @@ Kernel Booted with Multiboot 2!
 pmm_init: initializing buddy system...
   base_page=17408, managed_pages=15230, max_order=13
 pmm_init: reserving 512 MB for kernel (pages 17408-148479)
-buddy_init: base_page=17408, total_pages=15230, max_order=13
-buddy_init: kernel_reserved_pages=131072 (512 MB)
-buddy_init: using pre-allocated memory at 0xC3000000
-buddy_init: max_blocks=15243, sizeof(buddy_block_t)=12
-buddy_init: blocks_size=182916, freelists_size=56, nextfree_size=60972
-buddy_init: buddy_blocks_array=?
-buddy_init: free_lists_array=?
-buddy_init: next_free_array=?
-buddy_init: skipping write test, proceeding to memset...
-buddy_init: free_lists=?, size=3271740036 bytes
-buddy_init: memset free_lists done
-buddy_init: memset next_free done
-buddy_init: creating initial free blocks
-buddy_init: initialized 1 block (order 13 = 8192 pages)
-buddy_init: SUCCESS - buddy system ready
 pmm_init: buddy system enabled successfully
 pmm_init: initializing DMA coherent region...
-pmm_init: dma_map_region function pointer = 0xC010FABA
+pmm_init: dma_map_region function pointer = 0xC010FC2A
 pmm_init: about to call dma_map_region()...
 [dma] Mapping DMA region: phys=0x2800000 -> virt=0xC2800000 (size=8 MB)
 Allocating new page table for directory entry 778
@@ -92,36 +86,41 @@ Kernel Booted with Multiboot 2!
 I/O APIC Version: 32
 ===id value is 0===
 ===ioapicid  value is 0===
+[ioapicinit] IRQ 36 (trapno 68) explicitly disabled
 IOAPIC initialized
 Before seginit (early GDT setup)
 After seginit
 Before tss_init
 After tss_init
 Before tvinit
-[tvinit] vectors array address = 0xC0247000
-[tvinit] idt array address = 0xC03E6420
-[tvinit] &vectors[128] = 0xC0247400
+[KERNEL] BEFORE tvinit: vectors[127] = 0xC0107486, vectors[128] = 0xC010748F, vectors[129] = 0xC010749B
 [tvinit] IRQ36 gate: offset=0xC0107297, seg=0x8, type=14, dpl=0, p=1
 [tvinit] System call gate (IDT[128]):
-  vectors[127] = 0xC0107A77
-  vectors[128] = 0x2
-  vectors[129] = 0x0
   offset=0x2, seg=0x8, type=15, dpl=3, present=1
-  vector128 address=0x2
+  vector128 address=0x?
 [tvinit] Trap 13 (GP Fault): offset=0xC01070F9, seg=0x8, type=14, dpl=0, p=1
 [tvinit] Trap 19 (SIMD): offset=0xC0107165, seg=0x8, type=14, dpl=0, p=1
-[tvinit] IRQ 0 (Timer): offset=0xC010724F, seg=0x8, type=0, dpl=0, p=0
+[tvinit] IRQ 0 (Timer): offset=0xC010724F, seg=0x8, type=14, dpl=0, p=1
+[KERNEL] AFTER tvinit: vectors[127] = 0xC0107486, vectors[128] = 0xC010748F, vectors[129] = 0xC010749B
 After tvinit
 segment idt init is ok
-[DEBUG] Current ESP=0xC04258F0, EBP=0xC0425998
+[DEBUG] Current ESP=0xC04249F0, EBP=0xC0424A98
 [FPU] Re-initialized before STI
-Global interrupts ENABLED
+[KBD] Initial Controller Config: 0x71
+[KBD] Modified Controller Config: 0x61 (enabled IRQ1, enabled keyboard clock)
+[KBD] Sent 0xF4 (enable scanning)
+[KBD] Received response: 0xFA (expected 0xFA for ACK)
+[KBD] Testing keyboard communication with echo command...
+[KBD] Echo response: 0xEE (expected 0xEE)
+[KBD] Controller Config: 0x61 (bit 0 should be 1 for IRQ enabled)
 [ioapicenable] Enabling IRQ1 on CPU0
 [ioapicenable] Writing to REG_TABLE+2 (0x12)
 [ioapicenable] Vector = 33 (0x21)
 [ioapicenable] Before: low=0x10021 high=0x0
 [ioapicenable] After: low=0x21 high=0x0
 [ioapicenable] Done!
+[KBD] Skipping long polling test for faster boot
+[KBD] Keyboard initialization complete
 Keyboard driver initialized
 Re-configuring PIC after enabling interrupts...
 PIC mask before keyboard enable: 0xB8
@@ -132,7 +131,7 @@ Kernel Booted with Multiboot 2!
 PIT control after disable: 0x0
 8254 PIT Timer disabled ✅
 Disabling LAPIC Timer (additional safety)...
-LAPIC Timer config: 0x10000
+LAPIC Timer config: 0x20020
 LAPIC Timer after disable: 0x10000
 LAPIC Timer disabled ✅
 Initializing file system...
@@ -140,7 +139,7 @@ Kernel Booted with Multiboot 2!
 [ramfs] Mounting ramfs...
 [ramfs] Allocated inode: ino=1, mode=0x41C0
 [ramfs] Mounted successfully, root_ino=1
-[vfs] Root super block set: sb=0xC02F6160, root_ino=1
+[vfs] Root super block set: sb=0xC02F5160, root_ino=1
 [fs] File system initialized
 [fs] Creating test files...
 [ramfs] create: dir_ino=1, name='test.txt', mode=0x81A4
@@ -403,7 +402,7 @@ Kernel Booted with Multiboot 2!
 [net]   src MAC: 00:00:00:00:00:01 (IP)
 [net]   src IP: 192.168.1.1 -> dst IP: 192.168.1.1
 [net] RX: Broadcast packet
-kfree: freeing 62 bytes (0 pages) at virt=0xC02F6680, phys=0x0
+kfree: freeing 62 bytes (0 pages) at virt=0xC02F5680, phys=0x0
 === Network Test Complete ===
 
 VGA test: wrote TEST to screen at position 10-13
@@ -424,7 +423,7 @@ Kernel Booted with Multiboot 2!
   framebuffer_height (0x18): 0x00000300 -> 768
   framebuffer_bpp (0x1C):    0x20 -> 32
   framebuffer_type (0x1D):   0x01 -> 1
-  reserved (0x1E):            0x0000 -> -1072650703
+  reserved (0x1E):            0x0000 -> -1072650519
 
 Structure field values:
   framebuffer_addr:   0x00000000FD000000
@@ -467,6 +466,7 @@ Kernel Booted with Multiboot 2!
 [init_task] Memory layout: [task at page start] [tf at kstack-76] [kstack at page end]
 [task_load] user task: cr3=NULL (will be set by task_prepare_pde)
 start user task 
+start user task 
 [user_task_main] START: th=0xC0801000
 User task started (task=0xC0801000)
 [user_task_main] Calling task_prepare_pde for th=0xC0801000
@@ -474,78 +474,18 @@ Kernel Booted with Multiboot 2!
 [task_prepare_pde] User task using kernel CR3: 0x101000 (shared with all)
 [task_prepare_pde] task->pde=0x101000 (kernel page directory)
 [task_prepare_pde] Calling load_module_to_user...
-[load_module_to_user] Starting...
-[load_module_to_user] Module: start=0x46A000 end=0x5B074C size=0x14674C cmdline=
-[load_module_to_user] Mapping module: phys=0x46A000 -> virt=0xC046A000 (size=1337164)
-[load_module_to_user] Module mapped successfully
-[load_module_to_user] Raw physical bytes at 0x46A000: 7F 45 4C 46
-[load_module_to_user] ELF header at virtual 0xC046A000
-[load_module_to_user] First 4 bytes: 0x7F 0x45 0x4C 0x46
-[load_module_to_user] ELF file validated!
-[load_module_to_user] e_entry=0x8000000, e_phoff=52, e_phnum=4
-[load_module_to_user] Program Header 0: p_type=0x1
-[load_module_to_user] PT_LOAD: va=0x8000000, file_pa=0x46B000, memsz=0x1445C4, filesz=0x68D24
-[load_module_to_user] Starting page mapping loop...
 [map_page] vaddr=0x8000000 new PT at phys=0x4404000
 [map_page] Set pd_user[32]=0x4404007
 [load_module_to_user] Page mapping loop done.
-[load_module_to_user] Program Header 1: p_type=0x1
-[load_module_to_user] PT_LOAD: va=0x8145000, file_pa=0x46A000, memsz=0x20000, filesz=0x0
-[load_module_to_user] Starting page mapping loop...
-[load_module_to_user] Page mapping loop done.
-[load_module_to_user] Program Header 2: p_type=0x7
-[load_module_to_user] Program Header 3: p_type=0x6474E551
-[load_module_to_user] Set tf->eip = 0x8000000 (from ELF entry)
+[load_module_to_user] Set tf->eip = 0x80001DE (from ELF entry)
 [load_module_to_user] Set segment registers: CS=0x1B, DS/ES/FS/GS/SS=0x23
-[load_module_to_user] Set tf->eflags = 0x200
-[load_module_to_user] Mapping user stack (16 pages)...
-[load_module_to_user] Allocated stack page 0: phys=0x4569000
-[load_module_to_user] Mapping stack page: va=0xBFFFE000 -> pa=0x4569000
-[map_page] vaddr=0xBFFFE000 new PT at phys=0x456A000
-[map_page] Set pd_user[767]=0x456A007
-[load_module_to_user] Allocated stack page 1: phys=0x456B000
-[load_module_to_user] Mapping stack page: va=0xBFFFD000 -> pa=0x456B000
-[load_module_to_user] Allocated stack page 2: phys=0x456C000
-[load_module_to_user] Mapping stack page: va=0xBFFFC000 -> pa=0x456C000
-[load_module_to_user] Allocated stack page 3: phys=0x456D000
-[load_module_to_user] Mapping stack page: va=0xBFFFB000 -> pa=0x456D000
-[load_module_to_user] Allocated stack page 4: phys=0x456E000
-[load_module_to_user] Mapping stack page: va=0xBFFFA000 -> pa=0x456E000
-[load_module_to_user] Allocated stack page 5: phys=0x456F000
-[load_module_to_user] Mapping stack page: va=0xBFFF9000 -> pa=0x456F000
-[load_module_to_user] Allocated stack page 6: phys=0x4570000
-[load_module_to_user] Mapping stack page: va=0xBFFF8000 -> pa=0x4570000
-[load_module_to_user] Allocated stack page 7: phys=0x4571000
-[load_module_to_user] Mapping stack page: va=0xBFFF7000 -> pa=0x4571000
-[load_module_to_user] Allocated stack page 8: phys=0x4572000
-[load_module_to_user] Mapping stack page: va=0xBFFF6000 -> pa=0x4572000
-[load_module_to_user] Allocated stack page 9: phys=0x4573000
-[load_module_to_user] Mapping stack page: va=0xBFFF5000 -> pa=0x4573000
-[load_module_to_user] Allocated stack page 10: phys=0x4574000
-[load_module_to_user] Mapping stack page: va=0xBFFF4000 -> pa=0x4574000
-[load_module_to_user] Allocated stack page 11: phys=0x4575000
-[load_module_to_user] Mapping stack page: va=0xBFFF3000 -> pa=0x4575000
-[load_module_to_user] Allocated stack page 12: phys=0x4576000
-[load_module_to_user] Mapping stack page: va=0xBFFF2000 -> pa=0x4576000
-[load_module_to_user] Allocated stack page 13: phys=0x4577000
-[load_module_to_user] Mapping stack page: va=0xBFFF1000 -> pa=0x4577000
-[load_module_to_user] Allocated stack page 14: phys=0x4578000
-[load_module_to_user] Mapping stack page: va=0xBFFF0000 -> pa=0x4578000
-[load_module_to_user] Allocated stack page 15: phys=0x4579000
-[load_module_to_user] Mapping stack page: va=0xBFFEF000 -> pa=0x4579000
-[load_module_to_user] User stack mapping complete.
-[load_module_to_user] Set task->user_stack = 0xBFFFF000 (virtual address of stack top)
-[load_module_to_user] Set up user stack ABI (Linux standard):
-  argc=0 at [ESP]=0xBFFFEFFC
-  argv[0]=NULL at [ESP+4]=0xBFFFF000
-  Stack protected with 32 NULL dwords (128 bytes) below stack_top
-[load_module_to_user] Trapframe setup:
-  eip=0x8000000, esp=0xBFFFEFFC
-  cs=0x1B, ss=0x23, ds=0x23, eflags=0x200
+[load_module_to_user] Set tf->eflags = 0x202
+[map_page] vaddr=0xBFFFE000 new PT at phys=0x4406000
+[map_page] Set pd_user[767]=0x4406007
 [task_prepare_pde] load_module_to_user returned, checking EIP...
-[task_prepare_pde] task->tf=0xC0801FB4, task->tf->eip=0x8000000
+[task_prepare_pde] task->tf=0xC0801FB4, task->tf->eip=0x80001DE
 [task_prepare_pde] Verifying trapframe:
-  eip=0x8000000, cs=0x1B, eflags=0x200, esp=0xBFFFEFFC
+  eip=0x80001DE, cs=0x1B, eflags=0x202, esp=0xBFFFEFFC
 [task_prepare_pde] User stack already mapped by load_module_to_user (16 pages = 64KB)
 [task_prepare_pde] User stack VA range: 0xBFFEF000 - 0xBFFFF000
 [task_prepare_pde] Keeping tf->esp=0xBFFFEFFC (set by load_module_to_user)
@@ -553,17 +493,11 @@ Kernel Booted with Multiboot 2!
 [user_task_main] Initialization complete, returning to scheduler
 [start_task] DEBUG: pid=1, first_task=0xC0801000, current_task[0]=0xC0801000
 [start_task] Added task pid=1 to chain: prev->pid=1, next->pid=1
-[task_to_user_mode_wrapper] task=0xC0801000, task->tf=0xC0801FB4
-[task_to_user_mode_wrapper] Dumping trapframe at 0xC0801FB4:
-  ds=0x23, es=0x23, fs=0x23, gs=0x23
-  edi=0x0, esi=0x0, ebp=0x0, eax=0x0
-  eip=0x8000000, cs=0x1B, eflags=0x200, esp=0xBFFFEFFC, ss=0x23
-[task_to_user_mode_wrapper] Initializing FPU/SSE...
-[task_to_user_mode_wrapper] FPU/SSE initialized ✅
-[task_to_user_mode_wrapper] CR0=0x80000013, CR4=0x600
+[kernel_main] User task initialized, state=PS_CREATED
+[task_to_user_mode_wrapper] ENTRY: task=0xC0801000, task->tf=0xC0801FB4
 [task_to_user_mode_wrapper] Raw trapframe memory dump (76 bytes):
   [+ 0] 0x23  [+ 4] 0x23  [+ 8] 0x23  [+12] 0x23
   [+16] 0x0  [+20] 0x0  [+24] 0x0  [+28] 0x0
   [+32] 0x0  [+36] 0x0  [+40] 0x0  [+44] 0x0
-  [+48] 0x0  [+52] 0x0  [+56] 0x8000000  [+60] 0x1B
-  [+64] 0x200  [+68] 0xBFFFEFFC  [+72] 0x23
+  [+48] 0x0  [+52] 0x0  [+56] 0x80001DE  [+60] 0x1B
+  [+64] 0x202  [+68] 0xBFFFEFFC  [+72] 0x23

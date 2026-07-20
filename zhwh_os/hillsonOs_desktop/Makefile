@@ -46,7 +46,7 @@ QT_OBJS = $(QT_DIR)/cxx_runtime.o \
           $(QT_DIR)/qtextedit.o
 
 # Desktop own objects
-DESKTOP_OBJS = qdesktop.o qdesktopwindow.o qtexteditorapp.o qusbmonitor.o qsysinfo.o desktop.o
+DESKTOP_OBJS = qdesktop.o qdesktopwindow.o qtexteditorapp.o qusbmonitor.o qsysinfo.o qterminal.o desktop.o
 
 # ============================================================
 #  Target
