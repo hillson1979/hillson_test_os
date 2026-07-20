@@ -15,6 +15,7 @@ cp kernel.bin iso/boot/
 [ -f qt/editor_test.elf ] && cp qt/editor_test.elf iso/boot/
 [ -f text_editor/text_editor.elf ] && cp -f text_editor/text_editor.elf iso/boot/editor_test.elf
 [ -f qt/fb_test.elf ] && cp qt/fb_test.elf iso/boot/
+[ -f qt/qt_embedded_test.elf ] && cp qt/qt_embedded_test.elf iso/boot/
 [ -f hillsonOs_desktop/desktop.elf ] && cp hillsonOs_desktop/desktop.elf iso/boot/
 [ -f test/syscall_test.elf ] && cp test/syscall_test.elf iso/boot/
 [ -f test/simple_keyboard.elf ] && cp test/simple_keyboard.elf iso/boot/
@@ -104,6 +105,12 @@ menuentry "My OS - C++ Signal/Slot Test" {
 menuentry "My OS - C++ Runtime Test" {
     multiboot2 /boot/kernel.bin
     module2 /boot/cpp_test.elf
+    boot
+}
+
+menuentry "Qt/Embedded 3.3.8b Port Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/qt_embedded_test.elf
     boot
 }
 
