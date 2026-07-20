@@ -64,7 +64,9 @@
       "Bash(cmd /c \"cd harness && auto_workflow.bat\":*)",
       "Bash(./build.bat)",
       "WebSearch",
-      "WebFetch(domain:wiki.osdev.org)"
+      "WebFetch(domain:wiki.osdev.org)",
+      "WebFetch(domain:download.qt.io)",
+      "Bash(curl -sk --connect-timeout 10 \"https://download.qt.io/archive/qt/3/\")"
     ],
     "deny": [],
     "ask": []

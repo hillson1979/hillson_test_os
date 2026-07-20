@@ -34,3 +34,5 @@ get_esp
 # Python
 __pycache__/
 *.pyc
+qt-embedded-free-3.3.8b/
+qt-embedded-free-3.3.8b.tar.gz

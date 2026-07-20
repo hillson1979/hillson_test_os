@@ -29,7 +29,7 @@ USER_DIR = ../user
 LVGL_DIR = ../lvgl
 INCLUDE_DIR = ../include
 
-INCLUDES = -I. -I$(USER_DIR) -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/lvgl
+INCLUDES = -I. -I./include -I$(USER_DIR) -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/lvgl
 
 # Shared OS compatibility objects
 LIB_OBJS = $(USER_DIR)/libuser.o \
@@ -39,10 +39,13 @@ LIB_OBJS = $(USER_DIR)/libuser.o \
 # Qt framework core objects
 QT_OBJS = cxx_runtime.o qobject.o qpainter.o qwidget.o
 
+# Qt/Embedded 3.3.8b port objects
+QT_EMBEDDED_OBJS = qscreenhillsonfb_qws.o qkbdhillson_qws.o qmousehillson_qws.o qapplication_qt.o
+
 # ============================================================
 #  Targets
 # ============================================================
-all: cpp_test.elf sigslot_test.elf gui_test.elf editor_test.elf fb_test.elf
+all: cpp_test.elf sigslot_test.elf gui_test.elf editor_test.elf fb_test.elf qt_embedded_test.elf
 
 # --- Basic C++ runtime test ---
 cpp_test.elf: cxx_runtime.o main.o $(LIB_OBJS)
@@ -66,6 +69,11 @@ editor_test.elf: $(QT_OBJS) qtextdocument.o qtextedit.o test_editor.o $(LIB_OBJS
 
 # --- Raw framebuffer test (no Qt, just pixels) ---
 fb_test.elf: cxx_runtime.o test_fb.o $(LIB_OBJS)
+	@echo "[LD]  $@"
+	@$(LD) $(LDFLAGS) -o $@ $^
+
+# --- Qt/Embedded 3.3.8b port test ---
+qt_embedded_test.elf: $(QT_OBJS) $(QT_EMBEDDED_OBJS) test_qt_embedded.o $(LIB_OBJS)
 	@echo "[LD]  $@"
 	@$(LD) $(LDFLAGS) -o $@ $^
 
