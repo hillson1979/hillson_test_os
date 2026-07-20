@@ -95,10 +95,7 @@ int QApplication::exec()
         // Poll keyboard
         if (m_kbd) {
             while (m_kbd->poll()) {
-                // Process key events
-                int unicode  = m_kbd->m_prevUnicode;
-                int keycode  = m_kbd->m_prevKeyCode;
-                int modifiers = m_kbd->m_modifiers;
+                int keycode = m_kbd->lastKeyCode();
 
                 // ESC = quit
                 if (keycode == Qt::Key_Escape) {
@@ -106,8 +103,7 @@ int QApplication::exec()
                     break;
                 }
 
-                // Forward printable chars to focused widget
-                // (For now, simple: deliver to main widget)
+                // Forward to focused widget
                 needRender = true;
             }
         }

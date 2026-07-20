@@ -172,8 +172,8 @@ int main()
         // Poll keyboard
         QHillsonKeyboardHandler *kbd = app.keyboardHandler();
         while (kbd && kbd->poll()) {
-            int kc  = kbd->m_prevKeyCode;
-            int uni = kbd->m_prevUnicode;
+            int kc  = kbd->lastKeyCode();
+            int uni = kbd->lastUnicode();
 
             if (kc == Qt::Key_Escape) return 0;  // quit
 

@@ -28,6 +28,14 @@ public:
     void processKeyEvent(int unicode, int keycode, int modifiers,
                          bool isPress, bool autoRepeat);
 
+    // Accessors for QApplication event loop
+    int  lastUnicode()  const { return m_prevUnicode; }
+    int  lastKeyCode()  const { return m_prevKeyCode; }
+    int  lastModifiers() const { return m_modifiers; }
+    bool isShift() const { return m_shift; }
+    bool isCtrl()  const { return m_ctrl; }
+    bool isAlt()   const { return m_alt; }
+
     // Transform arrow keys for current orientation
     int transformDirKey(int key);
 
