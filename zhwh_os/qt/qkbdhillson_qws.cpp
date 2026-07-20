@@ -181,6 +181,27 @@ void QHillsonKeyboardHandler::doKey(unsigned char code)
     int keyIndex = code & 0x7F;       // Strip release bit
     bool isRelease = (code & 0x80);
 
+    // Dedup: ignore repeated make codes for non-modifier keys
+    // (QEMU typematic can send duplicate make codes before break)
+    static unsigned char s_lastMake = 0;
+    static bool s_lastWasRelease = true;
+    if (!isRelease && keyIndex < 0x60) {
+        bool isModifier = (keyIndex == 0x2A || keyIndex == 0x36  // Shift
+                        || keyIndex == 0x1D                     // Ctrl
+                        || keyIndex == 0x38                     // Alt
+                        || keyIndex == 0x3A);                   // CapsLock
+        if (!isModifier) {
+            if ((unsigned char)keyIndex == s_lastMake && !s_lastWasRelease) {
+                return;  // skip typematic repeat
+            }
+            s_lastMake = (unsigned char)keyIndex;
+            s_lastWasRelease = false;
+        }
+    }
+    if (isRelease) {
+        if (keyIndex == s_lastMake) s_lastWasRelease = true;
+    }
+
     // For extended keys, offset into the extended part of the table
     if (m_extended == 1 && keyIndex < 0x60) {
         // Extended keys: index 0x47=Home, 0x48=Up, 0x49=PGUp, 0x4B=Left,

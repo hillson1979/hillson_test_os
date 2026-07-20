@@ -8,6 +8,7 @@
 #include "qdesktop.h"
 #include "qdesktopwindow.h"
 #include "qpainter.h"
+#include "../qt/include/qnamespace_qt.h"
 
 extern "C" {
 #include "libuser_minimal.h"
@@ -228,6 +229,32 @@ void QTerminal::paintEvent(QPainter *painter) {
 
 // Desktop integration
 extern "C" void term_keyPress(void *w, int sc, bool sh) { ((QTerminal*)w)->keyPress(sc, sh); }
+extern "C" void term_qtKeyPress(void *w, int qtKey, int uni, bool sh) { ((QTerminal*)w)->keyPressQt(qtKey, uni, sh); }
+
+bool QTerminal::keyPressQt(int qtKey, int uni, bool /*sh*/) {
+    // Enter
+    if (qtKey == Qt::Key_Return || qtKey == Qt::Key_Enter) {
+        m_cmdBuf[m_cmdLen] = 0;
+        if (m_cmdLen > 0) executeCommand(m_cmdBuf);
+        else { appendOutput("\n"); appendPrompt(); }
+        return true;
+    }
+    // Backspace
+    if (qtKey == Qt::Key_Backspace) {
+        if (m_cmdLen > 0) { m_cmdLen--; m_bufLen--; m_buf[m_bufLen]=0; }
+        return true;
+    }
+    // Printable characters
+    if (uni >= 32 && uni <= 126) {
+        if (m_cmdLen < 250) {
+            m_cmdBuf[m_cmdLen++] = (char)uni;
+            char tmp[2] = {(char)uni, 0};
+            appendOutput(tmp);
+        }
+        return true;
+    }
+    return false;
+}
 
 QDesktopWindow *createTerminalApp(QDesktop *desktop) {
     int ww = 700, wh = 420;

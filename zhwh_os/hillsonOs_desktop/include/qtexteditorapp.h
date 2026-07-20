@@ -13,5 +13,6 @@ QDesktopWindow *createTextEditorApp(QDesktop *desktop);
 
 // Helper: keyPress for QTextEdit (called from qdesktop.cpp)
 bool qtextedit_keyPress(void *editor, int scancode, bool shift);
+bool qtextedit_qtKeyPress(void *editor, int qtKey, int uni, bool shift);
 
 #endif // QTEXTEDITORAPP_H

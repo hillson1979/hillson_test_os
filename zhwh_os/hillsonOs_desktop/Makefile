@@ -30,7 +30,7 @@ USER_DIR = ../user
 LVGL_DIR = ../lvgl
 INC_DIR  = ../include
 
-INCLUDES = -I./include -I. -I$(QT_DIR) -I$(USER_DIR) -I$(INC_DIR) -I$(INC_DIR)/lvgl
+INCLUDES = -I./include -I. -I$(QT_DIR) -I$(QT_DIR)/include -I$(USER_DIR) -I$(INC_DIR) -I$(INC_DIR)/lvgl
 
 # Shared OS compatibility objects
 LIB_OBJS = $(USER_DIR)/libuser.o \
@@ -43,7 +43,8 @@ QT_OBJS = $(QT_DIR)/cxx_runtime.o \
           $(QT_DIR)/qpainter.o \
           $(QT_DIR)/qwidget.o \
           $(QT_DIR)/qtextdocument.o \
-          $(QT_DIR)/qtextedit.o
+          $(QT_DIR)/qtextedit.o \
+          $(QT_DIR)/qkbdhillson_qws.o
 
 # Desktop own objects
 DESKTOP_OBJS = qdesktop.o qdesktopwindow.o qtexteditorapp.o qusbmonitor.o qsysinfo.o qterminal.o desktop.o

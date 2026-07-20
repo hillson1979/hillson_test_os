@@ -6,6 +6,7 @@
 #include "qpainter.h"
 
 extern "C" void term_keyPress(void *w, int sc, bool sh);
+extern "C" void term_qtKeyPress(void *w, int qtKey, int uni, bool sh);
 
 QDesktop::QDesktop(int fbWidth, int fbHeight)
     : QWidget(nullptr, "desktop")
@@ -309,31 +310,26 @@ bool QDesktop::handleMouse(int mx, int my, int buttons, bool *needRender) {
 }
 
 bool QDesktop::handleKey(int scancode, bool shift, bool *needRender) {
-    // ESC = close focused window
-    if (scancode == 0x01) {
-        if (m_focusedWindow) {
-            QDesktopWindow *w = m_focusedWindow;
-            removeWindow(w);
-            delete w;
-            *needRender = true;
-        }
-        return true;
-    }
+    // Legacy wrapper — new code should use handleQtKey
+    (void)scancode; (void)shift; (void)needRender;
+    return false;
+}
 
+bool QDesktop::handleQtKey(int qtKey, int unicode, bool shift, bool *needRender) {
     // Forward to focused window's content widget
     if (m_focusedWindow && m_focusedWindow->content()) {
         QWidget *content = m_focusedWindow->content();
         const char *cn = content->className();
         // QTerminal (check before QTextEdit — both start with "QTe")
         if (cn[0] == 'Q' && cn[1] == 'T' && cn[2] == 'e' && cn[3] == 'r') {
-            term_keyPress(content, scancode, shift);
+            term_qtKeyPress(content, qtKey, unicode, shift);
             *needRender = true;
             return true;
         }
         // QTextEdit
         if (cn[0] == 'Q' && cn[1] == 'T' && cn[2] == 'e') {
-            extern bool qtextedit_keyPress(void *editor, int sc, bool sh);
-            qtextedit_keyPress(content, scancode, shift);
+            extern bool qtextedit_qtKeyPress(void *editor, int qtKey, int uni, bool sh);
+            qtextedit_qtKeyPress(content, qtKey, unicode, shift);
             *needRender = true;
             return true;
         }

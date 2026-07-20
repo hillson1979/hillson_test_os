@@ -21,6 +21,7 @@ public:
     const char *className() const override { return "QTerminal"; }
 
     bool keyPress(int scancode, bool shift);
+    bool keyPressQt(int qtKey, int unicode, bool shift);
     void scrollUp();
     void scrollDown();
 

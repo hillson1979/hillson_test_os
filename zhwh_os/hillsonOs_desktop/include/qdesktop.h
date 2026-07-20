@@ -45,6 +45,7 @@ public:
     void updateDrag(int mx, int my);
     bool isDragging() const { return m_dragging; }
     bool handleKey(int scancode, bool shift, bool *needRender);
+    bool handleQtKey(int qtKey, int unicode, bool shift, bool *needRender);
 
     // Show desktop (minimize all / restore all)
     void toggleShowDesktop();

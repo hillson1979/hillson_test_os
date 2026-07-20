@@ -12,6 +12,8 @@
 #include "qusbmonitor.h"
 #include "qsysinfo.h"
 #include "qterminal.h"
+#include "include/qkbdhillson_qws.h"
+#include "include/qnamespace_qt.h"
 
 extern "C" {
 #include "libuser_minimal.h"
@@ -30,6 +32,9 @@ static int read_input(input_event_t *ev, int type) {
 static void yield_cpu() {
     __asm__ volatile("int $0x80"::"a"(SYS_YIELD):"memory","cc");
 }
+
+// Qt keyboard handler — replaces manual scancode parsing
+static QHillsonKeyboardHandler g_kbd;
 
 // Icon click callbacks
 static QDesktop *g_desktop = nullptr;
@@ -116,10 +121,6 @@ int main(void) {
     drawCursor(mx, my);
     lcx = mx; lcy = my;
 
-    // Keyboard state
-    bool shift = false;
-    bool e0prefix = false;
-
     // Main event loop
     while (1) {
         yield_cpu();
@@ -156,39 +157,19 @@ int main(void) {
             lcx = mx; lcy = my;
         }
 
-        // Read keyboard
-        input_event_t ke;
-        int kr = read_input(&ke, 1);
-        if (kr == 1) {
-            int sc = ke.x;
-            // Handle E0 prefix
-            if (sc == 0xE0) {
-                e0prefix = true;
-                continue;
-            }
-            if (e0prefix) {
-                sc |= 0xE000;
-                e0prefix = false;
-            }
+        // Read keyboard via Qt/Embedded handler
+        while (g_kbd.poll()) {
+            int qtKey  = g_kbd.lastKeyCode();
+            int uni    = g_kbd.lastUnicode();
+            bool isShift = g_kbd.isShift();
+            bool isCtrl  = g_kbd.isCtrl();
+            bool isAlt   = g_kbd.isAlt();
+            g_lastScancode = qtKey;  // show Qt key in debug
 
-            // Track shift state (Set1 only: translation enabled in keyboard controller)
-            if (sc == 0x2A || sc == 0x36) shift = true;   // Set1 LShift/RShift make
-            if (sc == 0xAA || sc == 0xB6) shift = false;  // Set1 LShift/RShift break
-
-            // Handle key press (not release)
-            // With controller translation enabled, release codes have bit 7 set (Set1 style)
-            if (!(sc & 0x80)) {
-                // Show scancode for debugging
-                g_lastScancode = sc;
-
-                // Strip E0 prefix for raw key identification
-                int rawSc = (sc & 0x7F);
-                if (sc & 0xE000) rawSc = sc & 0xFF; // extended key, use low byte
-
-                // ===== Global shortcuts (Set1 only: keyboard translation enabled) =====
-                // ESC (0x01)
-                if (rawSc == 0x01) {
-                    if (desktop.windowCount() == 0) break;
+            // ===== Global shortcuts =====
+            // ESC — close focused window
+            if (qtKey == Qt::Key_Escape) {
+                if (desktop.windowCount() > 0) {
                     QDesktopWindow *fw = desktop.focusedWindow();
                     if (fw) {
                         if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
@@ -199,91 +180,91 @@ int main(void) {
                         drawCursor(mx, my);
                         lcx = mx; lcy = my;
                     }
-                    continue;
                 }
+                continue;
+            }
 
-                // Check if focused window is terminal (needs raw key events)
-                bool isTerm = false;
-                QDesktopWindow *fw = desktop.focusedWindow();
-                if (fw && fw->content()) {
-                    const char *cn = fw->content()->className();
-                    if (cn[0]=='Q' && cn[1]=='T' && cn[2]=='e' && cn[3]=='r') isTerm = true;
-                }
+            // Check if focused window is terminal
+            bool isTerm = false;
+            QDesktopWindow *fw = desktop.focusedWindow();
+            if (fw && fw->content()) {
+                const char *cn = fw->content()->className();
+                if (cn[0]=='Q' && cn[1]=='T' && cn[2]=='e' && cn[3]=='r') isTerm = true;
+            }
 
-                // Tab (0x0F)
-                if (rawSc == 0x0F) {
-                    if (desktop.windowCount() > 1) {
-                        QDesktopWindow *cur = desktop.focusedWindow();
-                        int ci = -1;
-                        for (int i = 0; i < desktop.windowCount(); i++) {
-                            if (desktop.window(i) == cur) { ci = i; break; }
-                        }
-                        int ni = (ci + 1) % desktop.windowCount();
-                        desktop.focusWindow(desktop.window(ni));
-                        needRender = true;
+            // Tab — switch window
+            if (qtKey == Qt::Key_Tab) {
+                if (desktop.windowCount() > 1) {
+                    QDesktopWindow *cur = desktop.focusedWindow();
+                    int ci = -1;
+                    for (int i = 0; i < desktop.windowCount(); i++) {
+                        if (desktop.window(i) == cur) { ci = i; break; }
                     }
-                    continue;
+                    int ni = (ci + 1) % desktop.windowCount();
+                    desktop.focusWindow(desktop.window(ni));
+                    needRender = true;
                 }
+                continue;
+            }
 
-                // Arrow keys: move cursor (unless terminal focused)
-                if (!isTerm) {
-                    int arrowStep = 40;
-                    bool cursorMoved = false;
-                    if (rawSc == 0x4B) { mx -= arrowStep; cursorMoved = true; }
-                    if (rawSc == 0x4D) { mx += arrowStep; cursorMoved = true; }
-                    if (rawSc == 0x48) { my -= arrowStep; cursorMoved = true; }
-                    if (rawSc == 0x50) { my += arrowStep; cursorMoved = true; }
-                    if (cursorMoved) {
-                        if (mx < 0) mx = 0; if (my < 0) my = 0;
-                        if (mx >= (int)fb.width) mx = fb.width - 1;
-                        if (my >= (int)fb.height) my = fb.height - 1;
-                        if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
-                            drawCursor(lcx, lcy);
-                        drawCursor(mx, my);
-                        lcx = mx; lcy = my;
-                        if (desktop.isDragging()) {
-                            desktop.updateDrag(mx, my);
-                            needRender = true;
-                        }
-                        continue;
-                    }
-                }
-
-                // Enter / Space: click (unless terminal focused)
-                if (!isTerm && (rawSc == 0x1C || rawSc == 0x5A || rawSc == 0x39)) {
+            // Arrow keys — move cursor (unless terminal focused)
+            if (!isTerm) {
+                int arrowStep = 40;
+                bool cursorMoved = false;
+                if (qtKey == Qt::Key_Left)  { mx -= arrowStep; cursorMoved = true; }
+                if (qtKey == Qt::Key_Right) { mx += arrowStep; cursorMoved = true; }
+                if (qtKey == Qt::Key_Up)    { my -= arrowStep; cursorMoved = true; }
+                if (qtKey == Qt::Key_Down)  { my += arrowStep; cursorMoved = true; }
+                if (cursorMoved) {
+                    if (mx < 0) mx = 0; if (my < 0) my = 0;
+                    if (mx >= (int)fb.width) mx = fb.width - 1;
+                    if (my >= (int)fb.height) my = fb.height - 1;
                     if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
                         drawCursor(lcx, lcy);
-                    desktop.handleMouse(mx, my, 1, &needRender);
-                    desktop.handleMouse(mx, my, 0, &needRender);
                     drawCursor(mx, my);
                     lcx = mx; lcy = my;
-                    continue;
-                }
-
-                // F1 (0x3B) — toggle debug overlay, force repaint
-                if (rawSc == 0x3B) {
-                    needRender = true;
-                    continue;
-                }
-
-                // F5 (0x3F)
-                if (rawSc == 0x3F) {
-                    QDesktopWindow *fw = desktop.focusedWindow();
-                    if (fw && fw->content()) {
-                        const char *cn = fw->content()->className();
-                        // QUsbMonitor or QSysInfo — call refresh
-                        if (cn[0] == 'Q' && cn[1] == 'U') // QUsbMonitor
-                            { usbmon_refresh(fw->content()); }
-                        if (cn[0] == 'Q' && cn[1] == 'S') // QSysInfo
-                            { sysinfo_refresh(fw->content()); }
+                    if (desktop.isDragging()) {
+                        desktop.updateDrag(mx, my);
                         needRender = true;
                     }
                     continue;
                 }
-
-                // Forward to focused window for text input
-                desktop.handleKey(sc, shift, &needRender);
             }
+
+            // Enter / Space — click (unless terminal focused)
+            if (!isTerm && (qtKey == Qt::Key_Return || qtKey == Qt::Key_Enter || qtKey == Qt::Key_Space)) {
+                if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
+                    drawCursor(lcx, lcy);
+                desktop.handleMouse(mx, my, 1, &needRender);
+                desktop.handleMouse(mx, my, 0, &needRender);
+                drawCursor(mx, my);
+                lcx = mx; lcy = my;
+                continue;
+            }
+
+            // F1 — force repaint
+            if (qtKey == Qt::Key_F1) {
+                needRender = true;
+                continue;
+            }
+
+            // F5 — refresh
+            if (qtKey == Qt::Key_F5) {
+                QDesktopWindow *fww = desktop.focusedWindow();
+                if (fww && fww->content()) {
+                    const char *cnn = fww->content()->className();
+                    if (cnn[0] == 'Q' && cnn[1] == 'U')
+                        { usbmon_refresh(fww->content()); }
+                    if (cnn[0] == 'Q' && cnn[1] == 'S')
+                        { sysinfo_refresh(fww->content()); }
+                    needRender = true;
+                }
+                continue;
+            }
+
+            // Forward to focused window for text input
+            // Pass Qt key code + Unicode char to the widget
+            desktop.handleQtKey(qtKey, uni, isShift, &needRender);
         }
 
         // Render if needed
