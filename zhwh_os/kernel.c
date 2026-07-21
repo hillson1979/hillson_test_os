@@ -18,6 +18,7 @@
 #include "sched.h"
 #include "x86/io.h"
 #include "net/wifi/atheros.h"
+#include "fs.h"
 
 // Forward declarations for task types
 typedef struct {
@@ -349,6 +350,84 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // Save klog to ramfs so editor can open /kern.log
         extern void klog_save_to_ramfs(void);
         klog_save_to_ramfs();
+
+        // ---- 将 multiboot 模块导入 ramfs ----
+        // 遍历所有模块标签, 将 cmdline 作为路径, 模块数据作为文件内容
+        {
+            extern uint32_t multiboot2_info_addr;
+            extern void *map_highmem_physical(uint32_t, uint32_t, uint32_t);
+            extern struct inode *ramfs_alloc_inode(struct super_block*, int);
+            extern struct dentry *d_alloc(struct inode*, const char*);
+            extern void d_add(struct dentry*, struct inode*);
+            extern void *kmalloc(unsigned int);
+            extern void kfree(void*);
+            extern void *memcpy(void*, const void*, unsigned int);
+
+            if (multiboot2_info_addr) {
+                uint32_t *mb_ptr = (uint32_t*)phys_to_virt(multiboot2_info_addr);
+                multiboot_tag_t *tag = (multiboot_tag_t*)((uint8_t*)mb_ptr + 8);
+
+                while (tag->type != MULTIBOOT_TAG_TYPE_END) {
+                    if (tag->type == MULTIBOOT_TAG_TYPE_MODULE) {
+                        multiboot_tag_module_t *mod = (multiboot_tag_module_t*)tag;
+                        // cmdline 紧跟在模块头部结构之后
+                        char *cmdline = (char*)mod + sizeof(multiboot_tag_module_t);
+
+                        if (cmdline && cmdline[0]) {
+                            uint32_t mod_size = mod->mod_end - mod->mod_start;
+                            printf("[ramfs] Importing module: '%s' (%u bytes)\n",
+                                   cmdline, mod_size);
+
+                            // 提取文件名（跳过目录部分）
+                            char *fname = cmdline;
+                            for (char *p = cmdline; *p; p++) {
+                                if (*p == '/') fname = p + 1;
+                            }
+                            // 截断到空格/参数之前
+                            char shortname[64];
+                            int si = 0;
+                            for (char *p = fname; *p && *p != ' ' && si < 62; p++)
+                                shortname[si++] = *p;
+                            shortname[si] = 0;
+
+                            if (si > 0) {
+                                // 确保 /boot 目录存在
+                                struct inode *root = path_lookup("/");
+                                struct inode *boot_dir = path_lookup("/boot");
+                                if (!boot_dir && root) {
+                                    extern int ramfs_mkdir(struct inode*, const char*, int);
+                                    ramfs_mkdir(root, "boot", 0755);
+                                    boot_dir = path_lookup("/boot");
+                                }
+
+                                if (boot_dir) {
+                                    struct dentry *de;
+                                    extern int ramfs_create(struct inode*, const char*, int, struct dentry**);
+                                    if (ramfs_create(boot_dir, shortname, 0644|S_IFREG, &de) == 0 && de) {
+                                        // 将模块数据映射并拷贝到 ramfs
+                                        void *dbuf = kmalloc(mod_size);
+                                        if (dbuf) {
+                                            uint32_t mod_virt = (uint32_t)phys_to_virt(mod->mod_start);
+                                            for (uint32_t off = 0; off < mod_size; off += 4096) {
+                                                map_highmem_physical(mod->mod_start + off, 4096, 0x3);
+                                            }
+                                            memcpy(dbuf, (void*)mod_virt, mod_size);
+                                            de->d_inode->i_data = dbuf;
+                                            de->d_inode->i_size = mod_size;
+                                            printf("[ramfs] Imported /boot/%s (%u bytes)\n", shortname, mod_size);
+                                        }
+                                    } else {
+                                        printf("[ramfs] Failed to create /boot/%s\n", shortname);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    tag = (multiboot_tag_t*)((uint8_t*)tag + ((tag->size + 7) & ~7));
+                }
+            }
+            printf("[ramfs] Module import done\n");
+        }
 
         // PS/2 touchpad hangs on some systems — disabled
         // extern int ps2mouse_init(void); ps2mouse_init();

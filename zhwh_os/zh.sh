@@ -34,6 +34,7 @@ terminal_output gfxterm
 menuentry "HillsonOS Desktop" {
     multiboot2 /boot/kernel.bin
     module2 /boot/desktop.elf
+    module2 /boot/jvm.elf
     boot
 }
 

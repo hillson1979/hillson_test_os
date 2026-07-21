@@ -11,6 +11,7 @@
 #include "font8x8.h"
 #include "pci.h"
 #include "x86/io.h"  // 🔥 添加：引入 outl/inl 函数
+#include "elf.h"
 
 // PCI 配置空间 I/O 端口
 #define CONFIG_ADDRESS 0xCF8
@@ -1103,20 +1104,242 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_EXECV: {
-            // execv(path, argv) - 
-            //  execv 
-            // 
+            // execv(path, argv) — 运行时 ELF 加载器
+            // 1. 从 VFS 读 ELF 文件
+            // 2. 释放旧用户页
+            // 3. 映射新 ELF 段 + 栈
+            // 4. 设置 trapframe 跳转到新程序入口
             const char *path = (const char *)arg1;
             char *const *argv = (char *const *)arg2;
 
-            // 
-            // 
-            // 1.  ELF 
-            // 2. 
-            // 3. 
-            // 4.  trapframe 
+            printf("[execv] path=0x%x, argv=0x%x\n", (uint32_t)path, (uint32_t)argv);
 
-            tf->eax = -1;  //
+            // ---- 1. 从用户空间拷贝路径 ----
+            char kpath[256];
+            uint32_t str_virt = (uint32_t)path;
+            if (str_virt >= 0xC0000000) {
+                // 内核地址, 直接拷贝
+                int i = 0;
+                while (i < 255 && path[i]) { kpath[i] = path[i]; i++; }
+                kpath[i] = '\0';
+            } else {
+                // 用户空间地址, 走页表
+                extern uint32_t kernel_page_directory_phys;
+                uint32_t *pd_virt = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
+                uint32_t pd_idx = (str_virt >> 22) & 0x3FF;
+                uint32_t pt_idx = (str_virt >> 12) & 0x3FF;
+                uint32_t page_offset = str_virt & 0xFFF;
+                uint32_t pde_entry = pd_virt[pd_idx];
+
+                if (!(pde_entry & 0x1)) { tf->eax = -1; break; }
+                uint32_t pt_phys = pde_entry & ~0xFFF;
+                extern void* map_highmem_physical(uint32_t phys_addr, uint32_t size, uint32_t flags);
+                uint32_t *pt_virt = (uint32_t*)map_highmem_physical(pt_phys, 4096, 0);
+                if (!pt_virt) { tf->eax = -1; break; }
+                uint32_t pte = pt_virt[pt_idx];
+                if (!(pte & 0x1)) { tf->eax = -1; break; }
+                uint32_t phys_page = pte & ~0xFFF;
+                uint8_t *user_page = (uint8_t*)map_highmem_physical(phys_page, 4096, 0);
+                if (!user_page) { tf->eax = -1; break; }
+                int i;
+                for (i = 0; i < 255; i++) {
+                    kpath[i] = user_page[page_offset + i];
+                    if (kpath[i] == '\0') break;
+                }
+                kpath[i] = '\0';
+            }
+            printf("[execv] path='%s'\n", kpath);
+
+            // ---- 2. 打开 ELF 文件 ----
+            extern struct file *filp_open(const char *name, int flags);
+            struct file *fp = filp_open(kpath, 0); // O_RDONLY
+            if (!fp) {
+                printf("[execv] ERROR: Cannot open '%s'\n", kpath);
+                tf->eax = -1; break;
+            }
+            printf("[execv] File opened, inode=%d\n", fp->f_inode->i_ino);
+
+            // ---- 3. 确定文件大小 ----
+            extern int filp_lseek(struct file*, int64_t, int);
+            extern int filp_read(struct file*, char*, uint32_t);
+            uint32_t file_size = (uint32_t)filp_lseek(fp, 0, 2); // SEEK_END
+            filp_lseek(fp, 0, 0); // SEEK_SET
+            printf("[execv] File size=%u bytes\n", file_size);
+
+            if (file_size < 52 || file_size > 16*1024*1024) {
+                printf("[execv] ERROR: Bad file size\n");
+                extern int filp_close(struct file*);
+                filp_close(fp);
+                tf->eax = -1; break;
+            }
+
+            // ---- 4. 分配内核缓冲区并读取整个 ELF ----
+            extern void *kmalloc(unsigned int);
+            uint8_t *elf_buf = (uint8_t*)kmalloc(file_size);
+            if (!elf_buf) {
+                printf("[execv] ERROR: kmalloc(%u) failed\n", file_size);
+                extern int filp_close(struct file*);
+                filp_close(fp);
+                tf->eax = -1; break;
+            }
+            int total_read = 0;
+            while (total_read < (int)file_size) {
+                int n = filp_read(fp, (char*)elf_buf + total_read,
+                                  file_size - total_read);
+                if (n <= 0) break;
+                total_read += n;
+            }
+            extern int filp_close(struct file*);
+            filp_close(fp);
+            printf("[execv] Read %d bytes into buffer\n", total_read);
+
+            if (total_read < 52) {
+                printf("[execv] ERROR: Read too few bytes\n");
+                extern void kfree(void*);
+                kfree(elf_buf);
+                tf->eax = -1; break;
+            }
+
+            // ---- 5. 验证 ELF ----
+            Elf32_Ehdr *eh = (Elf32_Ehdr *)elf_buf;
+            if (eh->e_ident[0] != 0x7F || eh->e_ident[1] != 'E' ||
+                eh->e_ident[2] != 'L' || eh->e_ident[3] != 'F') {
+                printf("[execv] ERROR: Not a valid ELF\n");
+                extern void kfree(void*);
+                kfree(elf_buf);
+                tf->eax = -1; break;
+            }
+            printf("[execv] ELF entry=0x%x, phoff=%u, phnum=%u\n",
+                   eh->e_entry, eh->e_phoff, eh->e_phnum);
+
+            // ---- 6. 释放旧用户页 (PDE 0-767, 用户空间 0-3GB) ----
+            {
+                extern uint32_t kernel_page_directory_phys;
+                uint32_t *pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
+                for (int pde = 0; pde < 768; pde++) {
+                    if (pd[pde] & 0x1) {
+                        uint32_t pt_phys = pd[pde] & ~0xFFF;
+                        uint32_t *pt = (uint32_t*)phys_to_virt(pt_phys);
+                        for (int pte = 0; pte < 1024; pte++) {
+                            if (pt[pte] & 0x1) {
+                                uint32_t pg = pt[pte] & ~0xFFF;
+                                extern void pmm_free_page(uint32_t);
+                                pmm_free_page(pg);
+                            }
+                        }
+                        extern void pmm_free_page(uint32_t);
+                        pmm_free_page(pt_phys);
+                        pd[pde] = 0;
+                    }
+                }
+                // 刷新 TLB
+                __asm__ volatile("movl %%cr3, %%eax; movl %%eax, %%cr3" ::: "eax", "memory");
+                printf("[execv] Old user pages freed\n");
+            }
+
+            // ---- 7. 加载 PT_LOAD 段 ----
+            {
+                extern uint32_t pmm_alloc_page(void);
+                extern uint32_t kernel_page_directory_phys;
+                Elf32_Phdr *ph = (Elf32_Phdr *)(elf_buf + eh->e_phoff);
+                for (int i = 0; i < eh->e_phnum; i++, ph++) {
+                    if (ph->p_type != 1) continue; // PT_LOAD=1
+                    uint32_t va = ph->p_vaddr;
+                    uint32_t memsz = ph->p_memsz;
+                    uint32_t filesz = ph->p_filesz;
+                    uint32_t file_off = ph->p_offset;
+
+                    printf("[execv] PT_LOAD: va=0x%x memsz=0x%x filesz=0x%x off=0x%x\n",
+                           va, memsz, filesz, file_off);
+
+                    for (uint32_t off = 0; off < memsz; off += 4096) {
+                        uint32_t dst_va = va + off;
+                        uint32_t dst_pa = pmm_alloc_page();
+                        if (!dst_pa) {
+                            printf("[execv] ERROR: Out of memory\n");
+                            extern void kfree(void*);
+                            kfree(elf_buf);
+                            tf->eax = -1; goto execv_done;
+                        }
+
+                        // 清零
+                        uint8_t *dst_virt = (dst_pa >= 0x800000) ?
+                            (uint8_t*)map_highmem_physical(dst_pa, 4096, 0x3) :
+                            (uint8_t*)phys_to_virt(dst_pa);
+                        extern void *memset(void*, int, unsigned int);
+                        memset(dst_virt, 0, 4096);
+
+                        // 拷贝文件数据
+                        if (off < filesz) {
+                            uint32_t copy_sz = 4096;
+                            if (off + copy_sz > filesz) copy_sz = filesz - off;
+                            extern void *memcpy(void*, const void*, unsigned int);
+                            memcpy(dst_virt, elf_buf + file_off + off, copy_sz);
+                        }
+
+                        // 映射到用户空间
+                        extern void map_page(uint32_t, uint32_t, uint32_t, uint32_t);
+                        map_page(kernel_page_directory_phys, dst_va, dst_pa,
+                                 0x007); // P|W|U
+                    }
+                }
+                printf("[execv] ELF segments loaded\n");
+            }
+
+            // ---- 8. 映射用户栈 ----
+            {
+                extern uint32_t pmm_alloc_page(void);
+                extern uint32_t kernel_page_directory_phys;
+                #define EXECV_STACK_PAGES 128
+                #define EXECV_STACK_TOP   0xBFFFF000
+                for (int i = 0; i < EXECV_STACK_PAGES; i++) {
+                    uint32_t sp = pmm_alloc_page();
+                    if (!sp) {
+                        printf("[execv] ERROR: Out of memory for stack\n");
+                        extern void kfree(void*);
+                        kfree(elf_buf);
+                        tf->eax = -1; goto execv_done;
+                    }
+                    uint32_t sva = EXECV_STACK_TOP - (i + 1) * 4096;
+                    extern void map_page(uint32_t, uint32_t, uint32_t, uint32_t);
+                    map_page(kernel_page_directory_phys, sva, sp, 0x007);
+                }
+                printf("[execv] Stack mapped at 0x%x\n", EXECV_STACK_TOP);
+            }
+
+            // ---- 9. 设置 trapframe ----
+            {
+                #define FL_IF 0x00000202
+                #define USER_CS 0x1B
+                #define USER_DS 0x23
+
+                tf->eip = eh->e_entry;
+                tf->cs = USER_CS;
+                tf->ds  = tf->es  = tf->fs  = tf->gs  = tf->ss  = USER_DS;
+                tf->eflags = FL_IF;
+                tf->esp = 0xBFFFF000 - 4;   // 栈顶 - 4 (留 argc 位置)
+                tf->ebp = 0;
+                tf->eax = 0;
+
+                // 更新 task 的 user_stack
+                extern task_t *current_task[];
+                extern int logical_cpu_id(void);
+                task_t *ct = current_task[logical_cpu_id()];
+                if (ct) {
+                    ct->user_stack = (uint32_t*)0xBFFFF000;
+                }
+
+                printf("[execv] Trapframe: eip=0x%x esp=0x%x\n",
+                       tf->eip, tf->esp);
+            }
+
+            // ---- 10. 清理 ----
+            extern void kfree(void*);
+            kfree(elf_buf);
+            tf->eax = 0;  // 成功
+            printf("[execv] Done! Will enter new program on iret\n");
+
+            execv_done:
             break;
         }
         case SYS_LSPCI: {
