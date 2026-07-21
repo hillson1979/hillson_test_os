@@ -350,6 +350,12 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // Save klog to ramfs so editor can open /kern.log
         extern void klog_save_to_ramfs(void);
         klog_save_to_ramfs();
+
+        /* CherryUSB 初始化 (独立 USB 协议栈) */
+        {
+            extern int usbh_port_init(void);
+            usbh_port_init();
+        }
         /* 用户控制台输出 */
         {
             extern void *console_get_buf(void);

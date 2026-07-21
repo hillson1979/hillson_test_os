@@ -322,23 +322,8 @@ int usb_enumerate_device(int controller_id, uint8_t port) {
         extern int usb_mouse_init(int controller_id, uint8_t dev_addr,
                                   uint8_t interface, uint8_t endpoint_in,
                                   uint8_t max_packet);
-        int mouse_idx = usb_mouse_init(controller_id, dev->address, 0, g_usb_mouse_ep,g_usb_mouse_maxpkt);
-        if (mouse_idx >= 0) {
-            printf("[USB] USB mouse initialized (index=%d)\n", mouse_idx);
-            ehci_display_sprintf("MOUSE INIT OK idx=%d\n", mouse_idx);
-        } else {
-            printf("[USB] Not a USB mouse or initialization failed\n");
-            ehci_display_append("MOUSE INIT FAILED\n");
-        }
-        /* CherryUSB HID Mouse init (parallel driver) */
-        {
-            extern int cherryusb_hid_mouse_init(int ctrl, uint8_t addr,
-                uint8_t iface, uint8_t ep, uint8_t max, uint8_t interval);
-            int cidx = cherryusb_hid_mouse_init(controller_id, dev->address,
-                         0, g_usb_mouse_ep, g_usb_mouse_maxpkt, 10);
-            if (cidx >= 0)
-                printf("[CherryUSB] Mouse %d initialized via USB enum\n", cidx);
-        }
+        int m = usb_mouse_init(controller_id, dev->address, 0, g_usb_mouse_ep, g_usb_mouse_maxpkt);
+        if (m >= 0) printf("[USB] Mouse via CherryUSB HID (idx=%d)\n", m);
     }
 
     ehci_display_append("=== UHCI ENUM DONE ===\n");
