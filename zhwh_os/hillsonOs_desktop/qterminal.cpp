@@ -69,7 +69,18 @@ QTerminal::QTerminal(QWidget *parent, const char *name)
 QTerminal::~QTerminal() { delete[] m_buf; }
 
 void QTerminal::appendOutput(const char *s) {
-    while (*s && m_bufLen < m_bufMax - 2) m_buf[m_bufLen++] = *s++;
+    while (*s) {
+        if (m_bufLen >= m_bufMax - 2) {
+            /* 缓冲满了: 删除前 1024 字节到下一换行 */
+            int cut = 1024;
+            while (cut < m_bufLen && m_buf[cut] != '\n') cut++;
+            if (cut >= m_bufLen) cut = m_bufLen / 2;
+            int remain = m_bufLen - cut;
+            for (int i = 0; i < remain; i++) m_buf[i] = m_buf[cut + i];
+            m_bufLen = remain;
+        }
+        m_buf[m_bufLen++] = *s++;
+    }
     m_buf[m_bufLen] = 0;
 }
 
@@ -223,14 +234,22 @@ void QTerminal::runBuiltin(const char *cmd) {
     }
     if (cmd[0]=='l' && cmd[1]=='o' && cmd[2]=='g') {
         int fd = open("/kern.log", 0);
-        if (fd < 0) { appendOutput("Cannot open /kern.log\n"); return; }
-        char lbuf[256];
-        int n;
-        while ((n = read(fd, lbuf, 255)) > 0) {
-            lbuf[n] = 0;
+        if (fd == 0) { appendOutput("Cannot open\n"); return; }
+        /* 只读最后 1024 字节 */
+        char lbuf[1024]; int total = 0, n;
+        while ((n = read(fd, lbuf + total, 1000 - total)) > 0) total += n;
+        close(fd);
+        if (total > 1024/2) {
+            /* 从中间截断, 跳过前半 */
+            int start = total - 800; if (start < 0) start = 0;
+            char *p = lbuf + start;
+            *(lbuf + total) = 0;
+            appendOutput("...(truncated)\n");
+            appendOutput(p);
+        } else {
+            lbuf[total] = 0;
             appendOutput(lbuf);
         }
-        close(fd);
         return;
     }
     if (cmd[0]=='c' && cmd[1]=='a' && cmd[2]=='t') {

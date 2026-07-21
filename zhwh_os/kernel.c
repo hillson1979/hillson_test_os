@@ -361,7 +361,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                 if (ramfs_create(root, "console.log", 0644|S_IFREG, &cd) == 0 && cd) {
                     cd->d_inode->i_data = console_get_buf();
                     cd->d_inode->i_size = 8192;
-                    cd->d_inode->i_nlink = 2;
+                    cd->d_inode->i_nlink = 99;
                     printf("[fs] Created /console.log\n");
                 }
             }

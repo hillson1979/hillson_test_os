@@ -29,6 +29,7 @@ C_SOURCES += driver/usb_hcd.c  # 添加 USB 主机控制器驱动
 C_SOURCES += driver/usb_ehci.c  # EHCI driver
 C_SOURCES += driver/usb.c  # 添加 USB 核心协议栈
 C_SOURCES += driver/usb_mouse.c  # 添加 USB 鼠标驱动
+C_SOURCES += driver/cherryusb/cherryusb_hid_mouse.c  # CherryUSB HID 鼠标驱动
 C_SOURCES += driver/usb_uhci2.c  # 添加 UHCI 伴侣控制器驱动
 C_SOURCES += driver/ps2mouse.c  # 添加 PS/2 鼠标驱动
 C_SOURCES += mm/buddy.c  # 启用 Buddy System（减小了 MAX_BUDDY_BLOCKS）

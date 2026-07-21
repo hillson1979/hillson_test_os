@@ -517,6 +517,7 @@ void fs_init(void) {
             g_kern_log_inode = kd->d_inode;
             kd->d_inode->i_data = klog_get_buf();
             kd->d_inode->i_size = 16384;
+            kd->d_inode->i_nlink = 99;
             printf("[fs] Created kern.log\n");
         }
     }

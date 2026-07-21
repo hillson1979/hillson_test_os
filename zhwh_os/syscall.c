@@ -55,7 +55,8 @@
 #define SYS_GUI_FB_BLIT 71      // 位图传输到帧缓冲区
 #define SYS_GUI_INPUT_READ 72   // 读取输入设备事件
 #define SYS_USB_MOUSE_POLL 73   // 轮询 USB 鼠标事件
-#define SYS_USB_MOUSE_INFO 76   // 获取 USB 鼠标端点信息
+#define SYS_USB_MOUSE_INFO 76
+#define SYS_CHERRYUSB_MOUSE_READ 78   // 获取 USB 鼠标端点信息
 
 // WiFi
 static uint8_t  *fw_buf      = NULL;
@@ -2249,13 +2250,8 @@ void syscall_dispatch(struct trapframe *tf) {
 
             if (usb_mouse_get_count() == 0) {
                 tf->eax = -1;  // 没有鼠标
-                if (poll_count % 100 == 0) {
-                    printf("[SYS_USB_MOUSE_POLL] No mouse found (poll=%d)\n", poll_count);
-                }
                 break;
             }
-
-            // 检查是否有数据
             int avail = usb_mouse_data_available(0);
             if (!avail) {
                 tf->eax = 0;  // 无数据
@@ -2429,8 +2425,29 @@ void syscall_dispatch(struct trapframe *tf) {
             tf->eax = ret;
             break;
         }
+        case SYS_CHERRYUSB_MOUSE_READ: {
+            /* CherryUSB HID Mouse 读取 (syscall 77)
+               ebx = cherryusb_mouse_report_t* (用户态指针)
+               返回: >0=有数据, 0=无, -1=错误 */
+            extern int cherryusb_hid_mouse_count(void);
+            if (cherryusb_hid_mouse_count() > 0) {
+                uint8_t buf[8] = {0};
+                extern int usb_mouse_read(int idx, void *rpt);
+                int n = usb_mouse_read(0, buf);
+                if (n >= 3 && arg1) {
+                    /* 复制到用户空间 */
+                    uint8_t *dst = (uint8_t *)arg1;
+                    dst[0] = buf[0]; dst[1] = buf[1]; dst[2] = buf[2];
+                    if (n >= 4) dst[3] = buf[3];
+                }
+                tf->eax = n;
+            } else {
+                tf->eax = -1;
+            }
+            break;
+        }
         default:
-            //   printf ES 
+            //   printf ES
             // printf("[syscall] unknown num=%d\n", num);
             tf->eax = -1;
             break;
