@@ -20,6 +20,7 @@ cp kernel.bin iso/boot/
 [ -f test/syscall_test.elf ] && cp test/syscall_test.elf iso/boot/
 [ -f test/simple_keyboard.elf ] && cp test/simple_keyboard.elf iso/boot/
 [ -f test/text_test.elf ] && cp test/text_test.elf iso/boot/
+[ -f java/jvm.elf ] && cp java/jvm.elf iso/boot/
 
 cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
@@ -117,6 +118,12 @@ menuentry "Qt/Embedded 3.3.8b Port Test" {
 menuentry "My OS - System Call Test" {
     multiboot2 /boot/kernel.bin
     module2 /boot/syscall_test.elf
+    boot
+}
+
+menuentry "Java VM - HelloWorld" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/jvm.elf HelloWorld
     boot
 }
 
