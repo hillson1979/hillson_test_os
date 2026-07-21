@@ -24,7 +24,7 @@ SHELL_OBJ = $(SHELL_SOURCE:.c=.o) $(ASM_SOURCE:.S=.o)
 GUI_OBJ = $(GUI_SOURCE:.c=.o) libuser.o
 
 # 默认目标
-all: $(TARGETS)
+all: libuser.o
 
 # 链接 Shell
 shell_demo.elf: $(SHELL_OBJ) ts.ld
@@ -47,8 +47,11 @@ gui.elf: $(GUI_OBJ) ts.ld
 	$(AS) $(ASFLAGS) -c $< -o $@
 	@echo "Assembled: $<"
 
+libuser.o: libuser.c libuser.h
+	$(CC) $(CFLAGS) -c libuser.c -o libuser.o
+
 clean:
-	rm -f *.o $(TARGETS) *~
+	rm -f *.o *.elf *~
 	@echo "Cleaned"
 
-.PHONY: all clean
+.PHONY: all clean libuser.o

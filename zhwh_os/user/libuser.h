@@ -162,7 +162,7 @@ int wifi_fw_load_end(void);              // 结束加载并校验
 
 // 进程控制系统调用
 int execv(const char *path, char *const argv[]);  // 在当前进程中执行新程序
-int spawn(const char *path);    // 创建新进程运行 ELF
+int spawn(const char *path, const char *arg); // 创建新进程运行 ELF
 
 // 🔥 MSI 测试
 int msi_test(void);  // 手动触发 MSI 测试（包括 LAPIC 检查、软中断测试、MSI 写入测试）

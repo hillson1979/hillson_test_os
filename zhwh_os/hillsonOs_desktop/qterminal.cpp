@@ -22,7 +22,7 @@ int net_ifup(const char *dev);
 int net_arp(const char *dev, int scan);
 int net_dump_regs(const char *dev);
 int execv(const char *path, char *const argv[]);
-int spawn(const char *path);
+int spawn(const char *path, const char *arg);
 void yield(void);
 int open(const char *path, int flags);
 int close(int fd);
@@ -176,16 +176,41 @@ void QTerminal::runBuiltin(const char *cmd) {
         return;
     }
     if (cmd[0]=='j' && cmd[1]=='a' && cmd[2]=='v' && cmd[3]=='a') {
-        appendOutput("Starting Java VM...\n");
-        int pid = spawn("/jvm.elf");
+        const char *a = cmd + 4;
+        while (*a == ' ') a++;
+        const char *cn = *a ? a : "HelloWorld";
+        appendOutput("java "); appendOutput(cn); appendOutput("\n");
+        int pid = spawn("/jvm.elf", cn);
         if (pid > 0) {
-            appendOutput("  JVM started (pid=");
-            char ps[4]; ps[0]='0'+pid/10; ps[1]='0'+pid%10; ps[2]=0; appendOutput(ps);
-            appendOutput(")\n");
+            yield();
+            /* 读 console.log, 匹配 [Interp] ldc 提取字符串 */
+            int fd = open("/console.log", 0);
+            if (fd != 0) {
+                char buf[4096]; int total = 0, n;
+                while (total < 4000 && (n = read(fd, buf + total, 4000 - total)) > 0) total += n;
+                close(fd);
+                buf[total] = 0;
+                char *p = buf;
+                while (*p) {
+                    /* 手动匹配 "[Interp] ldc \"" */
+                    char *ldc = 0;
+                    for (char *s = p; *s; s++) {
+                        if (s[0]=='[' && s[1]=='I' && s[2]=='n' && s[3]=='t' && s[4]=='e' &&
+                            s[5]=='r' && s[6]=='p' && s[7]==']' && s[8]==' ' && s[9]=='l' &&
+                            s[10]=='d' && s[11]=='c' && s[12]==' ') { ldc = s; break; }
+                    }
+                    if (!ldc) break;
+                    ldc += 13;
+                    if (*ldc == '"') ldc++;
+                    char *e = ldc;
+                    while (*e && *e != '"' && *e != '\n') e++;
+                    if (e > ldc) { char s = *e; *e = 0; appendOutput(ldc); appendOutput("\n"); *e = s; }
+                    p = e + 1;
+                }
+            }
         } else {
-            appendOutput("  spawn failed\n");
+            appendOutput("spawn failed\n");
         }
-        yield();
         return;
     }
     if (cmd[0]=='e' && cmd[1]=='x' && cmd[2]=='e' && cmd[3]=='c') {

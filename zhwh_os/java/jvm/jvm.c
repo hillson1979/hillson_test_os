@@ -97,10 +97,6 @@ int jvm_init(const char *classpath, uint32_t heap_size) {
     jvm.main_thread->running       = 0;
 
     jvm.initialized = 1;
-    os_print("[JVM] Initialized successfully\n");
-    os_print("[JVM] Heap: ");
-    /* TODO: 打印堆大小的数字 */
-    os_print(" bytes\n");
 
     return 0;
 }

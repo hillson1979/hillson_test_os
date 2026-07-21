@@ -240,16 +240,10 @@ void os_cond_broadcast(os_cond_t *cond) {
  * ================================================================ */
 
 void os_putchar(char c) {
-    /* 同时写 VGA 和 fd1 (供终端重定向) */
     sys_putchar(c);
-    write(1, &c, 1);
 }
 
 void os_print(const char *str) {
-    /* 写字符串到 fd1 */
-    int len = 0; while (str[len]) len++;
-    write(1, str, len);
-    /* 同时写 VGA */
     while (*str) sys_putchar(*str++);
 }
 

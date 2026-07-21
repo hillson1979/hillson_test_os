@@ -350,6 +350,22 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // Save klog to ramfs so editor can open /kern.log
         extern void klog_save_to_ramfs(void);
         klog_save_to_ramfs();
+        /* 用户控制台输出 */
+        {
+            extern void *console_get_buf(void);
+            extern int console_get_len(void);
+            struct inode *root = path_lookup("/");
+            if (root) {
+                struct dentry *cd;
+                extern int ramfs_create(struct inode*, const char*, int, struct dentry**);
+                if (ramfs_create(root, "console.log", 0644|S_IFREG, &cd) == 0 && cd) {
+                    cd->d_inode->i_data = console_get_buf();
+                    cd->d_inode->i_size = 8192;
+                    cd->d_inode->i_nlink = 2;
+                    printf("[fs] Created /console.log\n");
+                }
+            }
+        }
 
         // ---- 将 multiboot 模块导入 ramfs ----
         // 遍历所有模块标签, 将 cmdline 作为路径, 模块数据作为文件内容

@@ -370,10 +370,11 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_PUTCHAR: {
-            // (EBX)
             uint8_t ch = (uint8_t)(arg1 & 0xFF);
             extern void vga_putc(char);
             vga_putc((char)ch);
+            extern void console_write_char(char);
+            console_write_char((char)ch);
             tf->eax = 0;
             break;
         }
@@ -1287,9 +1288,10 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_SPAWN: {
-            // spawn(path) — 创建新任务运行 ELF，父进程不受影响
+            // spawn(path, arg) — 创建新任务运行 ELF
             const char *spath = (const char *)arg1;
-            printf("[spawn] path=0x%x\n", (uint32_t)spath);
+            const char *sarg  = (const char *)arg2;
+            printf("[spawn] path=0x%x arg=0x%x\n", (uint32_t)spath, (uint32_t)sarg);
 
             // 1. 拷贝路径
             char skpath[256];
@@ -1336,10 +1338,16 @@ void syscall_dispatch(struct trapframe *tf) {
             if (seh->e_ident[0] != 0x7F || seh->e_ident[1] != 'E' || seh->e_ident[2] != 'L' || seh->e_ident[3] != 'F')
                 { kfree(self); tf->eax = -1; break; }
 
-            // 4. 创建新任务
-            extern task_t *init_task(bool with_ustack);
-            task_t *newt = init_task(true);
-            if (!newt) { kfree(self); tf->eax = -1; break; }
+            // 4. 重用已存在的 JVM 任务 (PID=2), 不重复创建
+            extern task_t *current_task[];
+            static task_t *jvm_task = 0;
+            if (!jvm_task) {
+                extern task_t *init_task(bool with_ustack);
+                jvm_task = init_task(true);
+            }
+            task_t *newt = jvm_task;
+            if (!newt) { tf->eax = -1; break; }
+            /* 只第一次创建, 后续复用 */
 
             // 5. 加载 PT_LOAD 到全局 PD (JVM 链接在 0xA0000000, 不冲突)
             Elf32_Phdr *sph = (Elf32_Phdr *)(self + seh->e_phoff);
@@ -1367,35 +1375,64 @@ void syscall_dispatch(struct trapframe *tf) {
                 map_page(kernel_page_directory_phys, 0xBF800000 - (i + 1) * 4096, stp, 0x007);
             }
 
+            // 6b. 设置参数到用户栈
+            uint32_t user_esp = 0xBF800000 - 64;
+            if (sarg != 0) {
+                // 拷贝参数串到内核缓冲
+                char argbuf[128]; int alen = 0;
+                {
+                    uint32_t sv = (uint32_t)sarg;
+                    if (sv >= 0xC0000000) {
+                        while (alen < 127 && sarg[alen]) { argbuf[alen] = sarg[alen]; alen++; }
+                    } else {
+                        uint32_t *pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
+                        uint32_t pdi = (sv >> 22) & 0x3FF, pti = (sv >> 12) & 0x3FF, po = sv & 0xFFF;
+                        if ((pd[pdi] & 0x1)) {
+                            uint32_t *pt = (uint32_t*)map_highmem_physical(pd[pdi] & ~0xFFF, 4096, 0);
+                            if (pt && (pt[pti] & 0x1)) {
+                                uint8_t *up = (uint8_t*)map_highmem_physical(pt[pti] & ~0xFFF, 4096, 0);
+                                if (up) while (alen < 127 && up[po + alen]) { argbuf[alen] = up[po + alen]; alen++; }
+                            }
+                        }
+                    }
+                    argbuf[alen] = 0;
+                }
+                // 布局: [string\0][padding][NULL][ptr_to_string][1(argc)]
+                uint32_t str_va = user_esp - (alen + 1 + 3) / 4 * 4;
+                user_esp = str_va - 12; // argv[1]=NULL, argv[0]=ptr, argc=1
+                // 拷贝字符串到栈
+                for (int i = 0; i <= alen; i++) {
+                    ((char*)str_va)[i] = argbuf[i];
+                    // 映射栈页确保可写
+                }
+                // 写入 argv 和 argc
+                *(uint32_t*)(user_esp + 8) = 0;          // argv[1] = NULL
+                *(uint32_t*)(user_esp + 4) = str_va;     // argv[0] = string ptr
+                *(uint32_t*)user_esp = 1;                // argc = 1
+                printf("[spawn] args: '%s' at stack=0x%x esp=0x%x\n", argbuf, str_va, user_esp);
+            }
+
             // 7. 设置 trapframe
             newt->tf->eip = seh->e_entry;
             newt->tf->cs = 0x1B; newt->tf->ds = 0x23; newt->tf->es = 0x23;
             newt->tf->fs = 0x23; newt->tf->gs = 0x23; newt->tf->ss = 0x23;
             newt->tf->eflags = 0x202;
-            newt->tf->esp = 0xBF800000 - 64;
+            newt->tf->esp = user_esp;
             newt->tf->eax = 0; newt->tf->ebp = 0;
             newt->pde = (uint32_t*)kernel_page_directory_phys;
             newt->cr3 = (uint32_t*)kernel_page_directory_phys;
             newt->user_stack = (uint32_t*)1;  /* 非零满足调度器, 不释放 */
 
-            // 8. 切入新任务 (已验证可行)
-            extern void task_to_user_mode_with_task_wrapper(struct task_t*);
+            // 8. 切入新任务
+            /* ELF 缓冲不释放: kfree 后页表残留导致第二次 spawn 崩溃 */
+            tf->eax = (int)newt->pid;
             extern struct trapframe *saved_desktop_tf;
             extern struct task_t *saved_desktop_task;
             saved_desktop_tf = tf;
             saved_desktop_task = current_task[logical_cpu_id()];
-            printf("[spawn] Starting JVM (desktop pid=%d saved)\n",
-                   saved_desktop_task->pid);
+            extern void task_to_user_mode_with_task_wrapper(struct task_t*);
             task_to_user_mode_with_task_wrapper(newt);
-            /* JVM 结束后, 调度器恢复桌面到此 trapframe */
-            saved_desktop_tf = 0;
-            printf("[spawn] Desktop resumed\n");
-
-            printf("[spawn] New task pid=%d running '%s'\n", newt->pid, skpath);
-            kfree(self);
-            tf->eax = (int)newt->pid;
-            extern int need_resched;
-            need_resched = 1;
+            /* 不返回 */
             spawn_done:
             break;
         }

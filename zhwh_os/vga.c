@@ -51,6 +51,16 @@ void klog_read(char *buf, int max) {
 void klog_clear(void) { klog_w = 0; klog[0] = 0; }
 void *klog_get_buf(void) { return klog; }
 int klog_get_len(void) { return klog_w; }
+/* 用户控制台输出 buffer (与内核 klog 分离) */
+#define CONSOLE_SZ 8192
+static char console_buf[CONSOLE_SZ];
+static int console_w = 0;
+void *console_get_buf(void) { return console_buf; }
+int  console_get_len(void) { return console_w; }
+void console_write_char(char c) {
+    if (console_w < CONSOLE_SZ - 1) console_buf[console_w++] = c;
+    console_buf[console_w] = 0;
+}
 
 #define C_BLACK           0
 #define C_BLUE            1

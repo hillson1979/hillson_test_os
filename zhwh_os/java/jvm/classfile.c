@@ -24,7 +24,6 @@ int classfile_parse(jvm_class_t *cls, const uint8_t *data, uint32_t len) {
 
     cls->minor_version = r16(&p);
     cls->major_version = r16(&p);
-    os_print("[CF] Version: "); /* TODO: print numbers */ os_print("\n");
 
     /* ---- 常量池 ---- */
     cls->cp_count = r16(&p);
