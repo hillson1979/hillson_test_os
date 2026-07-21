@@ -166,16 +166,16 @@ QHillsonKeyboardHandler::QHillsonKeyboardHandler()
 
 QHillsonKeyboardHandler::~QHillsonKeyboardHandler() {}
 
-void QHillsonKeyboardHandler::doKey(unsigned char code)
+bool QHillsonKeyboardHandler::doKey(unsigned char code)
 {
     // Handle E0 (extended) and E1 prefixes
     if (code == 0xE0) {
         m_extended = 1;
-        return;
+        return false;
     }
     if (code == 0xE1) {
         m_extended = 2;
-        return;
+        return false;
     }
 
     int keyIndex = code & 0x7F;       // Strip release bit
@@ -192,7 +192,7 @@ void QHillsonKeyboardHandler::doKey(unsigned char code)
                         || keyIndex == 0x3A);                   // CapsLock
         if (!isModifier) {
             if ((unsigned char)keyIndex == s_lastMake && !s_lastWasRelease) {
-                return;  // skip typematic repeat
+                return false;  // skip typematic repeat
             }
             s_lastMake = (unsigned char)keyIndex;
             s_lastWasRelease = false;
@@ -227,16 +227,16 @@ void QHillsonKeyboardHandler::doKey(unsigned char code)
         int mod = m_modifiers;
         processKeyEvent(0, extKey, mod, !isRelease, false);
         m_extended = 0;
-        return;
+        return !isRelease;  // true only for make events
     }
 
     if (m_extended) {
         m_extended = 0;
-        return;  // E1 prefix keys not handled
+        return false;  // E1 prefix keys not handled
     }
 
     // Bounds check
-    if (keyIndex >= m_keyMapSize) return;
+    if (keyIndex >= m_keyMapSize) return false;
 
     const QWSKeyMap &km = m_keyMap[keyIndex];
 
@@ -246,25 +246,25 @@ void QHillsonKeyboardHandler::doKey(unsigned char code)
             m_shift = !isRelease;
             if (m_shift) m_modifiers |= Qt::ShiftModifier;
             else         m_modifiers &= ~Qt::ShiftModifier;
-            return;
+            return false;
         case Qt::Key_Control:
             m_ctrl = !isRelease;
             if (m_ctrl) m_modifiers |= Qt::ControlModifier;
             else        m_modifiers &= ~Qt::ControlModifier;
-            return;
+            return false;
         case Qt::Key_Alt:
             m_alt = !isRelease;
             if (m_alt) m_modifiers |= Qt::AltModifier;
             else       m_modifiers &= ~Qt::AltModifier;
-            return;
+            return false;
         case Qt::Key_CapsLock:
             if (!isRelease) m_caps = !m_caps;
-            return;
+            return false;
         default:
             break;
     }
 
-    if (isRelease) return;  // Don't process release events for regular keys
+    if (isRelease) return false;  // Don't process release events for regular keys
 
     // Determine Unicode value based on modifiers
     int unicode = km.unicode;
@@ -286,6 +286,7 @@ void QHillsonKeyboardHandler::doKey(unsigned char code)
     }
 
     processKeyEvent(unicode, km.key_code, m_modifiers, true, false);
+    return true;
 }
 
 bool QHillsonKeyboardHandler::poll()
@@ -298,8 +299,7 @@ bool QHillsonKeyboardHandler::poll()
         : "memory", "cc");
 
     if (r == 1 && ev.type == 1) {
-        doKey((unsigned char)(ev.x & 0xFF));
-        return true;
+        return doKey((unsigned char)(ev.x & 0xFF));
     }
     return false;
 }

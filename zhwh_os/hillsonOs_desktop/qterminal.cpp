@@ -22,6 +22,12 @@ int net_ifup(const char *dev);
 int net_arp(const char *dev, int scan);
 int net_dump_regs(const char *dev);
 int execv(const char *path, char *const argv[]);
+int spawn(const char *path);
+void yield(void);
+int open(const char *path, int flags);
+int close(int fd);
+int read(int fd, char *buf, int len);
+void exit(int code);
 }
 
 #define TERM_BUF_MAX 32768
@@ -90,7 +96,7 @@ void QTerminal::runBuiltin(const char *cmd) {
 
     if (cmd[0]=='h' && cmd[1]=='e' && cmd[2]=='l' && cmd[3]=='p') {
         appendOutput("Commands:\n");
-        appendOutput("  help lspci net usb mem fb clear echo exec\n");
+        appendOutput("  help lspci net usb mem fb clear echo exec java log cat\n");
         appendOutput("  net.init rtl  - init RTL8139 NIC\n");
         appendOutput("  net.init e1k  - init E1000 NIC\n");
         appendOutput("  net.up        - bring interface up\n");
@@ -169,17 +175,52 @@ void QTerminal::runBuiltin(const char *cmd) {
         appendOutput("Unknown net command\n");
         return;
     }
+    if (cmd[0]=='j' && cmd[1]=='a' && cmd[2]=='v' && cmd[3]=='a') {
+        appendOutput("Starting Java VM...\n");
+        int pid = spawn("/jvm.elf");
+        if (pid > 0) {
+            appendOutput("  JVM started (pid=");
+            char ps[4]; ps[0]='0'+pid/10; ps[1]='0'+pid%10; ps[2]=0; appendOutput(ps);
+            appendOutput(")\n");
+        } else {
+            appendOutput("  spawn failed\n");
+        }
+        yield();
+        return;
+    }
     if (cmd[0]=='e' && cmd[1]=='x' && cmd[2]=='e' && cmd[3]=='c') {
         const char *a = cmd + 4;
         while (*a == ' ') a++;
         if (!*a) { appendOutput("Usage: exec <path>\n"); return; }
-        appendOutput("Executing: "); appendOutput(a); appendOutput("\n");
-        int ret = execv(a, NULL);
-        // execv only returns on error
-        appendOutput("exec failed: "); char err[12];
-        if (ret<0) { err[0]='-'; int v=-ret; err[1]='0'+v/10; err[2]='0'+v%10; err[3]=0; appendOutput(err); }
-        else { err[0]='0'+ret/10; err[1]='0'+ret%10; err[2]=0; appendOutput(err); }
-        appendOutput("\n");
+        execv(a, (char *const *)0);
+        appendOutput("exec failed\n");
+        return;
+    }
+    if (cmd[0]=='l' && cmd[1]=='o' && cmd[2]=='g') {
+        int fd = open("/kern.log", 0);
+        if (fd < 0) { appendOutput("Cannot open /kern.log\n"); return; }
+        char lbuf[256];
+        int n;
+        while ((n = read(fd, lbuf, 255)) > 0) {
+            lbuf[n] = 0;
+            appendOutput(lbuf);
+        }
+        close(fd);
+        return;
+    }
+    if (cmd[0]=='c' && cmd[1]=='a' && cmd[2]=='t') {
+        const char *a = cmd + 3;
+        while (*a == ' ') a++;
+        if (!*a) { appendOutput("Usage: cat <path>\n"); return; }
+        int fd = open(a, 0);
+        if (fd < 0) { appendOutput("Cannot open: "); appendOutput(a); appendOutput("\n"); return; }
+        char cbuf[256];
+        int n;
+        while ((n = read(fd, cbuf, 255)) > 0) {
+            cbuf[n] = 0;
+            appendOutput(cbuf);
+        }
+        close(fd);
         return;
     }
     appendOutput("Unknown: "); appendOutput(cmd); appendOutput("\n");

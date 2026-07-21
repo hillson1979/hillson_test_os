@@ -42,11 +42,13 @@ public:
     // --- Scroll ---
     void ensureCursorVisible();
 
-private:
+    // --- Cursor movement ---
     void moveCursorLeft();
     void moveCursorRight();
     void moveCursorUp();
     void moveCursorDown();
+
+private:
     void moveCursorHome();
     void moveCursorEnd();
 

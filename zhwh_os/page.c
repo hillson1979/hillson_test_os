@@ -132,18 +132,31 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
 
     // 检查内核页目录是否有对应的页表
     if (!(kernel_pd[kernel_pd_index] & PAGE_PRESENT)) {
-        // 内核页目录也没有页表，使用早期页表分配器创建一个
+        // 先试早期分配器, 再用 buddy
         uint32_t kernel_pt_phys = alloc_early_page_table();
         if (kernel_pt_phys == 0) {
-            printf("[map_page] ERROR: Failed to allocate kernel page table for pde_phys!\n");
-            return;
+            kernel_pt_phys = pmm_alloc_page();
+            if (kernel_pt_phys == 0) {
+                printf("[map_page] ERROR: No mem for kernel PT\n");
+                return;
+            }
+            // 清零新页表
+            void *tmp = map_highmem_physical(kernel_pt_phys, 4096, 0x3);
+            if (tmp) { uint8_t *p = (uint8_t*)tmp; for (int i = 0; i < 4096; i++) p[i] = 0; }
         }
         // 填写内核页目录
         kernel_pd[kernel_pd_index] = kernel_pt_phys | 0x3;
     }
 
     // 检查内核页表中是否有 pde_phys 的映射
-    uint32_t *kernel_pt = (uint32_t*)phys_to_virt(kernel_pd[kernel_pd_index] & ~0xFFF);
+    uint32_t kpt_p = kernel_pd[kernel_pd_index] & ~0xFFF;
+    uint32_t *kernel_pt;
+    if (kpt_p >= 0x800000)
+        kernel_pt = (uint32_t*)map_highmem_physical(kpt_p, 4096, 0x3);
+    else
+        kernel_pt = (uint32_t*)phys_to_virt(kpt_p);
+    if (!kernel_pt) { printf("[map_page] Cannot access kernel PT\n"); return; }
+
     if (!(kernel_pt[kernel_pt_index] & PAGE_PRESENT)) {
         // 为内核创建 pde_phys 的映射
         kernel_pt[kernel_pt_index] = pde_phys | 0x3;

@@ -1,3 +1,6 @@
+#ifndef PAGE_H
+#define PAGE_H
+
 #include "types.h"
 
 // 类型定义
@@ -110,4 +113,4 @@ void dma_map_region(void);  // 在 paging 初始化时调用，建立 DMA 区域
 void *dma_alloc_coherent(size_t size, uint32_t *dma_handle);  // 分配 DMA 内存
 void dma_free_coherent(void *cpu_addr, size_t size);  // 释放（bump allocator 不支持）
 
-
+#endif /* PAGE_H */

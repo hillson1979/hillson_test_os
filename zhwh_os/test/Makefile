@@ -97,7 +97,7 @@ LVGL_SRC = \
 
 LVGL_OBJS = $(LVGL_SRC:.c=.o)
 
-all: $(TARGET) text_test.elf
+all: $(TARGET) text_test.elf readlog.elf
 
 # Simple text mode test (no LVGL, no framebuffer)
 text_test.o: text_test.c

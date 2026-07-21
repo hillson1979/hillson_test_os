@@ -24,7 +24,7 @@ CFLAGS = $(TARGET_ARCH) -g -O0 -Wall \
 ASFLAGS = $(TARGET_ARCH) -fno-pic
 
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static \
-          -T ../user/ts.ld
+          -T ts_jvm.ld
 
 # --- 源文件 ---
 

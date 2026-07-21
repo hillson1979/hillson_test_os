@@ -61,6 +61,10 @@ static inode_t *g_kern_log_inode = 0;
 // Inode 管理
 // ================================
 
+/* 前向声明（定义在文件末尾） */
+extern inode_operations_t ramfs_inode_ops;
+extern file_operations_t ramfs_file_ops;
+
 /**
  * @brief 分配并初始化一个 inode
  */
@@ -109,6 +113,10 @@ inode_t *ramfs_alloc_inode(struct super_block *sb, int mode) {
         }
         llist_init_head(inode->i_children);
     }
+
+    // 设置操作函数表
+    inode->i_op = &ramfs_inode_ops;
+    inode->i_fop = &ramfs_file_ops;
 
     // 添加到超级块的 inode 链表
     if (sb->s_inodes) {
@@ -280,7 +288,8 @@ int ramfs_mkdir(inode_t *dir, const char *name, int mode) {
  */
 int ramfs_open(inode_t *inode, file_t *file) {
     printf("[ramfs] open: inode=%d\n", inode->i_ino);
-    file->f_pos = 0;  // 重置读写位置
+    file->f_pos = 0;
+    // f_flags already set by filp_open, just ensure it's not lost
     return 0;
 }
 
@@ -405,7 +414,7 @@ int ramfs_lseek(file_t *file, int64_t offset, int whence) {
 // 操作函数表
 // ================================
 
-static inode_operations_t ramfs_inode_ops = {
+inode_operations_t ramfs_inode_ops = {
     .lookup = ramfs_lookup,
     .create = ramfs_create,
     .mkdir = ramfs_mkdir,
@@ -414,7 +423,7 @@ static inode_operations_t ramfs_inode_ops = {
     .rename = NULL,
 };
 
-static file_operations_t ramfs_file_ops = {
+file_operations_t ramfs_file_ops = {
     .open = ramfs_open,
     .close = ramfs_close,
     .read = ramfs_read,

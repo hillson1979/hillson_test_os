@@ -25,9 +25,9 @@ extern uint32_t multiboot2_info_addr;
 #define PTE_U         0x004
 #define USER_PTE_FLAGS (PTE_P|PTE_W|PTE_U)
 
-#define USER_STACK_PAGES 128
+#define USER_STACK_PAGES 129
 #define USER_STACK_SIZE (PAGE_SIZE * USER_STACK_PAGES)
-#define VIRT_USER_STACK_TOP 0xBFFFF000
+#define VIRT_USER_STACK_TOP 0xC0000000
 
 int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     printf("[load_module_to_user] Starting...\n");
@@ -152,8 +152,8 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     uint32_t *stack_top_virt = (uint32_t *)last_stack_va;
     for (int i = 1; i <= 32; i++) stack_top_virt[PAGE_SIZE/4 - i] = 0;
 
-    // ESP指向argc位置
-    tf->esp = VIRT_USER_STACK_TOP - 4;
+    // ESP 在栈顶下方 64 字节，避免 _start 访问边界外的内存
+    tf->esp = VIRT_USER_STACK_TOP - 64;
 
     printf("[load_module_to_user] Trapframe: eip=0x%x, esp=0x%x, cs=0x%x, ss=0x%x, eflags=0x%x\n",
            tf->eip, tf->esp, tf->cs, tf->ss, tf->eflags);

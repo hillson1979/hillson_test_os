@@ -1,335 +1,157 @@
 /**
- * classfile.c — Java Class 文件解析器
+ * classfile.c — Java Class 文件解析器（精简版）
  *
- * 负责解析 .class 文件格式:
- *   - 读取魔数 (0xCAFEBABE) 和版本号
- *   - 解析常量池
- *   - 解析类/字段/方法信息
- *   - 解析 Code 属性（字节码）
- *
- * 参考: Java虚拟机规范 — Chapter 4: The class File Format
+ * 只解析运行 HelloWorld 所需的最小结构。
  */
 #include "jvm.h"
 #include "os_port.h"
 
-/* ================================================================
- * 读取辅助函数
- * ================================================================ */
+static inline uint8_t  r8(const uint8_t **p) { uint8_t  v = (*p)[0]; *p += 1; return v; }
+static inline uint16_t r16(const uint8_t **p) { uint16_t v = ((uint16_t)(*p)[0]<<8)|(*p)[1]; *p+=2; return v; }
+static inline uint32_t r32(const uint8_t **p) { uint32_t v = ((uint32_t)(*p)[0]<<24)|((uint32_t)(*p)[1]<<16)|((uint32_t)(*p)[2]<<8)|(*p)[3]; *p+=4; return v; }
 
-static inline uint8_t read_u1(const uint8_t **p) {
-    uint8_t v = (*p)[0];
-    *p += 1;
-    return v;
+/* 从常量池获取 UTF8 字符串 */
+static const char *cp_utf8(jvm_class_t *cls, uint16_t idx) {
+    if (idx == 0 || idx >= cls->cp_count) return "(invalid)";
+    return (const char *)cls->constant_pool[idx].data.utf8.bytes;
 }
 
-static inline uint16_t read_u2(const uint8_t **p) {
-    uint16_t v = ((uint16_t)(*p)[0] << 8) | (*p)[1];
-    *p += 2;
-    return v;
-}
-
-static inline uint32_t read_u4(const uint8_t **p) {
-    uint32_t v = ((uint32_t)(*p)[0] << 24) | ((uint32_t)(*p)[1] << 16) |
-                 ((uint32_t)(*p)[2] << 8)  | (*p)[3];
-    *p += 4;
-    return v;
-}
-
-/* ================================================================
- * 常量池解析
- * ================================================================ */
-
-static int parse_constant_pool(const uint8_t **data, jvm_class_t *class) {
-    uint16_t count = read_u2(data);
-    class->cp_count = count;
-
-    if (count == 0) return 0;
-
-    class->constant_pool = (cp_entry_t *)os_malloc(count * sizeof(cp_entry_t));
-    if (!class->constant_pool) return -1;
-
-    /* 常量池索引从 1 开始 */
-    for (uint16_t i = 1; i < count; i++) {
-        cp_entry_t *entry = &class->constant_pool[i];
-        entry->tag = read_u1(data);
-
-        switch (entry->tag) {
-        case CONSTANT_Utf8: {
-            uint16_t len = read_u2(data);
-            entry->data.utf8.len = len;
-            entry->data.utf8.bytes = (char *)os_malloc(len + 1);
-            if (entry->data.utf8.bytes) {
-                for (uint16_t j = 0; j < len; j++) {
-                    entry->data.utf8.bytes[j] = (char)read_u1(data);
-                }
-                entry->data.utf8.bytes[len] = '\0';
-            }
-            break;
-        }
-        case CONSTANT_Integer:
-            entry->data.integer.value = read_u4(data);
-            break;
-        case CONSTANT_Float:
-            entry->data.float_val.value = *(float*)&(uint32_t){read_u4(data)};
-            break;
-        case CONSTANT_Long:
-            entry->data.long_val.value =
-                ((uint64_t)read_u4(data) << 32) | read_u4(data);
-            i++; /* long/double 占两个常量池槽 */
-            break;
-        case CONSTANT_Double: {
-            uint64_t hi = read_u4(data);
-            uint64_t lo = read_u4(data);
-            uint64_t bits = (hi << 32) | lo;
-            entry->data.double_val.value = *(double*)&bits;
-            i++;
-            break;
-        }
-        case CONSTANT_Class:
-            entry->data.class.name_idx = read_u2(data);
-            break;
-        case CONSTANT_String:
-            entry->data.string.str_idx = read_u2(data);
-            break;
-        case CONSTANT_Fieldref:
-        case CONSTANT_Methodref:
-        case CONSTANT_InterfaceMethodref:
-            entry->data.ref.class_idx = read_u2(data);
-            entry->data.ref.nt_idx = read_u2(data);
-            break;
-        case CONSTANT_NameAndType:
-            entry->data.name_and_type.name_idx = read_u2(data);
-            entry->data.name_and_type.desc_idx = read_u2(data);
-            break;
-        default:
-            os_print("[ClassFile] WARNING: Unknown constant pool tag: ");
-            /* TODO: print number */
-            os_print("\n");
-            break;
-        }
-    }
-
-    return 0;
-}
-
-/* ================================================================
- * 属性解析
- * ================================================================ */
-
-static int parse_attributes(const uint8_t **data, jvm_method_t *method) {
-    uint16_t attr_count = read_u2(data);
-
-    for (uint16_t i = 0; i < attr_count; i++) {
-        uint16_t name_idx = read_u2(data);
-        uint32_t attr_len = read_u4(data);
-
-        /* 获取属性名 */
-        cp_entry_t *name_entry = &method->class->constant_pool[name_idx];
-        const char *attr_name = name_entry->data.utf8.bytes;
-
-        /* 检查属性名长度 */
-        int is_code = 1;
-        const char *code_str = "Code";
-        for (int j = 0; j < 4; j++) {
-            if (!attr_name || attr_name[j] != code_str[j]) {
-                is_code = 0;
-                break;
-            }
-        }
-
-        if (is_code && attr_name && attr_name[4] == '\0') {
-            /* Code 属性 */
-            method->max_stack = read_u2(data);
-            method->max_locals = read_u2(data);
-
-            uint32_t code_len = read_u4(data);
-            method->code_len = code_len;
-            method->code = (uint8_t *)os_malloc(code_len);
-            if (method->code) {
-                for (uint32_t j = 0; j < code_len; j++) {
-                    method->code[j] = read_u1(data);
-                }
-            }
-
-            /* 异常处理表 */
-            uint16_t exc_count = read_u2(data);
-            method->exc_table_len = exc_count;
-            if (exc_count > 0) {
-                method->exc_table = (void *)os_malloc(
-                    exc_count * sizeof(*method->exc_table));
-                for (uint16_t j = 0; j < exc_count; j++) {
-                    method->exc_table[j].start_pc   = read_u2(data);
-                    method->exc_table[j].end_pc     = read_u2(data);
-                    method->exc_table[j].handler_pc = read_u2(data);
-                    method->exc_table[j].catch_type = read_u2(data);
-                }
-            }
-
-            /* Code 属性内部可能还有子属性 */
-            uint16_t sub_attr_count = read_u2(data);
-            for (uint16_t j = 0; j < sub_attr_count; j++) {
-                read_u2(data); /* 跳过 name_idx */
-                uint32_t sub_len = read_u4(data);
-                *data += sub_len; /* 跳过数据 */
-            }
-        } else {
-            /* 跳过其他属性 */
-            *data += attr_len;
-        }
-    }
-
-    return 0;
-}
-
-/* ================================================================
- * 主解析函数
- * ================================================================ */
-
-/**
- * 从内存中的 class 文件数据解析类结构
- *
- * @param class  预分配的类结构
- * @param data   class 文件原始数据
- * @param len    数据长度
- * @return 0 = 成功
- */
-int classfile_parse(jvm_class_t *class, const uint8_t *data, uint32_t len) {
+int classfile_parse(jvm_class_t *cls, const uint8_t *data, uint32_t len) {
     const uint8_t *p = data;
-    const uint8_t *end = data + len;
 
-    class->data = (uint8_t *)data;
-    class->data_len = len;
+    /* 魔数 */
+    if (r32(&p) != 0xCAFEBABE) { os_print("[CF] Bad magic\n"); return -1; }
 
-    /* --- 魔数 --- */
-    uint32_t magic = read_u4(&p);
-    if (magic != JAVA_MAGIC) {
-        os_print("[ClassFile] ERROR: Invalid magic number\n");
-        return -1;
-    }
+    cls->minor_version = r16(&p);
+    cls->major_version = r16(&p);
+    os_print("[CF] Version: "); /* TODO: print numbers */ os_print("\n");
 
-    /* --- 版本号 --- */
-    class->minor_version = read_u2(&p);
-    class->major_version = read_u2(&p);
+    /* ---- 常量池 ---- */
+    cls->cp_count = r16(&p);
+    os_print("[CF] CP count: "); /* TODO: print */ os_print("\n");
 
-    os_print("[ClassFile] Class version: ");
-    /* TODO: print version */
-    os_print("\n");
+    cls->constant_pool = (cp_entry_t *)os_malloc(cls->cp_count * sizeof(cp_entry_t));
+    if (!cls->constant_pool) return -1;
+    /* 清零 */
+    for (uint16_t i = 0; i < cls->cp_count; i++)
+        for (uint32_t j = 0; j < sizeof(cp_entry_t); j++)
+            ((uint8_t*)&cls->constant_pool[i])[j] = 0;
 
-    /* 检查版本兼容性（我们支持最高 Java 8） */
-    if (class->major_version > CLASS_VERSION_1_8) {
-        os_print("[ClassFile] WARNING: Class version newer than Java 8\n");
-    }
+    for (uint16_t i = 1; i < cls->cp_count; i++) {
+        cp_entry_t *e = &cls->constant_pool[i];
+        e->tag = r8(&p);
 
-    /* --- 常量池 --- */
-    if (parse_constant_pool(&p, class) != 0) {
-        os_print("[ClassFile] ERROR: Failed to parse constant pool\n");
-        return -1;
-    }
-
-    /* --- 访问标志 --- */
-    class->access_flags = read_u2(&p);
-
-    /* --- 本类 --- */
-    class->this_class = read_u2(&p);
-
-    /* --- 父类 --- */
-    class->super_class = read_u2(&p);
-
-    /* --- 接口 --- */
-    class->interfaces_count = read_u2(&p);
-    if (class->interfaces_count > 0) {
-        class->interfaces = (uint16_t *)os_malloc(
-            class->interfaces_count * sizeof(uint16_t));
-        for (uint16_t i = 0; i < class->interfaces_count; i++) {
-            class->interfaces[i] = read_u2(&p);
+        switch (e->tag) {
+        case 1: { /* Utf8 */
+            uint16_t l = r16(&p);
+            e->data.utf8.len = l;
+            e->data.utf8.bytes = (char *)os_malloc(l + 1);
+            if (e->data.utf8.bytes) {
+                for (uint16_t j = 0; j < l; j++) e->data.utf8.bytes[j] = (char)r8(&p);
+                e->data.utf8.bytes[l] = 0;
+            }
+            break;
+        }
+        case 3: e->data.integer.value = (int32_t)r32(&p); break;
+        case 4: { uint32_t v = r32(&p); e->data.float_val.value = *(float*)&v; break; }
+        case 5: { uint64_t hi = r32(&p); e->data.long_val.value = (hi << 32) | r32(&p); i++; break; }
+        case 6: { uint64_t hi = r32(&p); uint64_t lo = r32(&p); e->data.double_val.value = *(double*)&(uint64_t){(hi<<32)|lo}; i++; break; }
+        case 7:  e->data.class.name_idx = r16(&p); break;
+        case 8:  e->data.string.str_idx = r16(&p); break;
+        case 9: case 10: case 11:
+            e->data.ref.class_idx = r16(&p);
+            e->data.ref.nt_idx = r16(&p);
+            break;
+        case 12: e->data.name_and_type.name_idx = r16(&p);
+                 e->data.name_and_type.desc_idx = r16(&p); break;
+        case 15: { r8(&p); r16(&p); break; } /* MethodHandle */
+        case 16: { r16(&p); break; } /* MethodType */
+        case 18: { r16(&p); r16(&p); break; } /* InvokeDynamic */
+        default: os_print("[CF] Unknown tag "); break;
         }
     }
 
-    /* --- 字段 --- */
-    class->fields_count = read_u2(&p);
-    if (class->fields_count > 0) {
-        class->fields = (jvm_field_t *)os_malloc(
-            class->fields_count * sizeof(jvm_field_t));
-        for (uint16_t i = 0; i < class->fields_count; i++) {
-            jvm_field_t *f = &class->fields[i];
-            f->class        = class;
-            f->access_flags = read_u2(&p);
-            f->name_idx     = read_u2(&p);
-            f->desc_idx     = read_u2(&p);
-            f->offset       = -1;
+    /* ---- 访问标志/类/父类/接口 ---- */
+    cls->access_flags = r16(&p);
+    cls->this_class = r16(&p);
+    cls->super_class = r16(&p);
+    uint16_t ifc = r16(&p);
+    for (uint16_t i = 0; i < ifc; i++) r16(&p);
 
-            /* 解析字段名和描述符 */
-            if (f->name_idx > 0 && f->name_idx < class->cp_count) {
-                f->name = class->constant_pool[f->name_idx].data.utf8.bytes;
-            }
-            if (f->desc_idx > 0 && f->desc_idx < class->cp_count) {
-                f->descriptor = class->constant_pool[f->desc_idx]
-                                    .data.utf8.bytes;
-            }
+    /* 类名 */
+    if (cls->this_class > 0 && cls->this_class < cls->cp_count) {
+        uint16_t ni = cls->constant_pool[cls->this_class].data.class.name_idx;
+        cls->name = (char *)cp_utf8(cls, ni);
+    }
+    os_print("[CF] Class: "); os_print(cls->name ? cls->name : "?"); os_print("\n");
 
-            /* 跳过字段属性 */
-            uint16_t attr_count = read_u2(&p);
-            for (uint16_t j = 0; j < attr_count; j++) {
-                read_u2(&p); /* name_idx */
-                uint32_t attr_len = read_u4(&p);
-                p += attr_len; /* 跳过 */
+    /* ---- 字段 (跳过) ---- */
+    uint16_t fc = r16(&p);
+    for (uint16_t i = 0; i < fc; i++) {
+        r16(&p); r16(&p); r16(&p); /* access, name, desc */
+        uint16_t ac = r16(&p); /* attr count */
+        for (uint16_t j = 0; j < ac; j++) { r16(&p); uint32_t al = r32(&p); p += al; }
+    }
+
+    /* ---- 方法 ---- */
+    cls->methods_count = r16(&p);
+    os_print("[CF] Methods: "); /* TODO print */ os_print("\n");
+    cls->methods = (jvm_method_t *)os_malloc(cls->methods_count * sizeof(jvm_method_t));
+    if (!cls->methods) return -1;
+    for (uint16_t i = 0; i < cls->methods_count; i++)
+        for (uint32_t j = 0; j < sizeof(jvm_method_t); j++)
+            ((uint8_t*)&cls->methods[i])[j] = 0;
+
+    for (uint16_t mi = 0; mi < cls->methods_count; mi++) {
+        jvm_method_t *m = &cls->methods[mi];
+        m->class = cls;
+        m->access_flags = r16(&p);
+        m->name_idx = r16(&p);
+        m->desc_idx = r16(&p);
+        m->name = (char *)cp_utf8(cls, m->name_idx);
+        m->descriptor = (char *)cp_utf8(cls, m->desc_idx);
+        os_print("[CF] Method: "); os_print(m->name); os_print(" "); os_print(m->descriptor); os_print("\n");
+
+        /* 属性 */
+        uint16_t ac = r16(&p);
+        for (uint16_t ai = 0; ai < ac; ai++) {
+            uint16_t an = r16(&p);
+            uint32_t al = r32(&p);
+            const char *aname = cp_utf8(cls, an);
+
+            /* 检查是否为 "Code" 属性 */
+            const char *code_str = "Code";
+            int is_code = (aname[0]=='C' && aname[1]=='o' && aname[2]=='d' && aname[3]=='e' && aname[4]==0);
+
+            if (is_code) {
+                m->max_stack = r16(&p);
+                m->max_locals = r16(&p);
+                m->code_len = r32(&p);
+                m->code = (uint8_t *)os_malloc(m->code_len);
+                if (m->code)
+                    for (uint32_t j = 0; j < m->code_len; j++)
+                        m->code[j] = r8(&p);
+                /* 异常表 */
+                uint16_t et = r16(&p);
+                for (uint16_t j = 0; j < et; j++) { r16(&p); r16(&p); r16(&p); r16(&p); }
+                /* Code 内部属性 */
+                uint16_t ca = r16(&p);
+                for (uint16_t j = 0; j < ca; j++) {
+                    r16(&p); uint32_t cal = r32(&p);
+                    for (uint32_t k = 0; k < cal; k++) r8(&p);
+                }
+                os_print("[CF]   Code: stack="); /* TODO print max_stack */ os_print(" locals="); /* TODO */ os_print(" len="); /* TODO */ os_print("\n");
+            } else {
+                /* 跳过其他属性 */
+                for (uint32_t j = 0; j < al; j++) r8(&p);
             }
         }
     }
 
-    /* --- 方法 --- */
-    class->methods_count = read_u2(&p);
-    if (class->methods_count > 0) {
-        class->methods = (jvm_method_t *)os_malloc(
-            class->methods_count * sizeof(jvm_method_t));
-        for (uint16_t i = 0; i < class->methods_count; i++) {
-            jvm_method_t *m = &class->methods[i];
-            m->class        = class;
-            m->access_flags = read_u2(&p);
-            m->name_idx     = read_u2(&p);
-            m->desc_idx     = read_u2(&p);
-            m->code         = NULL;
-            m->code_len     = 0;
-            m->max_stack    = 0;
-            m->max_locals   = 0;
-            m->exc_table    = NULL;
-            m->exc_table_len = 0;
-            m->native_func  = NULL;
+    /* 类属性 (跳过) */
+    uint16_t ca = r16(&p);
+    for (uint16_t i = 0; i < ca; i++) { r16(&p); uint32_t al = r32(&p); p += al; }
 
-            /* 解析方法名和描述符 */
-            if (m->name_idx > 0 && m->name_idx < class->cp_count) {
-                m->name = class->constant_pool[m->name_idx]
-                              .data.utf8.bytes;
-            }
-            if (m->desc_idx > 0 && m->desc_idx < class->cp_count) {
-                m->descriptor = class->constant_pool[m->desc_idx]
-                                    .data.utf8.bytes;
-            }
-
-            /* 解析方法属性 */
-            parse_attributes(&p, m);
-
-            (void)end; /* 后续使用 */
-        }
-    }
-
-    /* --- 类属性 --- */
-    uint16_t class_attr_count = read_u2(&p);
-    for (uint16_t i = 0; i < class_attr_count; i++) {
-        read_u2(&p); /* name_idx */
-        uint32_t attr_len = read_u4(&p);
-        p += attr_len;
-    }
-
-    os_print("[ClassFile] Parsed class: ");
-    /* 获取类名 */
-    if (class->this_class > 0 && class->this_class < class->cp_count) {
-        uint16_t name_idx = class->constant_pool[class->this_class]
-                                .data.class.name_idx;
-        class->name = class->constant_pool[name_idx].data.utf8.bytes;
-    }
-    os_print(class->name ? class->name : "(unknown)");
-    os_print("\n");
-
+    os_print("[CF] Parse done.\n");
     return 0;
 }

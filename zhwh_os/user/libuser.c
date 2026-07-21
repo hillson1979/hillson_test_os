@@ -658,6 +658,15 @@ int wifi_fw_load(const uint8_t *fw, uint32_t size) {
 }
 
 // 进程控制系统调用包装函数
+int spawn(const char *path) {
+    int ret;
+    __asm__ volatile("int $0x80"
+        : "=a"(ret)
+        : "a"(63), "b"(path)
+        : "memory", "cc");
+    return ret;
+}
+
 int execv(const char *path, char *const argv[]) {
     int ret;
     __asm__ volatile (

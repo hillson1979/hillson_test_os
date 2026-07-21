@@ -126,7 +126,15 @@ int os_file_close(os_fd_t fd) {
 }
 
 int32_t os_file_read(os_fd_t fd, void *buf, uint32_t count) {
-    return (int32_t)read((int)fd, (char *)buf, (int)count);
+    /* 内核 SYS_READ 每次最多读 512 字节，需要循环 */
+    uint32_t total = 0;
+    char *dst = (char *)buf;
+    while (total < count) {
+        int n = read((int)fd, dst + total, (int)(count - total));
+        if (n <= 0) break;
+        total += (uint32_t)n;
+    }
+    return (int32_t)total;
 }
 
 int32_t os_file_write(os_fd_t fd, const void *buf, uint32_t count) {
@@ -232,13 +240,17 @@ void os_cond_broadcast(os_cond_t *cond) {
  * ================================================================ */
 
 void os_putchar(char c) {
+    /* 同时写 VGA 和 fd1 (供终端重定向) */
     sys_putchar(c);
+    write(1, &c, 1);
 }
 
 void os_print(const char *str) {
-    while (*str) {
-        os_putchar(*str++);
-    }
+    /* 写字符串到 fd1 */
+    int len = 0; while (str[len]) len++;
+    write(1, str, len);
+    /* 同时写 VGA */
+    while (*str) sys_putchar(*str++);
 }
 
 char os_getchar(void) {

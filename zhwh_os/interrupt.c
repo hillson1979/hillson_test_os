@@ -319,6 +319,8 @@ void handle_page_fault(struct trapframe *tf) {
         printf("[PF] Kernel page fault, halting\n");
         printf("[PF] This is a KERNEL BUG - fault in kernel mode!\n");
         printf("[PF] fault_addr=0x%x, eip=0x%x, cs=0x%x\n", fault_va, tf->eip, tf->cs);
+        extern void klog_save_to_ramfs(void);
+        klog_save_to_ramfs();
 
         // 🔥 Blue screen: write crash info to VGA text buffer
         {

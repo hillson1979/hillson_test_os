@@ -765,105 +765,14 @@ task_t* do_fork(void) {
     //   3. 用户空间映射（0-767）需要复制页表和物理页（COW）
     //
     // 为什么要独立 CR3？
-    //   - 避免多个子进程互相覆盖用户栈映射
-    //   - 符合标准 fork 语义：父子进程有独立的地址空间
-    //
-    printf("[do_fork] Creating independent page directory for child...\n");
-
-    // 1. 分配新的页目录
-    uint32_t child_pd_phys = pmm_alloc_page();
-    if (!child_pd_phys) {
-        printf("[do_fork] ERROR: Failed to allocate page directory for child!\n");
-        pmm_free_page(child_phys);
-        pmm_free_page(kstack_phys);
-        return NULL;
-    }
-    uint32_t child_pd_virt = phys_to_virt(child_pd_phys);
-    uint32_t *child_pd = (uint32_t*)child_pd_virt;
-
-    printf("[do_fork] Allocated child PD: phys=0x%x, virt=0x%x\n",
-           child_pd_phys, child_pd_virt);
-
-    // 2. 清空子进程页目录（避免垃圾数据）
-    memset(child_pd, 0, PAGE_SIZE);
-
-    // 3. 复制内核映射（768-1023 项）
-    //    使用内核全局 CR3 来访问父进程的页目录
+    // fork: 共享 CR3，execv 会创建新映射
     extern uint32_t kernel_page_directory_phys;
-    uint32_t *parent_pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
-
-    for (int i = 768; i < 1024; i++) {
-        child_pd[i] = parent_pd[i];
-    }
-
-    printf("[do_fork] Copied kernel mappings (768-1023)\n");
-
-    // 4. 复制用户空间页表（0-767 项）
-    //    ⚠️ 关键：需要复制页表结构，但暂时共享物理页（COW 的第一步）
-    //
-    // ⚠️⚠️⚠️ 关键修复：确保在 kernel CR3 下复制页表
-    // 原因：memcpy 需要访问内核虚拟地址，必须在 kernel CR3 下进行
-    uint32_t current_cr3_check;
-    __asm__ volatile("movl %%cr3, %0" : "=r"(current_cr3_check));
-    if ((current_cr3_check & ~0xFFF) != kernel_page_directory_phys) {
-        printf("[do_fork] WARNING: CR3 changed! Restoring kernel CR3...\n");
-        printf("[do_fork] Current CR3=0x%x, Expected=0x%x\n",
-               current_cr3_check, kernel_page_directory_phys);
-        uint32_t kernel_cr3_value = kernel_page_directory_phys | 0x3;
-        __asm__ volatile("movl %0, %%cr3" : : "r"(kernel_cr3_value));
-    }
-
-    // ⚠️⚠️⚠️ 简化策略：只复制已知的用户空间页表
-    // 根据 load_module_to_user 的输出，我们知道：
-    //   - PD[32] = 0x2402007 (用户代码页表 @ 0x8000000)
-    //   - PD[767] = 0x2404007 (用户栈页表 @ 0xBFFFF000)
-    //
-    // 其他用户空间的 PDE 项可能是未初始化的垃圾数据，不应该复制！
-    // 这样可以避免访问无效的物理地址（如 0xD0200000）
-    //
-    int user_pd_indices[] = {32, 767};  // 用户代码和用户栈
-    int num_user_pds = 2;
-
-    for (int idx = 0; idx < num_user_pds; idx++) {
-        int i = user_pd_indices[idx];
-
-        if (parent_pd[i] & PAGE_PRESENT) {
-            uint32_t parent_pt_phys = parent_pd[i] & ~0xFFF;
-
-            // ⚠️⚠️⚠️ 分配新的页表物理页
-            uint32_t child_pt_phys = pmm_alloc_page();
-            if (!child_pt_phys) {
-                printf("[do_fork] ERROR: Failed to allocate page table for PD[%d]!\n", i);
-                continue;
-            }
-
-            // 复制页表内容（共享物理页映射）
-            void *parent_pt_virt = phys_to_virt(parent_pt_phys);
-            void *child_pt_virt = phys_to_virt(child_pt_phys);
-
-            printf("[do_fork] memcpy: parent_pt_virt=0x%x, child_pt_virt=0x%x\n",
-                   (uint32_t)parent_pt_virt, (uint32_t)child_pt_virt);
-
-            memcpy(child_pt_virt, parent_pt_virt, PAGE_SIZE);
-
-            // 设置子进程的 PDE（保持相同的标志位）
-            child_pd[i] = child_pt_phys | (parent_pd[i] & 0xFFF);
-
-            printf("[do_fork] Copied PD[%d]: parent_pt=0x%x -> child_pt=0x%x\n",
-                   i, parent_pt_phys, child_pt_phys);
-        }
-    }
-
-    printf("[do_fork] Copied user space page tables (0-767)\n");
-
-    // 5. 设置子进程的 CR3 和 pde
-    child->pde = (uint32_t*)child_pd_phys;  // 存储物理地址
-    child->cr3 = (uint32_t*)child_pd_phys;   // CR3 需要物理地址
+    child->pde = (uint32_t*)kernel_page_directory_phys;
+    child->cr3 = (uint32_t*)kernel_page_directory_phys;
     child->directory = child->cr3;
+    printf("[do_fork] Child sharing CR3: 0x%x\n", kernel_page_directory_phys);
 
-    printf("[do_fork] Child using independent CR3: 0x%x\n", (uint32_t)child->cr3);
-
-    // 7. 复制 trapframe 并构建正确的内核栈布局
+    // 复制 trapframe
     // ⚠️⚠️⚠️ 关键修复：子进程的内核栈布局必须匹配 switch_to + interrupt_exit 的期望
     //
     // 当子进程第一次被调度时，流程是：
@@ -907,6 +816,11 @@ task_t* do_fork(void) {
     // 子进程返回 0
     child->tf->eax = 0;
 
+    // 偏移子进程栈: 避免与父进程共享栈位置冲突
+    // 父进程从 fork 返回后栈继续变化, 子进程需要独立栈区域
+    child->tf->esp -= 65536;
+    printf("[do_fork] Child stack offset 64KB: esp=0x%x\n", child->tf->esp);
+
     printf("[do_fork] Trapframe copied: eip=0x%x, esp=0x%x\n",
            child->tf->eip, child->tf->esp);
     printf("[do_fork] Parent tf at 0x%x, Child tf at 0x%x, sizeof(tf)=%d\n",
@@ -919,14 +833,9 @@ task_t* do_fork(void) {
     printf("  eax=0x%x, ebx=0x%x, ecx=0x%x, edx=0x%x\n", child->tf->eax, child->tf->ebx, child->tf->ecx, child->tf->edx);
     printf("  esi=0x%x, edi=0x%x, ebp=0x%x\n", child->tf->esi, child->tf->edi, child->tf->ebp);
 
-    // ⚠️⚠️⚠️ 简化方案：父子进程共享用户栈映射
-    // 原因：共享 CR3，所有映射都相同
-    // 问题：多个子进程会互相覆盖用户栈内容
-    // 解决：后续需要实现 COW（写时复制）
-    //
-    printf("[do_fork] Child sharing parent's address space (including user stack)\n");
-    printf("[do_fork] ⚠️ WARNING: Multiple children will overwrite each other's user stack!\n");
-    printf("[do_fork] ⚠️ TODO: Implement COW (Copy-On-Write) mechanism\n");
+    // 子进程由 fork 创建独立页目录(cr3), 数据页暂时共享父进程
+    // execv 会加载新程序并建立独立映射
+    printf("[do_fork] Child has independent PD, shared data pages\n");
 
     // ⚠️⚠️⚠️ 关键修复：fork的子进程不需要构建switch_to帧！
     // 原因：

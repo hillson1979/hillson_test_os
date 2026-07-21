@@ -58,7 +58,8 @@ public:
     bool poll();
 
     // Process a single Set1 scancode byte
-    void doKey(unsigned char scancode);
+    // Returns true if a make event was dispatched (for poll() dedup)
+    bool doKey(unsigned char scancode);
 
 private:
     // Map Set1 scancode index → Qt key definition

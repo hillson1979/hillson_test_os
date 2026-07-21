@@ -298,8 +298,8 @@ int filp_read(file_t *file, char *buffer, uint32_t size) {
 
     printf("[vfs] filp_read: inode=%d, size=%u\n", file->f_inode->i_ino, size);
 
-    // 检查权限
-    if ((file->f_flags & O_RDWR) == 0 && (file->f_flags & O_RDONLY) == 0) {
+    // 检查权限 (O_RDONLY=0 O_WRONLY=1 O_RDWR=2)
+    if ((file->f_flags & 3) == O_WRONLY) {
         printf("[vfs] filp_read: file not opened for reading\n");
         return -1;
     }

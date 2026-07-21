@@ -363,65 +363,125 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             extern void kfree(void*);
             extern void *memcpy(void*, const void*, unsigned int);
 
+            // 确保 /boot 目录存在
+            {
+                struct inode *root = path_lookup("/");
+                if (root && !path_lookup("/boot")) {
+                    extern int ramfs_mkdir(struct inode*, const char*, int);
+                    ramfs_mkdir(root, "boot", 0755);
+                    printf("[ramfs] Created /boot directory\n");
+                }
+            }
+
+            printf("[ramfs] Module import: multiboot2_info_addr=0x%x\n", multiboot2_info_addr);
             if (multiboot2_info_addr) {
                 uint32_t *mb_ptr = (uint32_t*)phys_to_virt(multiboot2_info_addr);
+                uint32_t total_size = *mb_ptr;
                 multiboot_tag_t *tag = (multiboot_tag_t*)((uint8_t*)mb_ptr + 8);
+                printf("[ramfs] Module import: total_size=%u, first_tag at %p type=%u\n",
+                       total_size, (void*)tag, tag->type);
 
                 while (tag->type != MULTIBOOT_TAG_TYPE_END) {
+                    printf("[ramfs] Module import: tag type=%u size=%u\n", tag->type, tag->size);
                     if (tag->type == MULTIBOOT_TAG_TYPE_MODULE) {
                         multiboot_tag_module_t *mod = (multiboot_tag_module_t*)tag;
                         // cmdline 紧跟在模块头部结构之后
                         char *cmdline = (char*)mod + sizeof(multiboot_tag_module_t);
+                        uint8_t *raw = (uint8_t*)cmdline;
+                        printf("[ramfs] Module: start=0x%x end=0x%x size=%u sizeof=%u\n",
+                               mod->mod_start, mod->mod_end,
+                               mod->mod_end - mod->mod_start,
+                               (uint32_t)sizeof(multiboot_tag_module_t));
+                        printf("[ramfs] Module: cmdline at %p, first 32 bytes:",
+                               (void*)cmdline);
+                        for (int di = 0; di < 32; di++) printf(" %02x", raw[di]);
+                        printf("\n");
 
                         if (cmdline && cmdline[0]) {
                             uint32_t mod_size = mod->mod_end - mod->mod_start;
                             printf("[ramfs] Importing module: '%s' (%u bytes)\n",
                                    cmdline, mod_size);
 
-                            // 提取文件名（跳过目录部分）
-                            char *fname = cmdline;
-                            for (char *p = cmdline; *p; p++) {
-                                if (*p == '/') fname = p + 1;
-                            }
-                            // 截断到空格/参数之前
-                            char shortname[64];
-                            int si = 0;
-                            for (char *p = fname; *p && *p != ' ' && si < 62; p++)
-                                shortname[si++] = *p;
-                            shortname[si] = 0;
+                            // 解析完整路径: "java/classes/HelloWorld.class"
+                            // 去掉末尾的空格/参数
+                            char path[256];
+                            int pi = 0;
+                            for (char *p = cmdline; *p && *p != ' ' && pi < 254; p++)
+                                path[pi++] = *p;
+                            path[pi] = 0;
 
-                            if (si > 0) {
-                                // 确保 /boot 目录存在
-                                struct inode *root = path_lookup("/");
-                                struct inode *boot_dir = path_lookup("/boot");
-                                if (!boot_dir && root) {
-                                    extern int ramfs_mkdir(struct inode*, const char*, int);
-                                    ramfs_mkdir(root, "boot", 0755);
-                                    boot_dir = path_lookup("/boot");
+                            if (pi == 0) goto next_module;
+
+                            // 逐级创建目录
+                            struct inode *dir = path_lookup("/");
+                            if (!dir) goto next_module;
+
+                            char *part = path;
+                            char *next = part;
+                            while (*next) {
+                                if (*next == '/') {
+                                    *next = 0;
+                                    if (*(next + 1)) {  // 非末尾, 创建目录
+                                        struct inode *sub = path_lookup(part[0]=='/' ? part+1 : part); // TODO: 简化
+                                        // 直接使用完整路径逐级 mkdir
+                                    }
+                                    *next = '/';
                                 }
+                                next++;
+                            }
 
-                                if (boot_dir) {
-                                    struct dentry *de;
-                                    extern int ramfs_create(struct inode*, const char*, int, struct dentry**);
-                                    if (ramfs_create(boot_dir, shortname, 0644|S_IFREG, &de) == 0 && de) {
-                                        // 将模块数据映射并拷贝到 ramfs
-                                        void *dbuf = kmalloc(mod_size);
-                                        if (dbuf) {
-                                            uint32_t mod_virt = (uint32_t)phys_to_virt(mod->mod_start);
-                                            for (uint32_t off = 0; off < mod_size; off += 4096) {
-                                                map_highmem_physical(mod->mod_start + off, 4096, 0x3);
+                            // 简化: 从根开始, 逐级创建路径中的目录
+                            {
+                                char tmp[256];
+                                int ti = 0;
+                                dir = path_lookup("/");
+                                char *s = path;
+                                if (*s == '/') s++; // skip leading /
+
+                                while (*s && dir) {
+                                    // 复制到下一个 /
+                                    ti = 0;
+                                    while (s[ti] && s[ti] != '/') { tmp[ti] = s[ti]; ti++; }
+                                    tmp[ti] = 0;
+
+                                    if (s[ti] == '/') {
+                                        // 这是目录
+                                        struct inode *sub = path_lookup(tmp); // FIXME: 需要完整路径
+                                        // 用简易方式: 在 dir 下查找或创建
+                                        struct dentry *de;
+                                        extern int ramfs_lookup(struct inode*, const char*, struct dentry**);
+                                        if (ramfs_lookup(dir, tmp, &de) == 0 && de && de->d_inode) {
+                                            dir = de->d_inode;
+                                        } else {
+                                            extern int ramfs_mkdir(struct inode*, const char*, int);
+                                            ramfs_mkdir(dir, tmp, 0755);
+                                            // 重新lookup
+                                            struct dentry *de2;
+                                            if (ramfs_lookup(dir, tmp, &de2) == 0 && de2 && de2->d_inode) {
+                                                dir = de2->d_inode;
+                                            } else {
+                                                dir = NULL;
                                             }
-                                            memcpy(dbuf, (void*)mod_virt, mod_size);
-                                            de->d_inode->i_data = dbuf;
-                                            de->d_inode->i_size = mod_size;
-                                            printf("[ramfs] Imported /boot/%s (%u bytes)\n", shortname, mod_size);
                                         }
+                                        s += ti + 1;
                                     } else {
-                                        printf("[ramfs] Failed to create /boot/%s\n", shortname);
+                                        // 这是文件名 — 创建文件
+                                        struct dentry *de;
+                                        extern int ramfs_create(struct inode*, const char*, int, struct dentry**);
+                                        if (ramfs_create(dir, tmp, 0644|S_IFREG, &de) == 0 && de) {
+                                            de->d_inode->i_data = phys_to_virt(mod->mod_start);
+                                            de->d_inode->i_size = mod_size;
+                                            de->d_inode->i_nlink = 2;
+                                            printf("[ramfs] Imported /%s (%u bytes)\n", path, mod_size);
+                                        } else {
+                                            printf("[ramfs] Failed to create /%s\n", path);
+                                        }
+                                        break;
                                     }
                                 }
                             }
                         }
+                        next_module:;
                     }
                     tag = (multiboot_tag_t*)((uint8_t*)tag + ((tag->size + 7) & ~7));
                 }

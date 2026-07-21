@@ -30,9 +30,9 @@ uint32_t os_heap_used(void);
  * ================================================================ */
 
 /** 文件描述符类型 */
-typedef int32_t os_fd_t;
+typedef uint32_t os_fd_t;
 
-#define OS_FD_INVALID  (-1)
+#define OS_FD_INVALID  0
 #define OS_FD_STDIN    (0)
 #define OS_FD_STDOUT   (1)
 #define OS_FD_STDERR   (2)
