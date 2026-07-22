@@ -1,16 +1,21 @@
 /**
- * @file hillson_ehci.h
- * @brief CherryUSB Port Layer — HillsonOS EHCI adapter (x86 32-bit)
- *
- * Maps CherryUSB's usbh_port_xxx API to HillsonOS's existing
- * USB HCD functions (usb_control_transfer, etc.)
+ * @file hillson_hcd.h
+ * @brief CherryUSB Port Layer — EHCI/UHCI/OHCI adapter (x86 32-bit)
  */
 
-#ifndef CHERRYUSB_PORT_HILLSON_EHCI_H
-#define CHERRYUSB_PORT_HILLSON_EHCI_H
+#ifndef CHERRYUSB_PORT_HILLSON_HCD_H
+#define CHERRYUSB_PORT_HILLSON_HCD_H
 
 #include <stdint.h>
-#include "../core/usbh_core.h"
+
+/* USB setup packet (标准 8 字节) */
+typedef struct {
+    uint8_t  bmRequestType;
+    uint8_t  bRequest;
+    uint16_t wValue;
+    uint16_t wIndex;
+    uint16_t wLength;
+} __attribute__((packed)) usb_setup_packet_t;
 
 /* Init HillsonOS USB stack (calls existing usb_init) */
 int usbh_port_init(void);

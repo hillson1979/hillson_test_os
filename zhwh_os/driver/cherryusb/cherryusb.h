@@ -14,7 +14,7 @@
  *       ↓
  *   USB Core (usbh_core)
  *       ↓
- *   Port Layer (hillson_ehci) → HillsonOS EHCI driver
+ *   Port Layer (hillson_hcd) → HillsonOS USB HCD (EHCI/UHCI/OHCI)
  */
 
 #ifndef CHERRYUSB_H

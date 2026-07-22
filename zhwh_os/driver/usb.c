@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include "string.h"
 #include "printf.h"
-#include "cherryusb/cherryusb_hid_mouse.h"
+/* #include "cherryusb/cherryusb_hid_mouse.h" */
 
 uint8_t g_usb_mouse_ep = 0x81;
 uint8_t g_usb_mouse_maxpkt = 8;
@@ -323,7 +323,7 @@ int usb_enumerate_device(int controller_id, uint8_t port) {
                                   uint8_t interface, uint8_t endpoint_in,
                                   uint8_t max_packet);
         int m = usb_mouse_init(controller_id, dev->address, 0, g_usb_mouse_ep, g_usb_mouse_maxpkt);
-        if (m >= 0) printf("[USB] Mouse via CherryUSB HID (idx=%d)\n", m);
+        if (m >= 0) printf("[USB] Mouse initialized (idx=%d)\n", m);
     }
 
     ehci_display_append("=== UHCI ENUM DONE ===\n");

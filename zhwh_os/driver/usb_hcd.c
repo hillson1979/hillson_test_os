@@ -1297,7 +1297,12 @@ int usb_mouse_periodic_init(int controller_id,
         ctrl->qh_pool_phys +
         ((uint32_t)qh - (uint32_t)ctrl->qh_pool);
 
-    // 🔥 直接链接到所有帧，每帧都执行
+    /* Hardcode frame list from known working DMA phys=0x2800000 */
+    if (!ctrl->frame_list || (uint32_t)ctrl->frame_list < 0xC0000000) {
+        printf("[USB Mouse] fixing frame_list: was %p\n", (void*)ctrl->frame_list);
+        ctrl->frame_list = (volatile uint32_t *)0xC2800000;
+        ctrl->frame_list_phys = 0x2800000;
+    }
     uint32_t old = ctrl->frame_list[0];
 
     // 🔥 对于低速设备，QH 的 link_ptr 需要设置 LS 位 (bit 26)
@@ -1325,14 +1330,6 @@ int usb_mouse_periodic_init(int controller_id,
         uhci_write_reg(ctrl, UHCI_USBCMD, cmd & ~UHCI_USBCMD_RUN);
         for (volatile int d = 0; d < 1000; d++);
         uhci_write_reg(ctrl, UHCI_USBCMD, cmd | UHCI_USBCMD_RUN);
-    }
-
-    // BIG blue block at init — bottom-right corner, won't be covered
-    {
-        volatile uint32_t *fb4 = (volatile uint32_t *)0xF0000000;
-        for (int dy = 0; dy < 60; dy++)
-            for (int dx = 0; dx < 60; dx++)
-                fb4[(700+dy)*1024 + 960 + dx] = 0x000000FF;  // blue
     }
 
     mouse_periodic.active = 1;
@@ -1485,54 +1482,6 @@ int usb_mouse_periodic_poll(uint8_t *report)
     g_td_ctrl = td->ctrl_status;
     g_td_polls++;
 
-    // BIG colored block on screen — impossible to miss
-    {
-        volatile uint32_t *fb3 = (volatile uint32_t *)0xF0000000;
-        int bx = 940, by = 10, bw = 80, bh = 80;
-        int active = (td->ctrl_status & UHCI_TD_CTRL_ACT) ? 1 : 0;
-        uint32_t clr = active ? 0x00FF0000 : 0x0000FF00;  // red=stuck, green=ok
-        for (int dy = 0; dy < bh; dy++)
-            for (int dx = 0; dx < bw; dx++)
-                if (by+dy < 768) fb3[(by+dy)*1024 + bx + dx] = clr;
-        g_td_active = active;
-    }
-
-    // ALWAYS show text — TD status and DMA buffer contents
-    {
-        volatile uint32_t *fbt = (volatile uint32_t *)0xF0000000;
-        char tbuf[50]; int ti = 0;
-        int actv = (td->ctrl_status & UHCI_TD_CTRL_ACT) ? 1 : 0;
-        const char *tp = actv ? "ACT" : "OK ";
-        while(*tp) tbuf[ti++]=*tp;
-        // Show first 4 bytes of DMA buffer
-        tbuf[ti++]=' ';
-        unsigned char *dm = (unsigned char *)mouse_periodic.dma_buffer;
-        for(int bi=0;bi<4;bi++){
-            unsigned char b = dm[bi];
-            tbuf[ti++]="0123456789ABCDEF"[b>>4];
-            tbuf[ti++]="0123456789ABCDEF"[b&0xF]; tbuf[ti++]=' ';
-        }
-        tbuf[ti]=0;
-        uint32_t clr = actv ? 0x00000000 : 0x0000FF00;
-        fb_draw_text(fbt, 250, 4, tbuf, clr, 1024);
-    }
-
-    // Show DMA phys addr once
-    { static int once=0; if(!once){ once=1;
-        volatile uint32_t *fs = (volatile uint32_t*)0xF0000000;
-        char tb[40]; int ti=0;
-        const char *hp = "DMA=0x"; while(*hp) tb[ti++]=*hp++;
-        uint32_t pa = mouse_periodic.dma_buffer_phys;
-        for(int n=28;n>=0;n-=4) tb[ti++]="0123456789ABCDEF"[(pa>>n)&0xF];
-        tb[ti]=0;
-        for(int ci=0;ci<ti;ci++){ char ch=tb[ci]; if(ch<32||ch>126) continue;
-            extern const unsigned char font8x8_data[95][8];
-            const unsigned char *g=font8x8_data[(unsigned char)ch-32];
-            for(int r=0;r<8;r++){ unsigned char b=g[r];
-                for(int c=0;c<8;c++) if(b&(0x80>>c)) fs[(100+r)*1024+4+ci*8+c]=0x00FFFF00;
-            }
-        }
-    }}
 
     // Always save DMA content on TD completion
     for(int _i=0;_i<8;_i++) g_dma_bytes[_i] = ((uint8_t*)mouse_periodic.dma_buffer)[_i];
