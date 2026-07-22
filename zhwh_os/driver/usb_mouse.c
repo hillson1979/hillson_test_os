@@ -12,6 +12,7 @@
 #include "usb_mouse.h"
 #include "usb.h"
 #include "usb_hcd.h"
+#include "cherryusb/class/hid/usbh_hid.h"
 
 // HID 请求码
 #ifndef USB_REQ_SET_PROTOCOL
@@ -157,7 +158,9 @@ int usb_mouse_init(int controller_id, uint8_t dev_addr, uint8_t interface,
     // Print EHCI regs for debug
     extern uint32_t g_ehci_fl_phys; g_ehci_fl_phys=0; // will be set by poll
 
-    return num_usb_mice - 1;  // Return mouse index
+    /* CherryUSB HID 注册 (旁路，不影响原有逻辑) */
+    usbh_hid_register(dev_addr, interface, endpoint_in, max_packet, 10, 2);
+    return num_usb_mice - 1;
 }
 
 /**
@@ -189,13 +192,14 @@ extern int usb_mouse_periodic_poll(uint8_t *report);
 
 int usb_mouse_read(int mouse_index, void *report)
 {
+    /* CherryUSB HID 优先 */
+    if (usbh_hid_count() > 0)
+        return usbh_hid_read(0, report, 4);
+    /* 回退到原始驱动 */
     if (mouse_index < 0 || mouse_index >= num_usb_mice)
         return -1;
-
     usb_mouse_device_t *mouse = &usb_mice[mouse_index];
-    if (!mouse->initialized)
-        return -1;
-
+    if (!mouse->initialized) return -1;
     return usb_mouse_periodic_poll((uint8_t *)report);
 }
 
