@@ -3941,6 +3941,52 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
 
     struct xhci_trb_t event;
 
+    /* The event ring is shared by every transfer on this controller, while
+     * usb_poll_interrupts() visits transfers one at a time. Do not consume a
+     * Transfer Event until the owning transfer is being polled; otherwise an
+     * earlier list entry can steal the mouse event from the EP3 transfer. */
+    {
+        struct xhci_trb_t *pending =
+            &xhci->event_ring.ring[xhci->event_ring.dequeue];
+        uint8_t cycle = pending->control & 0x1;
+
+        if (cycle == xhci->event_ring.ccs) {
+            uint8_t type =
+                (pending->control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
+
+            if (type == TRB_TYPE_TRANSFER_EVENT) {
+                uint8_t event_slot = (pending->control >> 24) & 0xFF;
+                uint8_t event_ep = (pending->control >> 16) & 0x1F;
+                uint8_t transfer_ep = 1;
+                volatile struct usb_transaction_t *trans =
+                    transfer->trans_head;
+                static uint32_t runtime_event_lines;
+
+                if (transfer->endpoint && transfer->endpoint->addr != 0) {
+                    transfer_ep = transfer->endpoint->addr * 2;
+                    if (transfer->endpoint->direction == USB_ENDPOINT_IN)
+                        transfer_ep |= 1;
+                }
+
+                if (runtime_event_lines < 32) {
+                    xhci_status_regs("xhci runtime event",
+                                     "slot=%x ep=%x cc=%x",
+                                     event_slot, event_ep,
+                                     (pending->status >> 24) & 0xFF);
+                    runtime_event_lines++;
+                }
+
+                if (event_slot != (uint8_t)transfer->dev->num ||
+                    event_ep != transfer_ep ||
+                    (pending->param && trans && trans->hc_trb_phys &&
+                     (pending->param & ~0xFULL) !=
+                     ((uint64_t)trans->hc_trb_phys & ~0xFULL))) {
+                    return 0;
+                }
+            }
+        }
+    }
+
     if (xhci_get_event(xhci, &event) > 0) {
         uint8_t trb_type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
         if (trb_type == TRB_TYPE_TRANSFER_EVENT) {
@@ -3958,7 +4004,8 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                 }
             }
 
-            if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET || cc == CC_STALL_ERROR) {
+            if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET ||
+                cc == CC_STALL_ERROR || cc == CC_ENDPOINT_NOT_ENABLED) {
                 /* For interrupt transfers: copy DMA鈫抲ser buffer (on success),
                  * then re-submit the TRB for the next poll interval.
                  * CC_STALL_ERROR = device NAK'd or STALL'd 鈥?re-submit anyway
@@ -3967,8 +4014,9 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                     transfer->trans_head && transfer->endpoint) {
                     volatile struct usb_transaction_t *trans = transfer->trans_head;
 
-                    if (trans->hc_trb_phys &&
-                        event.param != (uint64_t)trans->hc_trb_phys) {
+                    if (event.param && trans->hc_trb_phys &&
+                        (event.param & ~0xFULL) !=
+                        ((uint64_t)trans->hc_trb_phys & ~0xFULL)) {
                         return 0;
                     }
 
@@ -3979,10 +4027,19 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                     if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET) {
                         uint32_t rem  = event.status & 0xFFFFFF;
                         uint32_t rx   = (rem <= intr_len) ? (intr_len - rem) : 0;
+                        transfer->actual_length = (uint16_t)rx;
                         if (trans->data && trans->data != (void *)0x1 &&
                             trans->buf && rx > 0) {
+                            static uint32_t runtime_report_lines;
                             A_memcpy(trans->buf, (void *)trans->data, rx);
                             report_ready = 1;
+                            if (runtime_report_lines < 32) {
+                                xhci_status_regs("xhci mouse report",
+                                                 "slot=%x ep=%x bytes=%x",
+                                                 (uint32_t)transfer->dev->num,
+                                                 (uint32_t)ep, rx);
+                                runtime_report_lines++;
+                            }
                         }
                         transfer->success = 1;
                     }
@@ -4007,19 +4064,63 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                      * at a shallower stack depth (from the scheduler idle
                      * loop in kernel.c). */
                     if (cc == CC_STALL_ERROR) {
+                        transfer->actual_length = 0;
                         transfer->need_clear_halt = 1;
                         return 0;  /* no data; callback NOT called */
                     }
 
                     struct xhci_ring_t *tr =
                         &xhci->slots[slot_id].ep_rings[ep_val];
-                    uint32_t data_phys;
-                    void *data_buf = dma_alloc_coherent(intr_len, &data_phys);
-                    if (data_buf && tr->ring) {
-                        /* The completion path copies from trans->data. Keep it
-                         * paired with the DMA buffer used by the new TRB;
-                         * otherwise every completion replays the first report. */
-                        trans->data = data_buf;
+                    void *data_buf = (void *)trans->data;
+                    uint32_t data_phys = data_buf && data_buf != (void *)0x1
+                        ? (uint32_t)virt_to_phys(data_buf) : 0;
+
+                    if (cc == CC_ENDPOINT_NOT_ENABLED) {
+                        static uint32_t endpoint_disabled_lines;
+                        uint8_t ep_addr = transfer->endpoint->addr;
+                        if (transfer->endpoint->direction == USB_ENDPOINT_IN)
+                            ep_addr |= 0x80;
+
+                        if (endpoint_disabled_lines < 16) {
+                            xhci_error_regs("xhci endpoint disabled",
+                                            "slot=%x ep=%x remain=%x",
+                                            (uint32_t)slot_id, ep_val,
+                                            event.status & 0xFFFFFF);
+                            endpoint_disabled_lines++;
+                        }
+
+                        /* A disabled endpoint cannot accept Reset Endpoint.
+                         * Rebuild its transfer ring before Configure Endpoint,
+                         * whose dequeue pointer starts at the ring base. */
+                        A_memset(tr->ring, 0,
+                                 tr->size * sizeof(struct xhci_trb_t));
+                        tr->ring[tr->size - 1].param = tr->phys;
+                        tr->ring[tr->size - 1].control =
+                            TRB_TYPE(TRB_TYPE_LINK) | TRB_TC | TRB_CYCLE;
+                        tr->enqueue = 0;
+                        tr->dequeue = 0;
+                        tr->ccs = 1;
+                        xhci_mmio_barrier();
+
+                        if (xhci_configure_endpoint(
+                                xhci, slot_id, ep_addr,
+                                transfer->endpoint->type,
+                                transfer->endpoint->mps,
+                                transfer->endpoint->interval) < 0) {
+                            xhci_error_regs("xhci EP configure failed",
+                                            "slot=%x ep=%x cc=%x",
+                                            (uint32_t)slot_id, ep_val,
+                                            (uint32_t)cc);
+                            transfer->success = 0;
+                            return 0;
+                        }
+                        xhci_status_regs("xhci EP reconfigured",
+                                         "slot=%x ep=%x ring=%x",
+                                         (uint32_t)slot_id, ep_val,
+                                         (uint32_t)tr->phys);
+                    }
+
+                    if (data_phys && tr->ring) {
                         /* A short/NAK completion must not expose stale bytes
                          * as a relative mouse displacement. */
                         A_memset(data_buf, 0, intr_len);
@@ -4038,6 +4139,10 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
 
                         mmio_write32(xhci->db_base + (slot_id * 4), ep_val);
                         mmio_read32(xhci->db_base + (slot_id * 4));
+                    } else {
+                        xhci_error_regs("xhci INT rearm failed",
+                                        "slot=%x ep=%x dma=%x",
+                                        (uint32_t)slot_id, ep_val, data_phys);
                     }
 
                     return (report_ready &&

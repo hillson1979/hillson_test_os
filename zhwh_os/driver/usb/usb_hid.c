@@ -199,6 +199,10 @@ static void usb_handle_mouse_input(void *__hid)
     struct usb_hid_dev_t *hid = __hid;
     uint8_t *buf = hid->buf;
 
+    usb_printk("usb mouse report: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+               buf[0], buf[1], buf[2], buf[3],
+               buf[4], buf[5], buf[6], buf[7]);
+
     if (hid->mouse_absolute) {
         int off = (hid->report_id && buf[0] == hid->report_id) ? 1 : 0;
         uint8_t raw_buttons = buf[off];
@@ -216,16 +220,59 @@ static void usb_handle_mouse_input(void *__hid)
 
         cur_button_state = b0[raw_buttons & 0x1F];
         hid->new_data = 1;
+        usb_printk("usb mouse abs: x=%d y=%d buttons=%x\n",
+                   hid->abs_x, hid->abs_y,
+                   (uint32_t)(raw_buttons & 0x1F));
         unblock_kernel_task(mouse_task);
         return;
     }
 
-    int dx = (int8_t)buf[1];
-    int dy = -(int8_t)buf[2];    /* Y is inverted in screen space */
-    int wheel = (int8_t)buf[3];
+    int raw_dx;
+    int raw_dy;
+    int wheel;
+
+    int actual_len = hid->transfer.actual_length;
+    if (actual_len == 6) {
+        /* This mouse uses a 6-byte relative report despite accepting boot
+         * protocol: buttons, signed 16-bit X, signed 16-bit Y, wheel. Convert
+         * it to the canonical 4-byte layout consumed by the GUI syscall. */
+        raw_dx = (int16_t)((uint16_t)buf[1] |
+                           ((uint16_t)buf[2] << 8));
+        raw_dy = (int16_t)((uint16_t)buf[3] |
+                           ((uint16_t)buf[4] << 8));
+        wheel = (int8_t)buf[5];
+        hid->report_len = 6;
+    } else {
+        raw_dx = (int8_t)buf[1];
+        raw_dy = (int8_t)buf[2];
+        wheel = (int8_t)buf[3];
+    }
+
+    /* The public mouse report remains byte-sized. Clamp unusually large
+     * 16-bit deltas instead of allowing them to wrap through int8_t. */
+    if (raw_dx > 127) raw_dx = 127;
+    if (raw_dx < -127) raw_dx = -127;
+    if (raw_dy > 127) raw_dy = 127;
+    if (raw_dy < -127) raw_dy = -127;
+
+    buf[1] = (uint8_t)(int8_t)raw_dx;
+    /* SYS_GUI_INPUT_READ historically applies y -= report.y. Store the
+     * opposite sign here so a positive device Y delta moves the screen cursor
+     * downward, matching this physical mouse's relative-axis convention. */
+    buf[2] = (uint8_t)(int8_t)(-raw_dy);
+    buf[3] = (uint8_t)(int8_t)wheel;
+    if (actual_len == 6) {
+        buf[4] = 0;
+        buf[5] = 0;
+    }
+
+    int dx = raw_dx;
+    int dy = raw_dy;     /* Final screen-space delta after syscall conversion */
     uint8_t buttons = b0[buf[0] & 0x1F];  /* 5-button mask */
 
     cur_button_state = buttons;
+    usb_printk("usb mouse input: dx=%d dy=%d wheel=%d buttons=%x\n",
+               dx, dy, wheel, (uint32_t)(buf[0] & 0x1F));
     add_mouse_packet(dx, dy, buttons);
     hid->new_data = 1;  /* Signal usb_mouse_periodic_poll */
     unblock_kernel_task(mouse_task);

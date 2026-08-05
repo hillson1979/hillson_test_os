@@ -259,6 +259,7 @@ struct usb_transfer_t {
     uint8_t  type;          /* USB_TRANSFER_CTRL/BULK/INTERRUPT/ISOCHRONOUS */
     uint8_t  success;
     uint16_t pktsz;
+    uint16_t actual_length; /* Bytes completed by the HC for the last event */
     uint8_t  freq;
     uint8_t  need_clear_halt; /* Set by STALL handler, processed deferred */
     void    *data;          /* HC-specific transfer data (QH/ED pointer) */
