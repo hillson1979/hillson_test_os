@@ -10,6 +10,8 @@
 
 #include "usb.h"
 
+struct ata_dev_s;
+
 /* ================================================================
  * XHCI Register Offsets (from MMIO base)
  * ================================================================ */
@@ -70,6 +72,13 @@
 #define XHCI_OP_DCBAAP_HI        0x34   /* Device Context Base Address Array (high 32) */
 #define XHCI_OP_CONFIG           0x38   /* Configure */
 
+/* CRCR low-dword bits. CRR is read-only; software initializes RCS and may
+ * request command-ring stop/abort through CS and CA. */
+#define XHCI_CRCR_RCS            (1U << 0)
+#define XHCI_CRCR_CS             (1U << 1)
+#define XHCI_CRCR_CA             (1U << 2)
+#define XHCI_CRCR_CRR            (1U << 3)
+
 /* USBCMD bits */
 #define USBCMD_RS                (1 << 0)   /* Run/Stop */
 #define USBCMD_HCRST             (1 << 1)   /* Host Controller Reset */
@@ -80,16 +89,37 @@
 #define USBCMD_CRS               (1 << 9)   /* Controller Restore State */
 #define USBCMD_EWE               (1 << 10)  /* Enable Wrap Event */
 
-/* USBSTS bits */
-#define USBSTS_HCH               (1 << 0)   /* HC Halted */
-#define USBSTS_HSE               (1 << 2)   /* Host System Error */
-#define USBSTS_EINT              (1 << 3)   /* Event Interrupt */
-#define USBSTS_PCD               (1 << 4)   /* Port Change Detect */
-#define USBSTS_SSS               (1 << 8)   /* Save State Status */
-#define USBSTS_RSS               (1 << 9)   /* Restore State Status */
-#define USBSTS_SRE               (1 << 10)  /* Save/Restore Error */
-#define USBSTS_CNR               (1 << 11)  /* Controller Not Ready */
-#define USBSTS_HCE               (1 << 12)  /* Host Controller Error */
+/* USBSTS bits - xHCI Spec 5.4.2 (64-bit / 32-bit safe literals) */
+#define USBSTS_HCH               (1U << 0)   /* HC Halted (RO) */
+#define USBSTS_HSE               (1U << 2)   /* Host System Error (RW1C) */
+#define USBSTS_EINT              (1U << 3)   /* Event Interrupt (RW1C) */
+#define USBSTS_PCD               (1U << 4)   /* Port Change Detect (RW1C) */
+#define USBSTS_SSS               (1U << 8)   /* Save State Status (RO) */
+#define USBSTS_RSS               (1U << 9)   /* Restore State Status (RO) */
+#define USBSTS_SRE               (1U << 10)  /* Save/Restore Error (RW1C) */
+#define USBSTS_CNR               (1U << 11)  /* Controller Not Ready (RO) */
+#define USBSTS_HCE               (1U << 12)  /* Host Controller Error (RO) */
+
+// /* USBSTS bits */
+// #define USBSTS_HCH               (1 << 0)   /* HC Halted */
+// #define USBSTS_HSE               (1 << 2)   /* Host System Error */
+// #define USBSTS_EINT              (1 << 3)   /* Event Interrupt */
+// #define USBSTS_PCD               (1 << 4)   /* Port Change Detect */
+// #define USBSTS_SSS               (1 << 8)   /* Save State Status */
+// #define USBSTS_RSS               (1 << 9)   /* Restore State Status */
+// #define USBSTS_SRE               (1 << 10)  /* Save/Restore Error */
+// #define USBSTS_CNR               (1 << 11)  /* Controller Not Ready */
+// #define USBSTS_HCE               (1 << 12)  /* Host Controller Error */
+
+// #define USBSTS_HCH   (1 << 0)
+// #define USBSTS_HSE   (1 << 2)
+// #define USBSTS_EINT  (1 << 3)
+// #define USBSTS_PCD   (1 << 4)
+// #define USBSTS_CNR   (1 << 8)   /* Controller Not Ready */
+// #define USBSTS_SSS   (1 << 9)
+// #define USBSTS_RSS   (1 << 10)
+// #define USBSTS_SRE   (1 << 11)
+// #define USBSTS_HCE   (1 << 12)
 
 /* CONFIG bits */
 #define CONFIG_MAXSLOTSEN(x)     ((x) & 0xFF)
@@ -205,6 +235,11 @@ struct xhci_trb_t {
 #define TRB_TYPE(x)                (((x) & 0x3F) << TRB_TRB_TYPE_SHIFT)
 #define TRB_LINK_TOGGLE            (1 << 1)
 
+/* Transfer TRB Status DWORD (DWORD 2). */
+#define TRB_XFER_LEN(x)            ((uint32_t)(x) & 0x1FFFFU)
+#define TRB_TD_SIZE(x)             (((uint32_t)(x) & 0x1FU) << 17)
+#define TRB_INTR_TARGET(x)         (((uint32_t)(x) & 0x3FFU) << 22)
+
 /* Transfer Event TRB Completion Codes */
 #define CC_SUCCESS                  1
 #define CC_DATA_BUFFER_ERROR        2
@@ -297,7 +332,7 @@ struct xhci_slot_ctx_t {
 struct xhci_ep_ctx_t {
     uint32_t dw0;          /* EP State (2:0) | Mult (9:8) | MaxPStreams (14:10) | LSA (15)
                                | Interval (23:16) | Max ESIT Payload Hi (31:24) */
-    uint32_t dw1;          /* EP Type (2:0) | CErr (7:4) | Max Burst (15:8) | MPS (31:16) */
+    uint32_t dw1;          /* CErr (2:1) | EP Type (5:3) | Max Burst (15:8) | MPS (31:16) */
     uint32_t dw2;          /* TR Dequeue Pointer (low 32) */
     uint32_t dw3;          /* TR Dequeue Pointer (high 32) */
     uint32_t dw4;          /* Average TRB Length (15:0) | Max ESIT Payload Lo (31:16) */
@@ -311,10 +346,10 @@ struct xhci_ep_ctx_t {
 #define EP_CTX_MPS_SHIFT           16      /* MPS is in dw1 [31:16] */
 #define EP_CTX_MPS_MASK            (0xFFFF << EP_CTX_MPS_SHIFT)
 #define EP_CTX_INTERVAL_MASK       (0xFF << 8)
-#define EP_CTX_TYPE_SHIFT          0       /* EP Type is in dw1 [2:0] */
+#define EP_CTX_TYPE_SHIFT          3       /* EP Type is in dw1 [5:3] */
 #define EP_CTX_TYPE_MASK           (0x7 << EP_CTX_TYPE_SHIFT)
-#define EP_CTX_CERR_SHIFT          4       /* CErr is in dw1 [7:4] */
-#define EP_CTX_CERR_MASK           (0xF << EP_CTX_CERR_SHIFT)
+#define EP_CTX_CERR_SHIFT          1       /* CErr is in dw1 [2:1] */
+#define EP_CTX_CERR_MASK           (0x3 << EP_CTX_CERR_SHIFT)
 #define EP_CTX_CERR_DEFAULT        (3 << EP_CTX_CERR_SHIFT)  /* Max 3 errors before halt */
 #define EP_CTX_MAXB_SHIFT          8       /* Max Burst is in dw1 [15:8] */
 #define EP_CTX_MAXP_SHIFT          10      /* MaxPStreams is in dw0 [14:10] */
@@ -384,20 +419,25 @@ struct xhci_ring_t {
 };
 
 struct xhci_dev_t {
-    pci_compat_t       *pci;
+    pci_compat_t        pci;            /* Persistent copy; callers may be stack-based */
     struct xhci_dev_t  *next;
     uint32_t            flags;
     uint32_t            port_count;     /* Total ports (USB2 + USB3) */
     uint32_t            usb2_ports;     /* Number of USB2 protocol ports */
     uint32_t            usb3_ports;     /* Number of USB3 protocol ports */
+    uint32_t            usb2_port_start;/* First USB2 port, zero-based */
+    uint32_t            usb3_port_start;/* First USB3 port, zero-based */
+    uint64_t            port_attempted; /* Ports already processed this run */
     uint32_t            max_slots;
     uint8_t             caplen;
+    uintptr_t           mmio_phys_base; /* PCI BAR base for mapping diagnostics */
     uintptr_t           mmio_base;      /* Virtual address of MMIO base */
     uintptr_t           cap_base;       /* Capability regs (same as mmio_base) */
     uintptr_t           op_base;        /* Operational regs (mmio_base + caplen) */
     uintptr_t           rt_base;        /* Runtime regs (mmio_base + RTSOFF) */
     uintptr_t           db_base;        /* Doorbell array (mmio_base + DBOFF) */
     uint32_t            page_size;
+    uint8_t             context_size;   /* 32 or 64 bytes, from HCCPARAMS1.CSZ */
     int                 mmio;           /* Always 1 for XHCI */
 
     /* DCBAA: array of 64-bit pointers to Device Contexts (max_slots + 1) */
@@ -434,7 +474,33 @@ struct xhci_dev_t {
 
     /* Device address bitmap */
     uint32_t            addr_bitmap[(XHCI_MAX_SLOTS / 32) + 1];
+    uint32_t            init_port_cursor;
+    uint8_t             init_port_phase;
+    uint8_t             init_port_speed;
+    uint16_t            init_port_wait;
+    uint16_t            init_cmd_wait;
+    uint8_t             init_slot_id;
+    struct usb_dev_t    *init_usb;
+    void               *init_ctrl_buf;
+    uint32_t            init_ctrl_phys;
+    uint32_t            init_ctrl_trb_phys;
+    uint16_t            init_ctrl_len;
+    uint16_t            init_config_len;
+    uint8_t             init_config_value;
+    uint16_t            init_hid_report_len;
+    struct usb_endpoint_t *init_endpoint;
+    struct usb_interface_t *init_iface;
+    struct usb_transfer_t *init_transfer;
+    struct usb_cmd_blk_wrapper_t init_cbw;
+    uint8_t             init_scsi_data[36];
+    uint8_t             init_scsi_csw[16];
+    uint8_t             init_scsi_step;
+    uint16_t            init_scsi_len;
+    uint32_t            init_scsi_tag;
+    struct ata_dev_s    *init_disk;
 };
+
+int xhci_update_ep0_mps(struct usb_dev_t *dev, uint16_t mps);
 
 /* Flags */
 #define XHCI_FLAG_RUN            0x01
@@ -444,7 +510,11 @@ struct xhci_dev_t {
  * Function declarations
  * ================================================================ */
 int  xhci_install(pci_compat_t *pci, struct pci_bar_t *bar);
+int  xhci_async_reset_step(pci_compat_t *pci, struct pci_bar_t *bar);
 void xhci_poll(void);
+void xhci_init_ports_step(void);
+void xhci_mark_reset_complete(void);
+int  xhci_all_ports_enabled(void);
 struct usb_dev_t *xhci_get_dev_struct(pci_compat_t *bus, uint8_t num);
 
 #endif /* KERNEL_USB_XHCI_H */
