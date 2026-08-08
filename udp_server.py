@@ -6,6 +6,7 @@ UDP 服务器 - 监听 9999 端口
 
 import socket
 import sys
+from datetime import datetime
 
 # 创建 UDP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -32,17 +33,11 @@ try:
             message = data.hex()
 
         # 打印接收到的信息
-        print(f"\n📨 [RX] From {client_address[0]}:{client_address[1]}")
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"\n📨 [{ts}] [RX] From {client_address[0]}:{client_address[1]}")
         print(f"   Length: {len(data)} bytes")
         print(f"   Data: {message}")
 
-        # 🔥 立即回复!
-        reply = f"ACK: Received your message '{message}'"
-        reply_data = reply.encode('utf-8')
-        sock.sendto(reply_data, client_address)
-
-        print(f"📤 [TX] Reply sent to {client_address[0]}:{client_address[1]}")
-        print(f"   Reply: {reply}")
         print("-"*60)
 
 except KeyboardInterrupt:

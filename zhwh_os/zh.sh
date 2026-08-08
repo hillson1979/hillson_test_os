@@ -3,6 +3,9 @@ cd "$(dirname "$0")" || exit 1
 [ -d iso/boot/grub ] || mkdir -p iso/boot/grub
 cp kernel.bin iso/boot/
 
+# AI engine
+[ -f ai/ai.elf ] && cp ai/ai.elf iso/boot/
+
 # 只复制存在的 .elf 文件
 [ -f test/fs_test.elf ] && cp test/fs_test.elf iso/boot/
 [ -f test/net_test.elf ] && cp test/net_test.elf iso/boot/
@@ -37,6 +40,7 @@ menuentry "HillsonOS Desktop" {
     module2 /boot/desktop.elf
     module2 /boot/jvm.elf jvm.elf
     module2 /boot/HelloWorld.class java/classes/HelloWorld.class
+    module2 /boot/ai.elf /boot/ai.elf
     boot
 }
 
@@ -142,7 +146,7 @@ echo "To run with QEMU, use:"
 echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl"
 echo ""
 echo "With USB mouse support:"
-echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl -device piix3-usb-uhci,id=usb -device usb-mouse,bus=usb.0"
+echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl -device piix3-usb-uhci,id=usb -device usb-tablet,bus=usb.0"
 echo ""
 echo "With serial output:"
 echo "  qemu-system-i386 -cdrom os.iso -vga std -display sdl -serial file:./output.txt"

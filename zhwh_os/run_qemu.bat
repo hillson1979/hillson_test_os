@@ -28,7 +28,7 @@ REM 启动 QEMU
 qemu-system-i386 -cdrom os.iso -vga std -display sdl ^
   -netdev user,id=net0,hostfwd=udp::1234-:1234 ^
   -device e1000,netdev=net0 ^
-  -device piix3-usb-uhci,id=usb -device usb-mouse,bus=usb.0 ^
+  -device piix3-usb-uhci,id=usb -device usb-tablet,bus=usb.0 ^
   -serial file:output.txt
 
 if errorlevel 1 (

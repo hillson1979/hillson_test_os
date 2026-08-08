@@ -323,7 +323,7 @@ static struct task_t *pick_next_task_cfs()
 __attribute__((noinline))
 void schedule(void) {
     // printf 已恢复调试输出
-    printf("[schedule] ENTRY - schedule() called!\n");
+    // printf("[schedule] ENTRY - schedule() called!\n");
      
     // ⚠️⚠️⚠️ 初始化返回地址（只执行一次）
     extern uint32_t schedule_switch_to_return_addr;
@@ -372,8 +372,8 @@ void schedule(void) {
     int first_time_user = (next->state == PS_CREATED && next->user_stack != 0);
     int switch_to_user = (next->user_stack != 0 && next->has_run_user == 1);
 
-    printf("[schedule] first_time_user=%d, switch_to_user=%d (user_stack=0x%x, state=%d)\n",
-           first_time_user, switch_to_user, next->user_stack, next->state);
+    // printf("[schedule] first_time_user=%d, switch_to_user=%d (user_stack=0x%x, state=%d)\n",
+    //        first_time_user, switch_to_user, next->user_stack, next->state);
 
     task_setrun(next);
 
@@ -396,7 +396,7 @@ void schedule(void) {
     // 注意：这个检查必须在first_time_user检查之后！
     //       因为PS_CREATED任务需要特殊处理（即使prev==next）
     if (prev == next) {
-        printf("[schedule] prev==next (pid=%d), no switch needed\n", next->pid);
+        // printf("[schedule] prev==next (pid=%d), no switch needed\n", next->pid);
         __asm__ __volatile__("pushl %0; popfl" : : "r"(flags));
         return;
     }

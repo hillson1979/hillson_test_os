@@ -54,6 +54,7 @@ int usb_interrupt_poll(int controller_id);
  * @return Number of devices found or negative error
  */
 int usb_hcd_scan_ports(int controller_id);
+int usb_hcd_scan_ehci_ports(void);  /* EHCI-specific port scan */
 
 /**
  * @brief Initialize USB mouse periodic polling

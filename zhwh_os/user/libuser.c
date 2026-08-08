@@ -1,14 +1,21 @@
-// libuser.c - 用户库实现（编译成静态库 libuser.a）
+// libuser.c - 用户库实现
 #include "libuser.h"
 #include "stddef.h"  // for size_t
 
-// 定义 NULL
 #ifndef NULL
 #define NULL ((void *)0)
 #endif
 
-// ⚠️ 所有函数都不再使用 __attribute__((section(...)))
-//    因为整个 libuser.a 会在链接时放在主程序之后
+/* _start — program entry point, must be first in .text */
+#ifndef LIBUSER_NO_START
+__attribute__((section(".text.start")))
+void _start(int argc, char **argv) {
+    extern int main(int argc, char **argv);
+    extern void exit(int code);
+    int ret = main(argc, argv);
+    exit(ret);
+}
+#endif
 
 // 简单的 strlen 实现
 size_t strlen(const char *s) {
@@ -783,6 +790,28 @@ int usb_mouse_info(uint8_t *ep, uint8_t *maxpkt, uint8_t *interval) {
     if (ep) *ep = (uint8_t)(ret & 0xFF);
     if (maxpkt) *maxpkt = (uint8_t)((ret>>8) & 0xFF);
     if (interval) *interval = (uint8_t)((ret>>16) & 0xFF);
+    return ret;
+}
+
+void *sbrk(int increment) {
+    void *ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(24), "b"(increment)
+        : "memory"
+    );
+    return ret;
+}
+
+int lsdisk(const char *path, char *buf, int max) {
+    int ret;
+    __asm__ volatile (
+        "int $0x80"
+        : "=a"(ret)
+        : "a"(79), "b"(buf), "c"(max), "d"(path)
+        : "memory", "cc"
+    );
     return ret;
 }
 

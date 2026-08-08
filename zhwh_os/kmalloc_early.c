@@ -5,6 +5,7 @@
 #include "mm/buddy.h"
 #include "multiboot2.h"
 #include "highmem_mapping.h"
+#include "page.h"
 
 extern uint32_t multiboot2_info_addr;
 
@@ -345,7 +346,16 @@ void *kmalloc(unsigned int size) {
     }
 
     // 映射到虚拟地址（使用高内存映射）
+    /* phys_to_virt() only computes the direct-map address. Buddy pages above
+     * the boot-time mapping still need real PTEs before they can be used. */
     void *virt_addr = phys_to_virt(phys_addr);
+    extern uint32_t kernel_page_directory_phys;
+    for (uint32_t i = 0; i < page_count; i++) {
+        map_page(kernel_page_directory_phys,
+                 (uint32_t)virt_addr + i * PAGE_SIZE,
+                 phys_addr + i * PAGE_SIZE,
+                 PAGE_PRESENT | PAGE_WRITABLE);
+    }
 
     // 记录分配
     struct allocation_header *hdr = find_or_create_allocation(virt_addr);

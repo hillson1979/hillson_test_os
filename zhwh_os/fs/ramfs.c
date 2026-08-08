@@ -56,6 +56,7 @@ static void *krealloc(void *ptr, uint32_t new_size) {
 static uint32_t ramfs_inode_counter = 1;  // inode 编号计数器
 static struct super_block *ramfs_sb = NULL;  // ramfs 超级块
 static inode_t *g_kern_log_inode = 0;
+static inode_t *g_usb_log_inode = 0;
 
 // ================================
 // Inode 管理
@@ -307,6 +308,15 @@ int ramfs_close(file_t *file) {
 int ramfs_read(file_t *file, char *buffer, uint32_t size) {
     inode_t *inode = file->f_inode;
 
+    if (inode == g_usb_log_inode) {
+        extern void usb_log_snapshot(void);
+        extern void *usb_log_get_buf(void);
+        extern int usb_log_get_size(void);
+        usb_log_snapshot();
+        inode->i_data = usb_log_get_buf();
+        inode->i_size = usb_log_get_size();
+    }
+
     printf("[ramfs] read: inode=%d, size=%u, pos=%llu\n",
            inode->i_ino, size, file->f_pos);
 
@@ -414,13 +424,60 @@ int ramfs_lseek(file_t *file, int64_t offset, int whence) {
 // 操作函数表
 // ================================
 
+/**
+ * @brief List directory contents into a text buffer
+ */
+static int ramfs_listdir(inode_t *dir, char *buf, int max) {
+    if (!dir || !S_ISDIR(dir->i_mode) || !dir->i_children)
+        return -1;
+
+    int pos = 0;
+    struct llist_header *p;
+    llist_for_each(p, dir->i_children) {
+        dentry_t *dentry = (dentry_t*)((char*)p - __builtin_offsetof(dentry_t, d_list));
+        if (!dentry || !dentry->d_name || !dentry->d_inode)
+            continue;
+
+        /* Write name */
+        int nlen = dentry->d_name_len;
+        if (pos + nlen + 20 >= max) break;  /* safety margin */
+
+        for (int i = 0; i < nlen && pos < max - 1; i++)
+            buf[pos++] = dentry->d_name[i];
+
+        if (S_ISDIR(dentry->d_inode->i_mode)) {
+            const char *tag = "/\n";
+            for (int i = 0; tag[i] && pos < max - 1; i++) buf[pos++] = tag[i];
+        } else {
+            /* File size */
+            char szbuf[16];
+            int sz = dentry->d_inode->i_size, sp = 0;
+            if (sz == 0) {
+                szbuf[sp++] = '0';
+            } else {
+                char tmp[12]; int tp = 0;
+                while (sz > 0) { tmp[tp++] = '0' + (sz % 10); sz /= 10; }
+                while (tp > 0) szbuf[sp++] = tmp[--tp];
+            }
+            buf[pos++] = ' ';
+            buf[pos++] = ' ';
+            for (int i = 0; i < sp && pos < max - 1; i++) buf[pos++] = szbuf[i];
+            buf[pos++] = '\n';
+        }
+    }
+    if (pos >= max) pos = max - 1;
+    buf[pos] = '\0';
+    return pos;
+}
+
 inode_operations_t ramfs_inode_ops = {
-    .lookup = ramfs_lookup,
-    .create = ramfs_create,
-    .mkdir = ramfs_mkdir,
-    .rmdir = NULL,
-    .unlink = NULL,
-    .rename = NULL,
+    .lookup  = ramfs_lookup,
+    .create  = ramfs_create,
+    .mkdir   = ramfs_mkdir,
+    .rmdir   = NULL,
+    .unlink  = NULL,
+    .rename  = NULL,
+    .listdir = ramfs_listdir,
 };
 
 file_operations_t ramfs_file_ops = {
@@ -519,6 +576,20 @@ void fs_init(void) {
             kd->d_inode->i_size = 16384;
             kd->d_inode->i_nlink = 99;
             printf("[fs] Created kern.log\n");
+        }
+    }
+
+    // USB debug log
+    {
+        extern void *usb_log_get_buf(void);
+        extern int  usb_log_get_size(void);
+        dentry_t *ud;
+        if (ramfs_create(root, "usb.log", 0644 | S_IFREG, &ud) == 0 && ud) {
+            g_usb_log_inode = ud->d_inode;
+            ud->d_inode->i_data = usb_log_get_buf();
+            ud->d_inode->i_size = usb_log_get_size();
+            ud->d_inode->i_nlink = 99;
+            printf("[fs] Created usb.log\n");
         }
     }
 

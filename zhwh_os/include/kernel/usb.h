@@ -90,7 +90,7 @@ static inline int ksprintf(char *buf, int sz, const char *fmt, ...) {
     int ret;
     va_list ap;
     va_start(ap, fmt);
-    /* Simple stub â€” just write a null terminator */
+    /* Simple stub â€?just write a null terminator */
     *buf = '\0';
     va_end(ap);
     return 0;
@@ -334,7 +334,7 @@ struct usb_dev_t {
 };
 
 /*
- * HC controller types â€” each HCI driver defines its own dev struct.
+ * HC controller types â€?each HCI driver defines its own dev struct.
  * These are declared in usb_uhci.h, usb_ehci.h, usb_ohci.h.
  */
 
@@ -370,6 +370,7 @@ void usb_in_transaction(struct usb_transfer_t *transfer,
                          int ctrl_handshake, void *buf, size_t len);
 void usb_out_transaction(struct usb_transfer_t *transfer,
                           int ctrl_handshake, void *buf, size_t len);
+                            
 
 /* Control transfer helpers */
 int usb_ctrl_in(struct usb_dev_t *dev, void *buf,

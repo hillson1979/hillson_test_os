@@ -147,6 +147,7 @@ typedef struct inode_operations {
     int (*unlink)(struct inode *dir, const char *name);
     int (*rename)(struct inode *old_dir, const char *old_name,
                   struct inode *new_dir, const char *new_name);
+    int (*listdir)(struct inode *dir, char *buf, int max);
 } inode_operations_t;
 
 // ================================
@@ -196,5 +197,31 @@ int filp_lseek(struct file *file, int64_t offset, int whence);
 // ================================
 struct inode *path_lookup(const char *path);
 struct dentry *path_walk(const char *path, struct inode *root);
+
+/**
+ * @brief List directory contents into a text buffer
+ * @return Number of bytes written, or negative on error
+ */
+int vfs_list_dir(const char *path, char *buf, int max);
+
+// ================================
+// VFS 挂载点管理
+// ================================
+
+/**
+ * @brief Register a filesystem mount at a given path
+ * @param mount_path  Path prefix (e.g., "/usb")
+ * @param root_inode  Root inode of the mounted filesystem
+ * @return 0 on success, negative on error
+ */
+int vfs_mount(const char *mount_path, inode_t *root_inode);
+
+/**
+ * @brief Check if a path prefix is a mount point
+ * @param path  Full path to check
+ * @param remainder  If mount found, points to the rest of the path after the mount prefix
+ * @return Root inode of the mounted filesystem, or NULL if not a mount point
+ */
+inode_t *vfs_get_mount_root(const char *path, const char **remainder);
 
 #endif // FS_H

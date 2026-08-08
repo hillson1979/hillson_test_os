@@ -156,4 +156,8 @@ const char *usb_descriptor_type_string(uint8_t type);
  */
 void usb_print_device_descriptor(usb_device_descriptor_t *desc);
 
+/* EHCI bulk transfer (MSC) */
+int ehci_bulk_out(uint8_t addr, uint8_t ep, void *data, int len);
+int ehci_bulk_in(uint8_t addr, uint8_t ep, void *data, int len);
+
 #endif  // USB_H

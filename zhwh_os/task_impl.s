@@ -57,9 +57,12 @@ switch_to:
     # (由于 push 了 4 个寄存器，栈偏移变成了 +16)
 
     # ⚠️⚠️⚠️ 恢复 next 指针到 esi（从栈上）
-    movl 12(%esp), %esi     # esi = next（从保存的位置恢复）
+    # ESI is restored from its saved slot immediately below.
 
     # ⚠️⚠️⚠️ 更新全局 current 指针（汇编代码需要）
+    # Correct saved ESI slot after push ebp/edi/esi/ebx.
+    # 12(%esp) is saved EBP, not the next-task argument.
+    movl 4(%esp), %esi
     movl %esi, current
 
     # 保存当前栈指针到当前进程的 thread_struct

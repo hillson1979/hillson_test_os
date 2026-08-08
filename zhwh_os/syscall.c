@@ -10,16 +10,23 @@
 #include "net.h"
 #include "font8x8.h"
 #include "pci.h"
-#include "x86/io.h"  // 🔥 添加：引入 outl/inl 函数
+#include "x86/io.h"  // ???? ???????????????outl/inl ??????
 #include "elf.h"
 #include "string.h"
 #include "fs.h"
+#include "mm.h"
+#include "usb_display.h"
 
-// PCI 配置空间 I/O 端口
+#define SYS_USB_INIT 83
+#define SYS_USB_LOG_SAVE 84
+#define SYS_USB_STATUS 85
+#define SYS_USB_LOG_DISPLAY 86
+
+// PCI ???????????? I/O ??????
 #define CONFIG_ADDRESS 0xCF8
 #define CONFIG_DATA    0xCFC
 
-// 系统调用号定义
+// ?????????????????????
 #define SYS_NET_PING 30
 #define SYS_NET_IFCONFIG 31
 #define SYS_WIFI_SCAN 32
@@ -31,32 +38,32 @@
 #define SYS_WIFI_FW_CHUNK 38
 #define SYS_WIFI_FW_END 39
 #define SYS_WIFI_LOAD_FIRMWARE 40
-//#define SYS_EXECV 41  // 暂时禁用
-#define SYS_NET_BIND 52       // 🔥 绑定 UDP 端口
-#define SYS_NET_RECV_UDP 53    // 🔥 接收 UDP 数据
-#define UDP_RX_BUF_SIZE (200 * 1024)  // 200KB，用于临时内核缓冲区
-#define SYS_LSPCI 42  // 🔥 新增：列出 PCI 设备
-#define SYS_NET_INIT_RTL8139 43  // 🔥 新增：初始化 RTL8139
-#define SYS_NET_INIT_E1000 44   // 🔥 新增：初始化 E1000
-#define SYS_NET_SEND_UDP 45     // 🔥 新增：发送 UDP 包
-#define SYS_NET_SET_DEVICE 46   // 🔥 设置当前使用的网卡
-#define SYS_NET_POLL_RX 47      // 🔥 轮询RX（调试用）
-#define SYS_NET_DUMP_REGS 48     // 🔥 转储网卡寄存器状态
-#define SYS_NET_ARP 49           // 🔥 ARP 命令（显示/扫描 ARP 缓存）
-#define SYS_NET_DUMP_RX_REGS 50 // 🔥 转储 RX 寄存器（详细）
-#define SYS_NET_IFUP 51        // 🔥 启动网络接口
-//#define SYS_NET_RAW_DUMP_RX_DESC 52  // 🔥 暂时注释掉
-#define SYS_MSI_TEST 60        // 🔥 MSI 测试
-#define SYS_NET_LOOPBACK_TEST 61  // 🔥 E1000 硬件 loopback 测试（轮询）
-#define SYS_NET_LOOPBACK_TEST_INT 62  // 🔥 E1000 硬件 loopback 测试（中断）
+//#define SYS_EXECV 41  // ????????????
+#define SYS_NET_BIND 52       // ???? ?????? UDP ??????
+#define SYS_NET_RECV_UDP 53    // ???? ?????? UDP ??????
+#define UDP_RX_BUF_SIZE (200 * 1024)  // 200KB??????????????????????????????
+#define SYS_LSPCI 42  // ???? ???????????????PCI ??????
+#define SYS_NET_INIT_RTL8139 43  // ???? ?????????????????? RTL8139
+#define SYS_NET_INIT_E1000 44   // ???? ?????????????????? E1000
+#define SYS_NET_SEND_UDP 45     // ???? ???????????????UDP ???
+#define SYS_NET_SET_DEVICE 46   // ???? ???????????????????????????
+#define SYS_NET_POLL_RX 47      // ???? ??????RX???????????????
+#define SYS_NET_DUMP_REGS 48     // ???? ???????????????????????????
+#define SYS_NET_ARP 49           // ???? ARP ????????????????????? ARP ?????????
+#define SYS_NET_DUMP_RX_REGS 50 // ???? ?????? RX ?????????????????????
+#define SYS_NET_IFUP 51        // ???? ??????????????????
+//#define SYS_NET_RAW_DUMP_RX_DESC 52  // ???? ???????????????
+#define SYS_MSI_TEST 60        // ???? MSI ??????
+#define SYS_NET_LOOPBACK_TEST 61  // ???? E1000 ?????? loopback ??????????????????
+#define SYS_NET_LOOPBACK_TEST_INT 62  // ???? E1000 ?????? loopback ??????????????????
 
-// GUI 系统调用
-#define SYS_GUI_FB_INFO 70      // 获取帧缓冲区信息
-#define SYS_GUI_FB_BLIT 71      // 位图传输到帧缓冲区
-#define SYS_GUI_INPUT_READ 72   // 读取输入设备事件
-#define SYS_USB_MOUSE_POLL 73   // 轮询 USB 鼠标事件
+// GUI ????????????
+#define SYS_GUI_FB_INFO 70      // ????????????????????????
+#define SYS_GUI_FB_BLIT 71      // ???????????????????????????
+#define SYS_GUI_INPUT_READ 72   // ????????????????????????
+#define SYS_USB_MOUSE_POLL 73   // ?????? USB ????????????
 #define SYS_USB_MOUSE_INFO 76
-#define SYS_CHERRYUSB_MOUSE_READ 78   // 获取 USB 鼠标端点信息
+#define SYS_CHERRYUSB_MOUSE_READ 78   // ?????? USB ??????????????????
 
 // WiFi
 static uint8_t  *fw_buf      = NULL;
@@ -64,19 +71,19 @@ static uint32_t  fw_size     = 0;
 static uint32_t  fw_received = 0;
 static uint32_t  fw_checksum = 0;
 
-// USB 鼠标状态
+// USB ????????????
 static int usb_mouse_x = 512;
 static int usb_mouse_y = 384;
 static uint8_t usb_mouse_buttons = 0;
 static int mouse_last_x = -1, mouse_last_y = -1, mouse_last_buttons = -1;
 
-// 🔥 当前选择的网络设备名称（空字符串表示自动选择）
-// 🔥 改为非 static，以便网络模块可以访问
+// ???? ?????????????????????????????????????????????????????????????????????
+// ???? ?????????static?????????????????????????????????
 char current_net_device[16] = {0};
 
 
 #define FW_CHUNK_SIZE   4096
-#define FW_MAX_SIZE     (2 * 1024 * 1024)  // 2MB，支持大容量固件（Intel 677KB + Atheros等）
+#define FW_MAX_SIZE     (2 * 1024 * 1024)  // 2MB???????????????????????????Intel 677KB + Atheros??????
 
 // 
 extern task_t *current_task[];
@@ -86,8 +93,8 @@ extern void *kmalloc(uint32_t size);
 extern void kfree(void *ptr);
 extern uint32_t kernel_page_directory_phys;
 extern void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags);
-struct trapframe *saved_desktop_tf = 0;  /* spawn JVM 时保存桌面上下文 */
-struct task_t *saved_desktop_task = 0;   /* 对应桌面任务指针 */
+struct trapframe *saved_desktop_tf = 0;  /* spawn JVM ???????????????????????? */
+struct task_t *saved_desktop_task = 0;   /* ???????????????????????? */
 
 /*
 typedef struct trapframe {
@@ -117,24 +124,28 @@ typedef struct trapframe {
 */
 
 /*  copy_from_user */
-int copy_from_user(char *dst, const char *src, uint32_t n) {
-    // 从用户空间拷贝到内核空间
+int copy_from_user(void *dst_ptr, const void *src_ptr, uint32_t n) {
+    char *dst = (char *)dst_ptr;
+    const char *src = (const char *)src_ptr;
+    // ????????????????????????????????????
     for (uint32_t i = 0; i < n; ++i) dst[i] = src[i];
     return 0;
 }
 
 /*  copy_to_user */
-int copy_to_user(char *dst, const char *src, uint32_t n) {
-    // 从内核空间拷贝到用户空间
+int copy_to_user(void *dst_ptr, const void *src_ptr, uint32_t n) {
+    char *dst = (char *)dst_ptr;
+    const char *src = (const char *)src_ptr;
+    // ????????????????????????????????????
     for (uint32_t i = 0; i < n; ++i) dst[i] = src[i];
     return 0;
 }
 
 /* sys_write(fd, buf, len) */
 static int sys_write(uint32_t fd, const char *buf, uint32_t len) {
-    if (fd != 1 && fd != 2) return -1;  // 只支持stdout(1)和stderr(2)
+    if (fd != 1 && fd != 2) return -1;  // ?????????stdout(1)???stderr(2)
 
-    // 输出到串口
+    // ???????????????
     extern void uart_putc(char c);
     for (uint32_t i = 0; i < len; ++i) {
         uart_putc(buf[i]);
@@ -158,8 +169,8 @@ void do_exit(int code) {
     // 1. 
     task->state = PS_TERMNAT;
 
-    // 2. user_stack 是虚拟地址不是物理地址, 跳过释放
-    // (共享 PD 模式下不应释放用户栈页)
+    // 2. user_stack ?????????????????????????????????, ????????????
+    // (?????? PD ?????????????????????????????????
     task->user_stack = 0;
 
     // 3. 
@@ -189,10 +200,22 @@ void do_exit(int code) {
     // TODO: 
     printf("[do_exit] Task %d marked as terminated\n", task->pid);
 
-    // 7. spawn 子进程退出时, 恢复桌面
+    // 7. spawn ??????????????????, ????????????
     extern struct trapframe *saved_desktop_tf;
     extern struct task_t *saved_desktop_task;
     if (saved_desktop_tf != 0 && saved_desktop_task != 0) {
+        /* Persist the foreground AI/session log to the physical USB model disk.
+         * Failure is non-fatal: desktop restoration must always continue. */
+        extern void *console_get_buf(void);
+        extern int console_get_len(void);
+        int log_len = console_get_len();
+        if (log_len > 65536) log_len = 65536;
+        int log_ret = fat32_overwrite_file("/usb/USB_AI.LOG",
+                                           (const char *)console_get_buf(),
+                                           (uint32_t)log_len);
+        printf("[do_exit] USB AI log save %s (%d bytes)\n",
+               log_ret == 0 ? "OK" : "failed", log_len);
+
         printf("[do_exit] Restoring desktop pid=%d\n", saved_desktop_task->pid);
         struct trapframe *dtf = saved_desktop_tf;
         struct task_t *dtask = saved_desktop_task;
@@ -236,7 +259,7 @@ static void sys_exit(int code) {
     }
 }
 
-// 系统调用号定义（与 user/libuser.h 保持一致）
+// ???????????????????????????user/libuser.h ???????????????
 #define SYS_PRINTF 1
 #define SYS_EXIT 2
 #define SYS_YIELD 3
@@ -253,8 +276,10 @@ static void sys_exit(int code) {
 #define SYS_CLOSE 21
 #define SYS_READ 22
 #define SYS_LSEEK 23
+#define SYS_SBRK 24
 #define SYS_EXECV 41
 #define SYS_SPAWN 63
+#define SYS_LS_DISK 79  // list local disk directory
 
 void syscall_dispatch(struct trapframe *tf) {
      
@@ -304,7 +329,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 vga_putc(kbuf[j]);
             }
 
-            // 同时输出到串口
+            // ?????????????????????
             extern void uart_putc(char c);
             for (int j = 0; j < i; j++) {
                 uart_putc(kbuf[j]);
@@ -314,7 +339,7 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_EXIT:
-            // 打印退出信息
+            // ??????????????????
             printf("[USER] exit() called with code=%d\n", arg1);
             do_exit(arg1);
             // do_exit() 
@@ -466,7 +491,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     copied++;
                 }
 
-                // 输出到串口，添加前缀和计数器
+                // ??????????????????????????????????????????
                 kbuf[copied] = '\0';
                 printf("[USER #%d] %s", write_count, kbuf);
                 tf->eax = copied;
@@ -632,30 +657,25 @@ void syscall_dispatch(struct trapframe *tf) {
             uint32_t len = arg3;
             struct file *file = (struct file*)fd;
 
-            //  VFS 
-            extern int filp_read(struct file *, char *, uint32_t);
-            char kbuf[512];
-            uint32_t to_read = (len < 512) ? len : 512;
-            int ret = filp_read(file, kbuf, to_read);
-
-            if (ret > 0) {
-                // 
-                for (int i = 0; i < ret; i++) {
-                    char c = kbuf[i];
-                    __asm__ volatile (
-                        "pushfl\n"
-                        "orl $0x40000, (%%esp)\n"
-                        "popfl\n"
-                        "movb %0, (%1)\n"
-                        "pushfl\n"
-                        "andl $~0x40000, (%%esp)\n"
-                        "popfl\n"
-                        :
-                        : "r"(c), "r"(user_buf + i)
-                        : "memory", "cc"
-                    );
-                }
+            if (!file || !user_buf || len == 0) {
+                tf->eax = (len == 0) ? 0 : -1;
+                break;
             }
+
+            /* Keep large I/O off the kernel stack. 64 KiB amortizes syscall
+             * and USB/FAT traversal overhead while remaining reclaimable. */
+            uint32_t to_read = (len < 64 * 1024) ? len : 64 * 1024;
+            char *kbuf = (char *)kmalloc(to_read);
+            if (!kbuf) {
+                tf->eax = -1;
+                break;
+            }
+
+            extern int filp_read(struct file *, char *, uint32_t);
+            int ret = filp_read(file, kbuf, to_read);
+            if (ret > 0 && copy_to_user(user_buf, kbuf, (uint32_t)ret) != 0)
+                ret = -1;
+            kfree(kbuf);
             tf->eax = ret;
             break;
         }
@@ -666,30 +686,77 @@ void syscall_dispatch(struct trapframe *tf) {
             int whence = (int)arg3;
             struct file *file = (struct file*)fd;
 
-            //  VFS 
+            //  VFS
             extern int filp_lseek(struct file *, int64_t, int);
             int ret = filp_lseek(file, (int64_t)offset, whence);
             tf->eax = ret;
             break;
         }
+        case SYS_SBRK: {
+            // sbrk(increment) ???extend user program break
+            uint32_t increment = arg1;
+            extern struct task_t *current_task[4];
+            /* System calls run on the task selected for this logical CPU. */
+            struct task_t *task = current_task[logical_cpu_id()];
+            if (!task) { tf->eax = 0; break; }
+
+            // Initialize brk ???start high to avoid desktop (0x8000000+~8MB)
+            if (task->user_brk == 0)
+                task->user_brk = 0x10000000;  // 256MB, above all loaded programs
+
+            uint32_t old_brk = task->user_brk;
+            if (increment == 0) { tf->eax = old_brk; break; }
+
+            // Round up to page boundary
+            uint32_t num_pages = (increment + 0xFFF) / 0x1000;
+            if (num_pages == 0) num_pages = 1;
+            uint32_t new_brk = old_brk + num_pages * 0x1000;
+            if (new_brk < old_brk || new_brk >= 0xBF000000) {
+                printf("[sbrk] rejected: old=0x%x pages=%u\n", old_brk, num_pages);
+                tf->eax = 0;
+                break;
+            }
+
+            /* The user heap is virtually contiguous but its physical pages do
+             * not need to be. This lets AI grow without a huge buddy order. */
+            extern void map_4k_page(uint32_t phys, uint32_t virt, uint32_t flags);
+            int allocation_failed = 0;
+            for (uint32_t i = 0; i < num_pages; i++) {
+                uint32_t phys = pmm_alloc_page();
+                if (!phys) {
+                    printf("[sbrk] out of memory after %u/%u pages\n", i, num_pages);
+                    allocation_failed = 1;
+                    break;
+                }
+                uint32_t virt = old_brk + i * 0x1000;
+                map_4k_page(phys, virt, 0x7);
+                memset((void *)virt, 0, 0x1000);
+            }
+            if (allocation_failed) { tf->eax = 0; break; }
+            task->user_brk = new_brk;
+            printf("[sbrk] +%u bytes, %u noncontiguous pages, virt=0x%x -> 0x%x\n",
+                   increment, num_pages, old_brk, task->user_brk);
+            tf->eax = old_brk;
+            break;
+        }
         case SYS_NET_PING: {
             // net_ping(ip_addr, device)
-            // arg1: IP 地址字符串
-            // arg2: 设备名称（可选，NULL表示使用默认设备）
+            // arg1: IP ???????????????
+            // arg2: ????????????????????????NULL???????????????????????????
             const char *ip_str = (const char *)arg1;
             const char *dev_name = (const char *)arg2;
 
-            // 临时覆盖 current_net_device（如果提供了设备名）
+            // ???????????? current_net_device??????????????????????????????
             char old_device[32] = {0};
             if (dev_name != NULL && dev_name[0] != '\0') {
-                // 保存旧设备名
+                // ??????????????????
                 strncpy(old_device, current_net_device, sizeof(old_device) - 1);
-                // 设置新设备名
+                // ??????????????????
                 strncpy(current_net_device, dev_name, sizeof(current_net_device) - 1);
                 printf("[syscall] Temporarily setting device to: %s\n", current_net_device);
             }
 
-            // 解析 IP  (a.b.c.d)
+            // ?????? IP  (a.b.c.d)
             uint32_t ip = 0;
             int parts[4];
             int part_count = 0;
@@ -711,15 +778,15 @@ void syscall_dispatch(struct trapframe *tf) {
             parts[part_count] = current;
 
             if (part_count == 3) {
-                // 组装 32 位 IP（主机字节序）
+                // ?????? 32 ???IP?????????????????????
                 ip = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3];
 
-                // 🔍 调试：打印解析出的 IP
+                // ???? ???????????????????????????IP
                 printf("[syscall] Parsed IP: 0x%x (%d.%d.%d.%d)\n", ip,
                        parts[0], parts[1], parts[2], parts[3]);
 
                 //  ping
-                // 🔥 使用与 UDP 相同的设备选择逻辑
+                // ???? ?????????UDP ???????????????????????????
                 extern net_device_t *net_device_get_default(void);
                 extern int net_get_device_count(void);
                 extern net_device_t **net_get_all_devices(void);
@@ -728,7 +795,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 int count = net_get_device_count();
                 net_device_t **devices = net_get_all_devices();
 
-                // 如果用户指定了网卡，查找指定的网卡
+                // ???????????????????????????????????????????????????
                 if (current_net_device[0] != '\0') {
                     printf("[syscall] Looking for device: %s\n", current_net_device);
                     for (int i = 0; i < count; i++) {
@@ -744,10 +811,10 @@ void syscall_dispatch(struct trapframe *tf) {
                         break;
                     }
                 } else {
-                    // 自动选择：查找第一个非loopback设备（以太网设备）
+                    // ?????????????????????????????????loopback???????????????????????????
                     for (int i = 0; i < count; i++) {
                         if (devices[i] && devices[i]->send != NULL) {
-                            // 检查设备名称，跳过loopback
+                            // ???????????????????????????loopback
                             if (strcmp(devices[i]->name, "lo") != 0) {
                                 dev = devices[i];
                                 printf("[syscall] Auto-selected device: %s\n", dev->name);
@@ -763,33 +830,33 @@ void syscall_dispatch(struct trapframe *tf) {
                     break;
                 }
 
-                // icmp_send_echo 已在 net.h 中声明
-                //  发送 4 个 ping 包
+                // icmp_send_echo ?????? net.h ?????????
+                //  ??????4 ???ping ???
                 int i;
                 for (i = 0; i < 4; i++) {
                     icmp_send_echo(dev, ip, 0x1234, i + 1);
                 }
 
-                // 恢复旧的设备名（如果之前保存了）
+                // ????????????????????????????????????????????????
                 if (old_device[0] != '\0') {
                     strncpy(current_net_device, old_device, sizeof(current_net_device) - 1);
                     printf("[syscall] Restored device to: %s\n", current_net_device);
                 }
 
-                tf->eax = 0;  // 成功
+                tf->eax = 0;  // ??????
             } else {
-                // 恢复旧的设备名（即使IP无效也要恢复）
+                // ??????????????????????????????IP?????????????????????
                 if (old_device[0] != '\0') {
                     strncpy(current_net_device, old_device, sizeof(current_net_device) - 1);
                     printf("[syscall] Restored device to: %s\n", current_net_device);
                 }
-                tf->eax = -2;  // IP 地址无效
+                tf->eax = -2;  // IP ????????????
             }
             break;
         }
         case SYS_NET_IFCONFIG: {
-            // net_ifconfig() - 显示网卡接口配置
-            // 🔥 修复：显示所有注册的网络设备，而不只是第一个
+            // net_ifconfig() - ????????????????????????
+            // ???? ??????????????????????????????????????????????????????????????????
             extern int net_get_device_count(void);
             extern net_device_t *net_device_get_default();
 
@@ -803,7 +870,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 break;
             }
 
-            // 显示所有设备
+            // ??????????????????
             extern net_device_t **net_get_all_devices(void);
             net_device_t **devices = net_get_all_devices();
 
@@ -813,20 +880,20 @@ void syscall_dispatch(struct trapframe *tf) {
                 printf("--- Device %d ---\n", i);
                 printf("Name:       %s\n", dev->name);
 
-                // MAC 地址
+                // MAC ??????
                 printf("MAC:        %02x:%02x:%02x:%02x:%02x:%02x\n",
                        dev->mac_addr[0], dev->mac_addr[1],
                        dev->mac_addr[2], dev->mac_addr[3],
                        dev->mac_addr[4], dev->mac_addr[5]);
 
-                // IP 地址
+                // IP ??????
                 printf("IP:         %d.%d.%d.%d\n",
                        (dev->ip_addr >> 24) & 0xFF,
                        (dev->ip_addr >> 16) & 0xFF,
                        (dev->ip_addr >> 8) & 0xFF,
                        dev->ip_addr & 0xFF);
 
-                // 子网掩码
+                // ????????????
                 printf("Netmask:    %d.%d.%d.%d\n",
                        (dev->netmask >> 24) & 0xFF,
                        (dev->netmask >> 16) & 0xFF,
@@ -836,25 +903,25 @@ void syscall_dispatch(struct trapframe *tf) {
                 // MTU
                 printf("MTU:        %d bytes\n", dev->mtu);
 
-                // 状态
+                // ??????
                 printf("Status:     UP\n");
 
-                // 设备类型
+                // ????????????
                 printf("Type:       ");
                 if (dev->name[0] == 'l' && dev->name[1] == 'o') {
                     printf("Loopback\n");
                 } else if (dev->name[0] == 'e' && dev->name[1] == 't' && dev->name[2] == 'h') {
-                    // 以太网设备，尝试从 PCI 获取更多信息
+                    // ???????????????????????????PCI ??????????????????
                     int eth_num = dev->name[3] - '0';
                     if (eth_num >= 0) {
-                        // 遍历 PCI 设备，查找第 eth_num 个网络设备
+                        // ?????? PCI ?????????????????? eth_num ???????????????
                         pci_dev_t **pci_devices = pci_get_devices();
                         int net_count = 0;
                         int found = 0;
 
                         for (int j = 0; pci_devices[j] != NULL && !found; j++) {
                             pci_dev_t *pci = pci_devices[j];
-                            if (pci->header.class == 0x02) {  // 网络设备
+                            if (pci->header.class == 0x02) {  // ????????????
                                 if (net_count == eth_num) {
                                     const char *vendor = pci_get_vendor_name(pci->header.vendor_id);
                                     const char *device = pci_get_device_name(pci->header.vendor_id, pci->header.device_id);
@@ -877,7 +944,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     printf("Unknown\n");
                 }
 
-                // 🔥 显示 E1000 的 IRQ 信息
+                // ???? ?????? E1000 ???IRQ ??????
                 extern int e1000_irq;
                 if (e1000_irq != -1) {
                     printf("IRQ:        %d\n", e1000_irq);
@@ -886,7 +953,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 printf("\n");
             }
 
-            tf->eax = 0;  // 成功
+            tf->eax = 0;  // ??????
             break;
         }
         case SYS_WIFI_INIT: {
@@ -1125,11 +1192,11 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_EXECV: {
-            // execv(path, argv) — 运行时 ELF 加载器
+            // execv(path, argv) ????????????ELF ?????????
             const char *path = (const char *)arg1;
             printf("[execv] path=0x%x\n", (uint32_t)path);
 
-            // ---- 1. 从用户空间拷贝路径 ----
+            // ---- 1. ???????????????????????????----
             char kpath[256];
             {
                 uint32_t str_virt = (uint32_t)path;
@@ -1163,7 +1230,7 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             printf("[execv] path='%s'\n", kpath);
 
-            // ---- 2. 打开并读取整个 ELF 文件 ----
+            // ---- 2. ?????????????????????ELF ?????? ----
             struct file *fp = filp_open(kpath, 0);
             if (!fp) { printf("[execv] Cannot open '%s'\n", kpath); tf->eax = -1; break; }
             printf("[execv] File opened, inode=%d\n", fp->f_inode->i_ino);
@@ -1178,7 +1245,7 @@ void syscall_dispatch(struct trapframe *tf) {
             uint8_t *elf_buf = (uint8_t*)kmalloc(file_size);
             if (!elf_buf) { filp_close(fp); tf->eax = -1; break; }
 
-            // 取当前任务的页目录 (fork 子进程有独立的, 普通进程用全局 PD)
+            // ???????????????????????????(fork ????????????????????? ????????????????????? PD)
             uint32_t map_target_pd = kernel_page_directory_phys;
             {
                 task_t *ct = current_task[logical_cpu_id()];
@@ -1189,8 +1256,8 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             printf("[execv] Using PD: 0x%x\n", map_target_pd);
 
-            // 映射 kmalloc 缓冲区（kmalloc 返回 phys_to_virt 地址，超出 8MB
-            // identity 范围需手动建立页表映射）
+            // ?????? kmalloc ????????????kmalloc ?????? phys_to_virt ???????????????8MB
+            // identity ????????????????????????????????????
             {
                 uint32_t buf_phys = (uint32_t)elf_buf - 0xC0000000;
                 for (uint32_t off = 0; off < file_size; off += 4096) {
@@ -1211,7 +1278,7 @@ void syscall_dispatch(struct trapframe *tf) {
 
             if (total_read < 52) { kfree(elf_buf); tf->eax = -1; break; }
 
-            // ---- 3. 验证 ELF ----
+            // ---- 3. ?????? ELF ----
             Elf32_Ehdr *eh = (Elf32_Ehdr *)elf_buf;
             if (eh->e_ident[0] != 0x7F || eh->e_ident[1] != 'E' ||
                 eh->e_ident[2] != 'L' || eh->e_ident[3] != 'F') {
@@ -1221,7 +1288,7 @@ void syscall_dispatch(struct trapframe *tf) {
             printf("[execv] ELF entry=0x%x phoff=%u phnum=%u\n",
                    eh->e_entry, eh->e_phoff, eh->e_phnum);
 
-            // ---- 5. 加载 PT_LOAD 段 ----
+            // ---- 5. ?????? PT_LOAD ???----
             {
                 Elf32_Phdr *ph = (Elf32_Phdr *)(elf_buf + eh->e_phoff);
                 for (int i = 0; i < eh->e_phnum; i++, ph++) {
@@ -1250,7 +1317,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 printf("[execv] ELF segments loaded\n");
             }
 
-            // ---- 5. 映射用户栈 (129 页: 0xBFF7F000 - 0xBFFFFFFF) ---- (129 页: 0xBFF7F000 - 0xBFFFFFFF) ----
+            // ---- 5. ???????????????(129 ??? 0xBFF7F000 - 0xBFFFFFFF) ---- (129 ??? 0xBFF7F000 - 0xBFFFFFFF) ----
             {
                 for (int i = 0; i < 129; i++) {
                     uint32_t sp = pmm_alloc_page();
@@ -1261,7 +1328,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 printf("[execv] Stack mapped\n");
             }
 
-            // ---- 6b. 设置 trapframe ----
+            // ---- 6b. ?????? trapframe ----
             {
                 tf->eip     = eh->e_entry;
                 tf->cs      = 0x1B;
@@ -1289,42 +1356,26 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_SPAWN: {
-            // spawn(path, arg) — 创建新任务运行 ELF
+            // spawn(path, arg) ????????????????????????ELF
             const char *spath = (const char *)arg1;
             const char *sarg  = (const char *)arg2;
             printf("[spawn] path=0x%x arg=0x%x\n", (uint32_t)spath, (uint32_t)sarg);
 
-            // 1. 拷贝路径
+            // 1. ????????????
             char skpath[256];
-            {
-                uint32_t sv = (uint32_t)spath;
-                if (sv >= 0xC0000000) {
-                    int i = 0; while (i < 255 && spath[i]) skpath[i] = spath[i], i++;
-                    skpath[i] = 0;
-                } else {
-                    uint32_t *pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
-                    uint32_t pdi = (sv >> 22) & 0x3FF, pti = (sv >> 12) & 0x3FF, po = sv & 0xFFF;
-                    if (!(pd[pdi] & 0x1)) { tf->eax = -1; break; }
-                    uint32_t ptp = pd[pdi] & ~0xFFF;
-                    uint32_t *pt = (uint32_t*)map_highmem_physical(ptp, 4096, 0);
-                    if (!pt) { tf->eax = -1; break; }
-                    if (!(pt[pti] & 0x1)) { tf->eax = -1; break; }
-                    uint8_t *up = (uint8_t*)map_highmem_physical(pt[pti] & ~0xFFF, 4096, 0);
-                    if (!up) { tf->eax = -1; break; }
-                    int i; for (i = 0; i < 255; i++) { skpath[i] = up[po + i]; if (!skpath[i]) break; }
-                    skpath[i] = 0;
-                }
-            }
+            if (!spath) { tf->eax = -1; break; }
+            copy_from_user(skpath, spath, sizeof(skpath) - 1);
+            skpath[sizeof(skpath) - 1] = 0;
             printf("[spawn] path='%s'\n", skpath);
 
-            // 2. 打开 & 读取 ELF
+            // 2. ?????? & ?????? ELF
             struct file *sfp = filp_open(skpath, 0);
             if (!sfp) { printf("[spawn] open failed\n"); tf->eax = -1; break; }
             uint32_t ssize = (uint32_t)filp_lseek(sfp, 0, 2); filp_lseek(sfp, 0, 0);
             if (ssize < 52 || ssize > 16*1024*1024) { filp_close(sfp); tf->eax = -1; break; }
             uint8_t *self = (uint8_t*)kmalloc(ssize);
             if (!self) { filp_close(sfp); tf->eax = -1; break; }
-            // 映射 kmalloc 缓冲
+            // ?????? kmalloc ??????
             {
                 uint32_t bp = (uint32_t)self - 0xC0000000;
                 for (uint32_t o = 0; o < ssize; o += 4096)
@@ -1334,12 +1385,12 @@ void syscall_dispatch(struct trapframe *tf) {
             filp_close(sfp);
             if (sr < 52) { kfree(self); tf->eax = -1; break; }
 
-            // 3. 验证 ELF
+            // 3. ?????? ELF
             Elf32_Ehdr *seh = (Elf32_Ehdr *)self;
             if (seh->e_ident[0] != 0x7F || seh->e_ident[1] != 'E' || seh->e_ident[2] != 'L' || seh->e_ident[3] != 'F')
                 { kfree(self); tf->eax = -1; break; }
 
-            // 4. 重用已存在的 JVM 任务 (PID=2), 不重复创建
+            // 4. ?????????????????? JVM ?????? (PID=2), ???????????????
             extern task_t *current_task[];
             static task_t *jvm_task = 0;
             if (!jvm_task) {
@@ -1348,9 +1399,9 @@ void syscall_dispatch(struct trapframe *tf) {
             }
             task_t *newt = jvm_task;
             if (!newt) { tf->eax = -1; break; }
-            /* 只第一次创建, 后续复用 */
+            /* ?????????????????? ???????????? */
 
-            // 5. 加载 PT_LOAD 到全局 PD (JVM 链接在 0xA0000000, 不冲突)
+            // 5. ?????? PT_LOAD ????????? PD (JVM ?????????0xA0000000, ?????????
             Elf32_Phdr *sph = (Elf32_Phdr *)(self + seh->e_phoff);
             for (int i = 0; i < seh->e_phnum; i++, sph++) {
                 if (sph->p_type != 1) continue;
@@ -1369,51 +1420,53 @@ void syscall_dispatch(struct trapframe *tf) {
                 }
             }
 
-            // 6. 映射栈 (独立栈区 0xBF800000, 不冲突桌面 0xC0000000)
+            // 6. ?????????(???????????? 0xBF800000, ???????????????0xC0000000)
             for (int i = 0; i < 16; i++) {
                 uint32_t stp = pmm_alloc_page();
                 if (!stp) { kfree(self); tf->eax = -1; goto spawn_done; }
                 map_page(kernel_page_directory_phys, 0xBF800000 - (i + 1) * 4096, stp, 0x007);
             }
 
-            // 6b. 设置参数到用户栈
+            // 6b. ????????????????????????
             uint32_t user_esp = 0xBF800000 - 64;
-            if (sarg != 0) {
-                // 拷贝参数串到内核缓冲
+            {
+                // ??????????????????????????????
                 char argbuf[128]; int alen = 0;
-                {
-                    uint32_t sv = (uint32_t)sarg;
-                    if (sv >= 0xC0000000) {
-                        while (alen < 127 && sarg[alen]) { argbuf[alen] = sarg[alen]; alen++; }
-                    } else {
-                        uint32_t *pd = (uint32_t*)phys_to_virt(kernel_page_directory_phys);
-                        uint32_t pdi = (sv >> 22) & 0x3FF, pti = (sv >> 12) & 0x3FF, po = sv & 0xFFF;
-                        if ((pd[pdi] & 0x1)) {
-                            uint32_t *pt = (uint32_t*)map_highmem_physical(pd[pdi] & ~0xFFF, 4096, 0);
-                            if (pt && (pt[pti] & 0x1)) {
-                                uint8_t *up = (uint8_t*)map_highmem_physical(pt[pti] & ~0xFFF, 4096, 0);
-                                if (up) while (alen < 127 && up[po + alen]) { argbuf[alen] = up[po + alen]; alen++; }
-                            }
-                        }
-                    }
-                    argbuf[alen] = 0;
+                if (sarg)
+                    copy_from_user(argbuf, sarg, sizeof(argbuf) - 1);
+                else
+                    argbuf[0] = 0;
+                argbuf[sizeof(argbuf) - 1] = 0;
+                if (argbuf[0] == 0) {
+                    argbuf[0] = 'H';
+                    argbuf[1] = 'e';
+                    argbuf[2] = 'l';
+                    argbuf[3] = 'l';
+                    argbuf[4] = 'o';
+                    argbuf[5] = 0;
                 }
-                // 布局: [string\0][padding][NULL][ptr_to_string][1(argc)]
-                uint32_t str_va = user_esp - (alen + 1 + 3) / 4 * 4;
-                user_esp = str_va - 12; // argv[1]=NULL, argv[0]=ptr, argc=1
-                // 拷贝字符串到栈
+                alen = 0;
+                while (alen < 127 && argbuf[alen]) alen++;
+                // ??????: [string\0][padding][NULL][ptr_to_string][1(argc)]
+                uint32_t str_va = user_esp - ((alen + 1 + 3) / 4 * 4);
+                uint32_t argv_va = str_va - 8;
+                user_esp = argv_va - 12;
+                // ?????????????????????
                 for (int i = 0; i <= alen; i++) {
                     ((char*)str_va)[i] = argbuf[i];
-                    // 映射栈页确保可写
+                    // ????????????????????????
                 }
-                // 写入 argv 和 argc
-                *(uint32_t*)(user_esp + 8) = 0;          // argv[1] = NULL
-                *(uint32_t*)(user_esp + 4) = str_va;     // argv[0] = string ptr
-                *(uint32_t*)user_esp = 1;                // argc = 1
-                printf("[spawn] args: '%s' at stack=0x%x esp=0x%x\n", argbuf, str_va, user_esp);
+                // ?????? argv ???argc
+                *(uint32_t*)(argv_va + 0) = str_va;
+                *(uint32_t*)(argv_va + 4) = 0;
+                *(uint32_t*)(user_esp + 0) = 0;
+                *(uint32_t*)(user_esp + 4) = 1;
+                *(uint32_t*)(user_esp + 8) = argv_va;
+                printf("[spawn] args: '%s' argv=0x%x argv0=0x%x esp=0x%x\n",
+                       argbuf, argv_va, str_va, user_esp);
             }
 
-            // 7. 设置 trapframe
+            // 7. ?????? trapframe
             newt->tf->eip = seh->e_entry;
             newt->tf->cs = 0x1B; newt->tf->ds = 0x23; newt->tf->es = 0x23;
             newt->tf->fs = 0x23; newt->tf->gs = 0x23; newt->tf->ss = 0x23;
@@ -1422,10 +1475,10 @@ void syscall_dispatch(struct trapframe *tf) {
             newt->tf->eax = 0; newt->tf->ebp = 0;
             newt->pde = (uint32_t*)kernel_page_directory_phys;
             newt->cr3 = (uint32_t*)kernel_page_directory_phys;
-            newt->user_stack = (uint32_t*)1;  /* 非零满足调度器, 不释放 */
+            newt->user_stack = (uint32_t*)1;  /* ????????????????????? ?????????*/
 
-            // 8. 切入新任务
-            /* ELF 缓冲不释放: kfree 后页表残留导致第二次 spawn 崩溃 */
+            // 8. ???????????????
+            /* ELF ??????????????? kfree ?????????????????????????????? spawn ?????? */
             tf->eax = (int)newt->pid;
             extern struct trapframe *saved_desktop_tf;
             extern struct task_t *saved_desktop_task;
@@ -1433,32 +1486,32 @@ void syscall_dispatch(struct trapframe *tf) {
             saved_desktop_task = current_task[logical_cpu_id()];
             extern void task_to_user_mode_with_task_wrapper(struct task_t*);
             task_to_user_mode_with_task_wrapper(newt);
-            /* 不返回 */
+            /* ?????????*/
             spawn_done:
             break;
         }
         case SYS_LSPCI: {
-            // 🔥 lspci - 列出所有 PCI 设备（网络设备放最后）
+            // ???? lspci - ????????????PCI ?????????????????????????????????
             printf("\n=== PCI Device List ===\n\n");
 
             pci_dev_t **pci_devices = pci_get_devices();
-            pci_dev_t *network_devices[16];  // 保存网络设备
+            pci_dev_t *network_devices[16];  // ??????????????????
             int net_count = 0;
             int total_count = 0;
 
-            // 第一遍：收集所有设备
+            // ??????????????????????????????
             for (int i = 0; pci_devices[i] != NULL; i++) {
                 total_count++;
             }
 
-            // 第二遍：先显示非网络设备，收集网络设备
+            // ?????????????????????????????????????????????????????????
             printf("[Non-Network Devices]\n");
             for (int i = 0; pci_devices[i] != NULL; i++) {
                 pci_dev_t *pci = pci_devices[i];
 
-                // 🔍 调试：打印完整的 class code 信息
-                // PCI Class Code 位于 offset 0x08-0x0B
-                // 直接读取配置空间的 dword
+                // ???? ???????????????????????? class code ??????
+                // PCI Class Code ?????? offset 0x08-0x0B
+                // ???????????????????????????dword
                 uint32_t addr =
                     0x80000000 |
                     ((pci->bus_id & 0xFF) << 16) |
@@ -1474,16 +1527,16 @@ void syscall_dispatch(struct trapframe *tf) {
                 uint8_t prog_if = pci->header.prog_if;
                 uint8_t revision = pci->header.revision_id;
 
-                // 检查是否是网络设备 (Base Class = 0x02)
-                // 尝试多种可能的字节序解释
-                int is_network_v1 = (base_class == 0x02);  // 结构体中的 class 字段
-                int is_network_v2 = ((raw_class_dword >> 24) == 0x02);  // 最高字节
-                int is_network_v3 = ((raw_class_dword >> 16) == 0x02);  // 第三字节
-                int is_network_v4 = ((raw_class_dword >> 8) == 0x02);   // 第二字节
+                // ??????????????????????????? (Base Class = 0x02)
+                // ????????????????????????????????????
+                int is_network_v1 = (base_class == 0x02);  // ???????????????class ??????
+                int is_network_v2 = ((raw_class_dword >> 24) == 0x02);  // ????????????
+                int is_network_v3 = ((raw_class_dword >> 16) == 0x02);  // ????????????
+                int is_network_v4 = ((raw_class_dword >> 8) == 0x02);   // ????????????
 
                 int is_network = is_network_v1 || is_network_v2 || is_network_v3 || is_network_v4;
 
-                // 🔍 调试输出（只打印前几个设备）
+                // ???? ??????????????????????????????????????????
                 static int debug_shown = 0;
                 if (!debug_shown && i < 3) {
                     printf("[DEBUG] Device[%d]: raw_dword=0x%08x rev=0x%02x class=0x%02x sub=0x%02x prog=0x%02x\n",
@@ -1493,7 +1546,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     if (i == 2) debug_shown = 1;
                 }
 
-                // 如果是网络设备，保存起来稍后显示
+                // ????????????????????????????????????????????????
                 if (is_network) {
                     if (net_count < 16) {
                         network_devices[net_count++] = pci;
@@ -1501,7 +1554,7 @@ void syscall_dispatch(struct trapframe *tf) {
                     continue;
                 }
 
-                // 显示非网络设备
+                // ?????????????????????
                 const char *vendor = pci_get_vendor_name(pci->header.vendor_id);
                 const char *device = pci_get_device_name(pci->header.vendor_id, pci->header.device_id);
 
@@ -1516,7 +1569,7 @@ void syscall_dispatch(struct trapframe *tf) {
                        pci->header.u.h00.interrupt_line);
             }
 
-            // 最后显示网络设备
+            // ????????????????????????
             if (net_count > 0) {
                 printf("\n[Network Devices]\n");
                 for (int i = 0; i < net_count; i++) {
@@ -1534,24 +1587,24 @@ void syscall_dispatch(struct trapframe *tf) {
                            pci->header.class,
                            pci->header.u.h00.interrupt_line);
 
-                    // 🔥 手动注册 E1000 中断处理函数（已移到 e1000_init_dev 中）
+                    // ???? ???????????? E1000 ?????????????????????????????? e1000_init_dev ??????
                     // if (pci->header.vendor_id == 0x8086 && pci->header.device_id == 0x1502) {
                     //     printf("[lspci] E1000 82579LM detected!\n");
                     //
-                    //     // 🔥 使用 pci_read_config_dword 读取 IRQ（offset 0x3C）
+                    //     // ???? ?????? pci_read_config_dword ?????? IRQ???offset 0x3C???
                     //     extern uint32_t pci_read_config_dword(unsigned bus, unsigned dev, unsigned fn, unsigned reg);
                     //     uint32_t irq_value = pci_read_config_dword(pci->bus_id, pci->dev_id, pci->fn_id, 0x3C);
-                    //     uint8_t irq = irq_value & 0xFF;  // 取最低字节
+                    //     uint8_t irq = irq_value & 0xFF;  // ???????????????
                     //
                     //     printf("[lspci] E1000 IRQ from PCI (offset 0x3C): %d\n", irq);
                     //
-                    //     // 🔥 如果 IRQ 为 0 或 0xFF，使用默认值 11
+                    //     // ???? ?????? IRQ ???0 ???0xFF??????????????????11
                     //     if (irq == 0 || irq == 0xFF) {
                     //         irq = 11;
                     //         printf("[lspci] IRQ not configured, using default: %d\n", irq);
                     //     }
                     //
-                    //     // 注册中断处理函数到 IOAPIC
+                    //     // ???????????????????????????IOAPIC
                     //     extern void ioapicenable(int irq, int cpu);
                     //     printf("[lspci] Registering IRQ %d to IOAPIC...\n", irq);
                     //     ioapicenable(irq, 0);
@@ -1565,15 +1618,15 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_INIT_RTL8139: {
-            // 🔥 初始化 RTL8139 网卡
+            // ???? ?????????RTL8139 ??????
             extern int rtl8139_init(void);
             int ret = rtl8139_init();
             tf->eax = ret;
             break;
         }
         case SYS_NET_INIT_E1000: {
-            // 🔥 初始化 E1000 网卡
-            // 参数: tf->ebx = 设备名称（如 "eth0", "eth1"）
+            // ???? ?????????E1000 ??????
+            // ??????: tf->ebx = ?????????????????? "eth0", "eth1"???
             const char *dev_name_user = (const char *)tf->ebx;
 
             if (dev_name_user == NULL) {
@@ -1582,21 +1635,16 @@ void syscall_dispatch(struct trapframe *tf) {
                 break;
             }
 
-            // 🔥 将设备名称从用户空间复制到内核空间
-            static char dev_name_kernel[16];
-            copy_from_user(dev_name_kernel, dev_name_user, 16);
-            dev_name_kernel[15] = '\0';  // 确保以 null 结尾
-
-            printf("[syscall] E1000 init: device=%s\n", dev_name_kernel);
+            printf("[syscall] E1000 init: device=%s\n", dev_name_user);
 
             extern int e1000_init(const char *dev_name);
-            int ret = e1000_init(dev_name_kernel);
+            int ret = e1000_init(dev_name_user);
             tf->eax = ret;
             break;
         }
         case SYS_NET_SEND_UDP: {
-            // 🔥 发送 UDP 包
-            // 参数: tf->ebx = IP字符串指针, tf->ecx = 端口, tf->edx = 数据指针, tf->esi = 数据长度
+            // ???? ??????UDP ???
+            // ??????: tf->ebx = IP??????????????? tf->ecx = ??????, tf->edx = ????????????, tf->esi = ????????????
             const char *ip_str = (const char *)tf->ebx;
             int port = (int)tf->ecx;
             const char *data = (const char *)tf->edx;
@@ -1604,13 +1652,13 @@ void syscall_dispatch(struct trapframe *tf) {
 
             printf("[syscall] Send UDP: ip_str='%s' (len=%d), port=%d, len=%d\n", ip_str, strlen(ip_str), port, len);
 
-            // 1. 解析 IP 地址字符串为 32 位整数
+            // 1. ?????? IP ?????????????????? 32 ?????????
             uint32_t dst_ip = 0;
             uint8_t octets[4];
             int octet_idx = 0;
             uint32_t current = 0;
 
-            // 跳过前导空格
+            // ??????????????????
             const char *p = ip_str;
             while (*p == ' ') p++;
 
@@ -1621,7 +1669,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 } else if (*p >= '0' && *p <= '9') {
                     current = current * 10 + (*p - '0');
                 } else if (*p == ' ') {
-                    // 遇到空格，停止解析
+                    // ???????????????????????????
                     break;
                 }
             }
@@ -1632,7 +1680,7 @@ void syscall_dispatch(struct trapframe *tf) {
             printf("[syscall] Parsed IP: %d.%d.%d.%d -> 0x%08X\n",
                    octets[0], octets[1], octets[2], octets[3], dst_ip);
 
-            // 2. 获取网络设备
+            // 2. ??????????????????
             extern net_device_t *net_device_get_default(void);
             extern int net_get_device_count(void);
             extern net_device_t **net_get_all_devices(void);
@@ -1641,7 +1689,7 @@ void syscall_dispatch(struct trapframe *tf) {
             int count = net_get_device_count();
             net_device_t **devices = net_get_all_devices();
 
-            // 如果用户指定了网卡，查找指定的网卡
+            // ???????????????????????????????????????????????????
             if (current_net_device[0] != '\0') {
                 printf("[syscall] Looking for device: %s\n", current_net_device);
                 for (int i = 0; i < count; i++) {
@@ -1657,10 +1705,10 @@ void syscall_dispatch(struct trapframe *tf) {
                     break;
                 }
             } else {
-                // 自动选择：查找第一个非loopback设备（以太网设备）
+                // ?????????????????????????????????loopback???????????????????????????
                 for (int i = 0; i < count; i++) {
                     if (devices[i] && devices[i]->send != NULL) {
-                        // 检查设备名称，跳过loopback
+                        // ???????????????????????????loopback
                         if (strcmp(devices[i]->name, "lo") != 0) {
                             dev = devices[i];
                             printf("[syscall] Auto-selected device: %s\n", dev->name);
@@ -1676,14 +1724,14 @@ void syscall_dispatch(struct trapframe *tf) {
                 break;
             }
 
-            // 3. 调用 UDP 输出函数
+            // 3. ?????? UDP ????????????
             extern int udp_output(net_device_t *dev, uint32_t dst_ip, uint16_t src_port,
                                  uint16_t dst_port, uint8_t *data, uint32_t len);
 
-            // 🔥 使用动态源端口
-            // 策略：使用动态端口范围 (49152-65535)
-            // 端口计算：基础端口 + (目标端口的哈希)
-            // 这样同一目标端口会使用相同的源端口，便于 NAT 穿透
+            // ???? ?????????????????????
+            // ?????????????????????????????????(49152-65535)
+            // ??????????????????????????? + (?????????????????????
+            // ???????????????????????????????????????????????????????????? NAT ??????
             static uint16_t udp_src_port_counter = 0;
             uint16_t src_port = 49152 + ((udp_src_port_counter++ + port) % 16384);
 
@@ -1694,17 +1742,17 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_SET_DEVICE: {
-            // 🔥 设置当前使用的网络设备
-            // 参数: tf->ebx = 设备名称字符串指针
+            // ???? ?????????????????????????????????
+            // ??????: tf->ebx = ???????????????????????????
             const char *dev_name = (const char *)tf->ebx;
 
             if (dev_name == NULL || strcmp(dev_name, "auto") == 0) {
-                // 设置为空字符串表示自动选择
+                // ???????????????????????????????????????
                 current_net_device[0] = '\0';
                 printf("[syscall] Device selection: auto\n");
                 tf->eax = 0;
             } else {
-                // 🔥 将设备名称复制到内核缓冲区（而不是保存用户空间指针）
+                // ???? ??????????????????????????????????????????????????????????????????????????????
                 int i;
                 for (i = 0; i < 15 && dev_name[i] != '\0'; i++) {
                     current_net_device[i] = dev_name[i];
@@ -1716,8 +1764,8 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_POLL_RX: {
-            // 🔥 轮询RX（通用接口）
-            // 自动选择非loopback设备
+            // ???? ??????RX??????????????????
+            // ???????????????loopback??????
             extern net_device_t *net_device_get_default(void);
             extern int net_get_device_count(void);
             extern net_device_t **net_get_all_devices(void);
@@ -1726,7 +1774,7 @@ void syscall_dispatch(struct trapframe *tf) {
             int count = net_get_device_count();
             net_device_t **devices = net_get_all_devices();
 
-            // 自动选择：查找第一个非loopback设备（以太网设备）
+            // ?????????????????????????????????loopback???????????????????????????
             for (int i = 0; i < count; i++) {
                 if (devices[i] && devices[i]->send != NULL) {
                     if (strcmp(devices[i]->name, "lo") != 0) {
@@ -1738,7 +1786,7 @@ void syscall_dispatch(struct trapframe *tf) {
             }
 
             if (dev) {
-                // 调用该设备的轮询函数（兼容 e1000）
+                // ???????????????????????????????????????e1000???
                 extern void e1000_poll_rx(net_device_t *dev);
                 e1000_poll_rx(dev);
             } else {
@@ -1749,8 +1797,8 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_DUMP_REGS: {
-            // 🔥 转储网卡寄存器状态
-            // 参数: tf->ebx = 设备名称（如 "eth0", "eth1"）
+            // ???? ???????????????????????????
+            // ??????: tf->ebx = ?????????????????? "eth0", "eth1"???
             const char *dev_name = (const char *)tf->ebx;
 
             if (dev_name == NULL) {
@@ -1761,8 +1809,8 @@ void syscall_dispatch(struct trapframe *tf) {
 
             printf("[syscall] Dumping registers for device: %s\n", dev_name);
 
-            // 根据设备名称判断类型并调用相应的 dump 函数
-            // 目前只支持 E1000（eth0, eth1 等）
+            // ???????????????????????????????????????????????? dump ??????
+            // ???????????????E1000???eth0, eth1 ??????
             if (strncmp(dev_name, "eth", 3) == 0) {
                 extern void e1000_dump_regs(void);
                 e1000_dump_regs();
@@ -1776,9 +1824,9 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_ARP: {
-            // 🔥 ARP 命令 - 显示/扫描 ARP 缓存
-            // arg1 (ebx) = 设备名称
-            // arg2 (ecx) = scan 标志 (1=扫描并更新, 0=仅显示)
+            // ???? ARP ?????? - ??????/?????? ARP ??????
+            // arg1 (ebx) = ????????????
+            // arg2 (ecx) = scan ?????? (1=??????????????? 0=?????????
             const char *dev_name = (const char *)tf->ebx;
             int scan = (int)tf->ecx;
 
@@ -1788,7 +1836,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 break;
             }
 
-            // 查找设备
+            // ????????????
             extern net_device_t **net_get_all_devices(void);
             extern int net_get_device_count(void);
             net_device_t **devices = net_get_all_devices();
@@ -1814,8 +1862,8 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_DUMP_RX_REGS: {
-            // 🔥 转储 RX 寄存器（详细）
-            // 参数: tf->ebx = 设备名称（如 "eth0", "eth1"）
+            // ???? ?????? RX ?????????????????????
+            // ??????: tf->ebx = ?????????????????? "eth0", "eth1"???
             const char *dev_name = (const char *)tf->ebx;
 
             if (dev_name == NULL) {
@@ -1826,7 +1874,7 @@ void syscall_dispatch(struct trapframe *tf) {
 
             printf("[syscall] Dumping RX registers for device: %s\n", dev_name);
 
-            // 查找设备
+            // ????????????
             extern net_device_t **net_get_all_devices(void);
             extern int net_get_device_count(void);
             net_device_t **devices = net_get_all_devices();
@@ -1846,7 +1894,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 break;
             }
 
-            // 🔥 调用 net_dump_rx_regs，它会显示统计信息和 ARP 表
+            // ???? ?????? net_dump_rx_regs?????????????????????????????? ARP ???
             extern void net_dump_rx_regs(net_device_t *dev);
             net_dump_rx_regs(dev);
 
@@ -1854,8 +1902,8 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_IFUP: {
-            // 🔥 启动网络接口
-            // arg1 (ebx) = 设备名称字符串指针
+            // ???? ??????????????????
+            // arg1 (ebx) = ???????????????????????????
             const char *dev_name = (const char *)tf->ebx;
 
             if (dev_name == NULL) {
@@ -1866,47 +1914,47 @@ void syscall_dispatch(struct trapframe *tf) {
 
             printf("[syscall] IFUP: device=%s\n", dev_name);
 
-            // 调用 e1000_ifup
+            // ?????? e1000_ifup
             extern int e1000_ifup(const char *dev_name);
             int ret = e1000_ifup(dev_name);
             tf->eax = ret;
             break;
         }
         case SYS_MSI_TEST: {
-            // 🔥 MSI 测试 - 手动触发 MSI 来验证中断路径
+            // ???? MSI ?????? - ???????????? MSI ?????????????????????
             extern void msi_test_full_path(void);
             msi_test_full_path();
             tf->eax = 0;
             break;
         }
         case SYS_NET_LOOPBACK_TEST: {
-            // 🔥 E1000 硬件 loopback 测试 - 测试 TX/RX/DMA（轮询版本）
+            // ???? E1000 ?????? loopback ?????? - ?????? TX/RX/DMA??????????????????
             extern int e1000_loopback_test(void);
             int ret = e1000_loopback_test();
             tf->eax = ret;
             break;
         }
         case SYS_NET_LOOPBACK_TEST_INT: {
-            // 🔥 E1000 硬件 loopback 测试 - 测试 TX/RX/MSI/DMA（中断版本）
+            // ???? E1000 ?????? loopback ?????? - ?????? TX/RX/MSI/DMA??????????????????
             extern int e1000_loopback_test_interrupt(void);
             int ret = e1000_loopback_test_interrupt();
             tf->eax = ret;
             break;
         }
-        // ==================== GUI 系统调用 ====================
+        // ==================== GUI ???????????? ====================
         case SYS_GUI_FB_INFO: {
-            // 获取帧缓冲区信息
-            // 参数：ebx = fb_info_t* (用户态指针)
-            // 返回：eax = 0 成功，-1 失败
+            // ????????????????????????
+            // ?????????ebx = fb_info_t* (???????????????
+            // ?????????eax = 0 ?????????1 ??????
 
-            // 使用 VBE 驱动获取真实的帧缓冲区信息
+            // ?????? VBE ???????????????????????????????????????
             extern int vbe_is_available(void);
             extern uint32_t vbe_get_framebuffer(void);
             extern void vbe_get_resolution(uint16_t *width, uint16_t *height);
             extern uint8_t vbe_get_bpp(void);
             extern uint16_t vbe_get_pitch(void);
 
-            // 定义帧缓冲区信息结构（必须与用户空间一致）
+            // ???????????????????????????????????????????????????????????????
             struct fb_info {
                 void *fb_addr;
                 uint32_t width;
@@ -1915,19 +1963,19 @@ void syscall_dispatch(struct trapframe *tf) {
                 uint32_t bpp;
             } info;
 
-            // 检查 VBE 是否可用
+            // ??????VBE ????????????
             if (!vbe_is_available()) {
                 printf("[GUI FB INFO] VBE not available\n");
                 tf->eax = -1;
                 break;
             }
 
-            // 填充帧缓冲区信息
+            // ????????????????????????
             uint16_t width, height;
             vbe_get_resolution(&width, &height);
 
             uint32_t fb_phys = vbe_get_framebuffer();
-            info.fb_addr = (void *)0xF0000000;  // 返回固定的虚拟地址
+            info.fb_addr = (void *)0xF0000000;  // ???????????????????????????
             info.width = width;
             info.height = height;
             info.pitch = vbe_get_pitch();
@@ -1936,13 +1984,13 @@ void syscall_dispatch(struct trapframe *tf) {
             printf("[GUI FB INFO] fb_phys=0x%x, fb_virt=0x%x, %d x %d, pitch=%d, bpp=%d\n",
                    fb_phys, info.fb_addr, info.width, info.height, info.pitch, info.bpp);
 
-            // 🔥 重要: 帧缓冲区已经在系统启动时由 VBE 驱动映射好了
-            // vbe.c 的 vbe_init_from_multiboot 函数已经在 0xF0000000 地址建立了映射
-            // 并且已经设置了 USER 权限，所以这里不需要再次映射
+            // ???? ??????: ???????????????????????????????????????VBE ??????????????????
+            // vbe.c ???vbe_init_from_multiboot ???????????????0xF0000000 ?????????????????????
+            // ?????????????????????USER ??????????????????????????????????????????
             printf("[GUI FB INFO] Framebuffer already mapped at 0x%x (by VBE driver)\n", 0xF0000000);
 
 
-            // 拷贝到用户空间
+            // ?????????????????????
             struct fb_info *user_info = (struct fb_info *)tf->ebx;
             if (copy_to_user(user_info, &info, sizeof(info)) != 0) {
                 tf->eax = -1;
@@ -1953,9 +2001,9 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_GUI_FB_BLIT: {
-            // 位图传输到帧缓冲区
-            // 参数：ebx = x, ecx = y, edx = width, esi = height, edi = data (用户态指针)
-            // 返回：eax = 0 成功，-1 失败
+            // ???????????????????????????
+            // ?????????ebx = x, ecx = y, edx = width, esi = height, edi = data (???????????????
+            // ?????????eax = 0 ?????????1 ??????
 
             int x = (int)tf->ebx;
             int y = (int)tf->ecx;
@@ -1963,38 +2011,38 @@ void syscall_dispatch(struct trapframe *tf) {
             int height = (int)tf->esi;
             const uint16_t *data = (const uint16_t *)tf->edi;
 
-            // 简单验证
+            // ????????????
             if (width <= 0 || height <= 0 || data == NULL) {
                 tf->eax = -1;
                 break;
             }
 
-            // 使用 VBE 函数获取帧缓冲区信息
+            // ?????? VBE ??????????????????????????????
             extern int vbe_is_available(void);
             extern uint32_t vbe_get_framebuffer(void);
             extern void vbe_get_resolution(uint16_t *width, uint16_t *height);
             extern uint16_t vbe_get_pitch(void);
 
-            // 检查 VBE 是否可用
+            // ??????VBE ????????????
             if (!vbe_is_available()) {
                 tf->eax = -1;
                 break;
             }
 
-            // 获取帧缓冲区信息
+            // ????????????????????????
             uint32_t fb_addr = vbe_get_framebuffer();
             uint16_t fb_width, fb_height;
             vbe_get_resolution(&fb_width, &fb_height);
             uint16_t fb_pitch = vbe_get_pitch();
 
-            // 计算目标地址
+            // ??????????????????
             uint16_t *fb = (uint16_t *)fb_addr;
             uint16_t *dst = fb + y * (fb_pitch / 2) + x;
 
-            // 逐行拷贝（处理 pitch）
+            // ?????????????????????pitch???
             for (int i = 0; i < height && (y + i) < fb_height; i++) {
                 for (int j = 0; j < width && (x + j) < fb_width; j++) {
-                    // 从用户空间读取像素数据
+                    // ?????????????????????????????????
                     uint16_t pixel;
                     if (copy_from_user((char *)&pixel, (const char *)&data[i * width + j], 2) != 0) {
                         tf->eax = -1;
@@ -2009,26 +2057,26 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_GUI_INPUT_READ: {
-            // 读取输入设备事件（键盘或鼠标）
-            // 参数：ebx = input_event_t* (用户态指针)
-            //         ecx = 事件类型 (1=键盘, 2=鼠标)
-            // 返回：eax = 1 有事件, 0 无事件
+
+            // ?????????????????????????????????????????????            // ?????????ebx = input_event_t* (???????????????
+            //         ecx = ???????????? (1=??????, 2=??????)
+            // ?????????eax = 1 ????????? 0 ?????????
 
             static int mouse_call_count = 0;
 
-            // 定义输入事件结构（必须与用户空间一致）
+            // ?????????????????????????????????????????????????????????
             struct input_event {
-                uint32_t type;      // 1=键盘, 2=鼠标
-                int x;             // 鼠标 X 或 键码
-                int y;             // 鼠标 Y 或 保留
-                uint32_t pressed;  // 按键状态或保留
+                uint32_t type;      // 1=??????, 2=??????
+                int x;             // ?????? X ?????????
+                int y;             // ?????? Y ?????????
+                uint32_t pressed;  // ?????????????????????
             } event;
 
-            // 检查请求的事件类型
+            // ???????????????????????????
             uint32_t event_type = tf->ecx;
 
             if (event_type == 1) {
-                // 键盘事件 - 使用非阻塞方式读取
+                // ???????????? - ???????????????????????????
                 extern int keyboard_scancode_available(void);
                 extern int keyboard_get_scancode_nonblock(void);
 
@@ -2054,16 +2102,119 @@ void syscall_dispatch(struct trapframe *tf) {
                                     for (int dx = 0; dx < 1024; dx++)
                                         fb[dy*ppitch + dx] = 0x00000000;
                                 extern const unsigned char font8x8_data[95][8];
-                                // === Draw EHCI enumeration data full screen ===
-                                extern const char *ehci_display_get(void);
-                                const char *ehci_data = ehci_display_get();
-                                if (ehci_data && ehci_data[0]) {
-                                    int ly = 0, epos = 0;
-                                    while (ehci_data[epos] && ly < 760) {
-                                        int eend = epos;
-                                        while (ehci_data[eend] && ehci_data[eend] != '\n') eend++;
-                                        for (int i = 0; i < (eend-epos) && i < 120; i++) {
-                                            char ch = ehci_data[epos+i];
+                                // === Draw USB Status ===
+                                {
+                                    extern int g_using_ehci, num_uhci_controllers;
+                                    extern uint32_t g_ehci_qh_phys;
+                                    printf("[F1] ehci=%d uhci=%d\n", g_using_ehci, num_uhci_controllers);
+                                    extern int usb_mouse_get_count(void);
+                                    char buf[256]; int p = 0;
+                                    p = 0;
+                                    { const char *t="HillsonOS USB\nUHCI="; while(*t&&p<250)buf[p++]=*t++;
+                                      int v=num_uhci_controllers; if(!v)buf[p++]='0'; else{char d[8];int i=0;
+                                      while(v){d[i++]='0'+v%10;v/=10;} while(i)buf[p++]=d[--i];}
+                                      buf[p++]='\n'; }
+                                    { const char *t="EHCI="; while(*t&&p<250)buf[p++]=*t++;
+                                      int v=g_using_ehci?1:0; if(!v)buf[p++]='0'; else{char d[8];int i=0;
+                                      while(v){d[i++]='0'+v%10;v/=10;} while(i)buf[p++]=d[--i];}
+                                      buf[p++]='\n'; }
+                                    { extern uint32_t g_ehci_cmd, g_ehci_sts;
+                                      const char *t="EHCI cmd="; while(*t&&p<250)buf[p++]=*t++;
+                                      unsigned v=g_ehci_cmd; char d[9];int i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(v&&i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      t="EHCI sts="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_sts; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(v&&i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      { extern unsigned g_ehci_eecp, g_ehci_legsup;
+                                        const char *t="EECP="; while(*t&&p<250)buf[p++]=*t++;
+                                        unsigned v=g_ehci_eecp; char d[9];int i=0;
+                                        do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<2);
+                                        while(i&&p<250)buf[p++]=d[--i];
+                                        t=" LEG="; while(*t&&p<250)buf[p++]=*t++;
+                                        v=g_ehci_legsup; i=0;
+                                        do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                        while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n'; }
+                                      t="FR="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_phys; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(v&&i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      t="CP="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_caps; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(v&&i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      t="C2="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_caps2; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(v&&i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      t="P="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_mouse_port; if(!v)buf[p++]='0'; else{char dd[4];int ii=0;
+                                      while(v){dd[ii++]='0'+v%10;v/=10;} while(ii)buf[p++]=dd[--ii];}
+                                      t=" own="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_port_owner; buf[p++]='0'+v; buf[p++]=' ';
+                                      t="en="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_port_enabled; buf[p++]='0'+v; buf[p++]=' ';
+                                      t="ls="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_port_speed; buf[p++]='0'+v;
+                                      buf[p++]='\n'; }
+                                    { extern unsigned g_ehci_portsc, g_ehci_qh_ovl,
+                                        g_ehci_qh_nxt, g_ehci_qh_alt, g_ehci_td_nxt;
+                                      const char *t="PSC="; while(*t&&p<250)buf[p++]=*t++;
+                                      unsigned v=g_ehci_portsc; char d[9];int i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      t="QNX="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_nxt; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];
+                                      t=" QAL="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_alt; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];
+                                      t=" QOT="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_ovl; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];
+                                      t=" QB0="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_b0; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];
+                                      t=" QCU="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_qh_cur; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n';
+                                      t="TNX="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_td_nxt; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n'; }
+                                    { extern int g_ehci_fl_entry, g_ehci_td0_token;
+                                      const char *t="FL0="; while(*t&&p<250)buf[p++]=*t++;
+                                      unsigned v=g_ehci_fl_entry; char d[9];int i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];
+                                      t=" TD0="; while(*t&&p<250)buf[p++]=*t++;
+                                      v=g_ehci_td0_token; i=0;
+                                      do{d[i++]="0123456789ABCDEF"[v&0xF];v>>=4;}while(i<8);
+                                      while(i&&p<250)buf[p++]=d[--i];buf[p++]='\n'; }
+                                    { extern int g_mouse_report_count;
+                                      const char *t="Rpt="; while(*t&&p<250)buf[p++]=*t++;
+                                      int v=g_mouse_report_count; if(!v)buf[p++]='0'; else{char d[8];int i=0;
+                                      while(v){d[i++]='0'+v%10;v/=10;} while(i)buf[p++]=d[--i];}
+                                      buf[p++]='\n'; }
+                                    { extern int usb_mouse_get_count(void); int v=usb_mouse_get_count();
+                                      const char *t="Mouse="; while(*t&&p<250)buf[p++]=*t++;
+                                      if(!v)buf[p++]='0'; else{char d[8];int i=0;
+                                      while(v){d[i++]='0'+v%10;v/=10;} while(i)buf[p++]=d[--i];}
+                                      buf[p++]='\n'; }
+                                    buf[p] = 0;
+                                    int ly = 0;
+                                    char *ep = buf;
+                                    while (*ep && ly < 760) {
+                                        char *ee = ep;
+                                        while (*ee && *ee != '\n') ee++;
+                                        for (int i = 0; i < (ee-ep) && i < 120; i++) {
+                                            char ch = ep[i];
                                             if (ch < 32 || ch > 126) ch = ' ';
                                             const unsigned char *g = font8x8_data[(unsigned char)ch - 32];
                                             for (int r = 0; r < 8; r++) {
@@ -2074,20 +2225,7 @@ void syscall_dispatch(struct trapframe *tf) {
                                             }
                                         }
                                         ly += 10;
-                                        epos = eend;
-                                        while (ehci_data[epos] == '\n') epos++;
-                                    }
-                                } else {
-                                    // No data yet - show message
-                                    const char *msg = "No EHCI enum data yet. Boot with EHCI mouse attached.";
-                                    for (int i = 0; msg[i] && i < 120; i++) {
-                                        const unsigned char *g = font8x8_data[(unsigned char)msg[i] - 32];
-                                        for (int r = 0; r < 8; r++) {
-                                            unsigned char bits = g[r];
-                                            for (int c = 0; c < 8; c++)
-                                                if (bits & (0x80 >> c))
-                                                    fb[(0+r)*ppitch + 2 + i*8 + c] = 0x0000FF00;
-                                        }
+                                        ep = ee + 1;
                                     }
                                 }
                             }
@@ -2097,112 +2235,90 @@ void syscall_dispatch(struct trapframe *tf) {
                             break;
                         } // end else (overlay ON)
                     }
+                    // F2/F key removed ???use netlog command instead
                     event.type = 1;
                     event.x = scancode;
                     event.y = 0;
                     event.pressed = 1;
 
-                    // 拷贝到用户空间
+                    // ?????????????????????
                     struct input_event *user_event = (struct input_event *)tf->ebx;
                     if (copy_to_user(user_event, &event, sizeof(event)) != 0) {
                         tf->eax = -1;
                         break;
                     }
 
-                    tf->eax = 1;  // 有事件
+                    tf->eax = 1;  // ?????????
                 } else {
-                    tf->eax = 0;  // 无事件
+                    tf->eax = 0;  // ?????????
                 }
             } else if (event_type == 2) {
-                // 🔥 方案B：鼠标事件 - 状态机 + 边沿触发
+                // ???? ??????B???????????????- ????????? + ????????????
                 extern int usb_mouse_get_count(void);
                 extern int usb_mouse_read(int mouse_index, void *report);
                 extern int usb_mouse_data_available(int mouse_index);
+                extern int usb_mouse_is_absolute(void);
+                extern int usb_mouse_get_absolute(int *x, int *y, uint8_t *buttons);
 
                 int new_data_from_usb = 0;
 
-                // 🔥 尝试读取USB鼠标数据（非阻塞）
+                /* Try to read USB mouse data without blocking. */
                 if (usb_mouse_get_count() > 0) {
                     if (usb_mouse_data_available(0)) {
                         struct {
                             uint8_t buttons;
                             int8_t x;
                             int8_t y;
+                            int8_t wheel;
+                            uint8_t reserved[4];
                         } mouse_report;
 
                         int bytes = usb_mouse_read(0, &mouse_report);
 
-                        // 🔥 详细调试：打印读取结果和报告内容
-                        static int debug_read_count = 0;
-                        if (debug_read_count < 20) {
-                            debug_read_count++;
-                            printf("[SYS] USB Read #%d: bytes=%d, report=%02x %02x %02x\n",
-                                   debug_read_count, bytes,
-                                   mouse_report.buttons,
-                                   (uint8_t)mouse_report.x,
-                                   (uint8_t)mouse_report.y);
-                        }
-
                         if (bytes > 0) {
-                            // 有新USB数据，更新全局状态
+                            // ??????USB???????????????????????????
                             int old_buttons = usb_mouse_buttons;
 
-                            usb_mouse_x += mouse_report.x;
-                            usb_mouse_y += mouse_report.y;
+                            if (usb_mouse_is_absolute()) {
+                                uint8_t abs_buttons = 0;
+                                usb_mouse_get_absolute(&usb_mouse_x, &usb_mouse_y,
+                                                       &abs_buttons);
+                                usb_mouse_buttons = abs_buttons;
+                            } else {
+                                usb_mouse_x += mouse_report.x;
+                                usb_mouse_y -= mouse_report.y;
+                                usb_mouse_buttons = mouse_report.buttons;
+                            }
 
-                            // 边界检查
+                            // ????????????
                             if (usb_mouse_x < 0) usb_mouse_x = 0;
                             if (usb_mouse_y < 0) usb_mouse_y = 0;
-                            if (usb_mouse_x > 1024) usb_mouse_x = 1024;
-                            if (usb_mouse_y > 768) usb_mouse_y = 768;
+                            if (usb_mouse_x >= 1024) usb_mouse_x = 1023;
+                            if (usb_mouse_y >= 768) usb_mouse_y = 767;
 
-                            usb_mouse_buttons = mouse_report.buttons;
                             new_data_from_usb = 1;
 
-                            // 🔥 调试：打印USB原始数据
-                            static int usb_read_count = 0;
-                            if (++usb_read_count <= 10 || (old_buttons != usb_mouse_buttons)) {
-                                printf("[SYS] USB RAW: btn=%d->%d x=%d y=%d\n",
-                                       old_buttons, usb_mouse_buttons,
-                                       mouse_report.x, mouse_report.y);
-                            }
+                            (void)old_buttons;
                         } else {
-                            // 🔥 调试：读取失败的情况
-                            static int read_fail_count = 0;
-                            if (read_fail_count < 10) {
-                                read_fail_count++;
-                                printf("[SYS] USB Read FAIL: bytes=%d\n", bytes);
-                            }
+                            /* no report */
                         }
                     } else {
-                        // 🔥 调试：无数据可用的情况
-                        static int no_data_count = 0;
-                        if (no_data_count < 5) {
-                            no_data_count++;
-                            printf("[SYS] USB No data available\n");
-                        }
+                        /* no cached USB mouse report */
                     }
                 }
 
-                // 🔥 详细调试日志
-                static int debug_count = 0;
-                if (debug_count < 20) {
-                    printf("[SYS_GUI_INPUT_READ] MOUSE DEBUG #%d:\n", ++debug_count);
-                    printf("  usb_mouse_count=%d, x=%d, y=%d, btn=%x\n",
-                           usb_mouse_get_count(), usb_mouse_x, usb_mouse_y, usb_mouse_buttons);
-                    printf("  usb_data_available=%d, new_data_from_usb=%d\n",
-                           usb_mouse_get_count() > 0 ? usb_mouse_data_available(0) : -1,
-                           new_data_from_usb);
-                }
-
-                // PS/2 mouse fallback
-                int ps2_x=0, ps2_y=0, ps2_btn=0;
-                extern int ps2mouse_poll(int *x, int *y, int *btn);
-                if(ps2mouse_poll(&ps2_x, &ps2_y, &ps2_btn)){
-                    event.type = 2;
-                    event.x = ps2_x; event.y = ps2_y;
-                    event.pressed = ps2_btn;
-                    goto send_event;
+                // PS/2 mouse fallback: only use it when no USB mouse/tablet
+                // is present. Otherwise QEMU's default PS/2 mouse fights the
+                // USB tablet absolute coordinates and makes the cursor drift.
+                if (usb_mouse_get_count() == 0) {
+                    int ps2_x=0, ps2_y=0, ps2_btn=0;
+                    extern int ps2mouse_poll(int *x, int *y, int *btn);
+                    if(ps2mouse_poll(&ps2_x, &ps2_y, &ps2_btn)){
+                        event.type = 2;
+                        event.x = ps2_x; event.y = ps2_y;
+                        event.pressed = ps2_btn;
+                        goto send_event;
+                    }
                 }
                 // USB mouse
                 if (usb_mouse_x != mouse_last_x ||
@@ -2213,8 +2329,6 @@ void syscall_dispatch(struct trapframe *tf) {
                     event.x = usb_mouse_x;
                     event.y = usb_mouse_y;
                     event.pressed = usb_mouse_buttons & 0x07;  // bits: L=1, R=2, M=4
-                    goto send_event;
-
                     mouse_last_x = usb_mouse_x;
                     mouse_last_y = usb_mouse_y;
                     mouse_last_buttons = (int)usb_mouse_buttons;
@@ -2231,15 +2345,15 @@ void syscall_dispatch(struct trapframe *tf) {
                 tf->eax = 0;
                 break;
             } else {
-                // 其他事件类型暂不支持
+                // ??????????????????????????????
                 tf->eax = -1;
             }
             break;
         }
         case SYS_USB_MOUSE_POLL: {
-            // 轮询 USB 鼠标事件（用于非阻塞读取）
-            // 参数：ebx = usb_mouse_report_t* (用户态指针)
-            // 返回：eax = 1 有数据, 0 无数据, -1 错误
+            // ?????? USB ???????????????????????????????????????
+            // ?????????ebx = usb_mouse_report_t* (???????????????
+            // ?????????eax = 1 ????????? 0 ????????? -1 ??????
 
             extern int usb_mouse_get_count(void);
             extern int usb_mouse_read(int mouse_index, void *report);
@@ -2249,45 +2363,43 @@ void syscall_dispatch(struct trapframe *tf) {
             poll_count++;
 
             if (usb_mouse_get_count() == 0) {
-                tf->eax = -1;  // 没有鼠标
-                break;
-            }
-            int avail = usb_mouse_data_available(0);
-            if (!avail) {
-                tf->eax = 0;  // 无数据
-                if (poll_count % 100 == 0) {
-                    printf("[SYS_USB_MOUSE_POLL] No data available (poll=%d)\n", poll_count);
-                }
+                tf->eax = -1;  // ????????????
                 break;
             }
 
-            // 读取鼠标数据
+            int avail = usb_mouse_data_available(0);
+            if (!avail) {
+                tf->eax = 0;  // ?????????                break;
+            }
+
+            // ??????????????????
             struct {
                 uint8_t buttons;
                 int8_t x;
                 int8_t y;
+                int8_t wheel;
+                uint8_t reserved[4];
             } mouse_report;
 
             int bytes = usb_mouse_read(0, &mouse_report);
             if (bytes <= 0) {
                 tf->eax = -1;
-                printf("[SYS_USB_MOUSE_POLL] ERROR: usb_mouse_read returned %d\n", bytes);
                 break;
             }
 
-            // 拷贝到用户空间
+            // ?????????????????????
             void *user_report = (void *)tf->ebx;
             if (copy_to_user(user_report, &mouse_report, sizeof(mouse_report)) != 0) {
                 tf->eax = -1;
                 break;
             }
 
-            tf->eax = 1;  // 有数据
+            tf->eax = 1;  // ?????????
             break;
         }
         case SYS_USB_MOUSE_INFO: {
-            // SYS_USB_MOUSE_INFO (76): 获取 USB 鼠标端点信息
-            // 参数: ebx=ep指针, ecx=maxpkt指针, edx=interval指针
+            // SYS_USB_MOUSE_INFO (76): ?????? USB ??????????????????
+            // ??????: ebx=ep??????, ecx=maxpkt??????, edx=interval??????
             extern uint8_t g_usb_mouse_ep;
             extern uint8_t g_usb_mouse_maxpkt;
             extern uint8_t g_usb_mouse_interval;
@@ -2315,12 +2427,18 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case 77: {
-            // SYS_KLOG_READ: ecx=0→read klog, ecx=1→read ehci, ecx=2→draw to FB
+            // SYS_KLOG_READ: ecx=0???read klog, ecx=1???read ehci, ecx=2???draw to FB
             extern void klog_read(char *buf, int max);
-            char buf[2048];
+            /* A full page keeps this temporary buffer on the reclaimable
+             * buddy-backed kmalloc path instead of the early allocation pool. */
+            char *buf = (char *)kmalloc(4096);
+            if (!buf) {
+                tf->eax = -1;
+                break;
+            }
             if (tf->ecx == 2) {
                 // Draw klog to framebuffer line by line (kernel space, safe)
-                klog_read(buf, sizeof(buf));
+                klog_read(buf, 2048);
                 volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
                 extern uint16_t vbe_get_pitch(void);
                 int pitch = vbe_get_pitch();
@@ -2373,12 +2491,13 @@ void syscall_dispatch(struct trapframe *tf) {
                 copy_to_user((void*)tf->ebx, buf, 2048);
                 tf->eax = 0;
             }
+            kfree(buf);
             break;
         }
         case SYS_NET_BIND: {
-            // SYS_NET_BIND (52): 绑定 UDP 端口
-            // 参数: ebx = 端口号（主机字节序）
-            // 返回: eax = 0 成功, -1 失败
+            // SYS_NET_BIND (52): ?????? UDP ??????
+            // ??????: ebx = ??????????????????????????????
+            // ??????: eax = 0 ??????, -1 ??????
 
             uint16_t port = (uint16_t)tf->ebx;
             printf("[syscall] SYS_NET_BIND: port=%d\n", port);
@@ -2390,9 +2509,9 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_NET_RECV_UDP: {
-            // SYS_NET_RECV_UDP (53): 接收 UDP 数据
-            // 参数: ebx = 缓冲区指针, ecx = 最大长度
-            // 返回: eax = 接收到的字节数, -1 无数据, -2 错误
+            // SYS_NET_RECV_UDP (53): ?????? UDP ??????
+            // ??????: ebx = ??????????????? ecx = ????????????
+            // ??????: eax = ????????????????????? -1 ????????? -2 ??????
 
             printf("[syscall] [SYS_NET_RECV_UDP] 1\n");
 
@@ -2402,48 +2521,205 @@ void syscall_dispatch(struct trapframe *tf) {
             int max_len = (int)tf->ecx;
             int temp_port = 0;
 
-            // 临时内核缓冲区
-            char temp_buf[UDP_RX_BUF_SIZE];
+            // ?????????????????????
+            if (max_len <= 0 || max_len > UDP_RX_BUF_SIZE) {
+                tf->eax = -2;
+                break;
+            }
+            uint32_t temp_alloc_size = (max_len < 4096) ? 4096 : (uint32_t)max_len;
+            char *temp_buf = (char *)kmalloc(temp_alloc_size);
+            if (!temp_buf) {
+                tf->eax = -2;
+                break;
+            }
 
             int ret = net_recv_udp_internal(temp_buf, max_len, &temp_port);
 
             printf("[syscall] [SYS_NET_RECV_UDP] 2 ret=%d\n", ret);
 
             if (ret <= 0) {
+                kfree(temp_buf);
                 tf->eax = ret;
                 break;
             }
 
-            // 复制数据到用户空间
+            // ???????????????????????????
             if (copy_to_user(user_buf, temp_buf, ret) != 0) {
+                kfree(temp_buf);
                 tf->eax = -2;
                 break;
             }
 
             printf("[syscall] [SYS_NET_RECV_UDP] 3\n");
 
+            kfree(temp_buf);
             tf->eax = ret;
             break;
         }
-        case SYS_CHERRYUSB_MOUSE_READ: {
-            /* CherryUSB HID Mouse 读取 (syscall 77)
-               ebx = cherryusb_mouse_report_t* (用户态指针)
-               返回: >0=有数据, 0=无, -1=错误 */
-            extern int cherryusb_hid_mouse_count(void);
-            if (cherryusb_hid_mouse_count() > 0) {
-                uint8_t buf[8] = {0};
-                extern int usb_mouse_read(int idx, void *rpt);
-                int n = usb_mouse_read(0, buf);
-                if (n >= 3 && arg1) {
-                    /* 复制到用户空间 */
-                    uint8_t *dst = (uint8_t *)arg1;
-                    dst[0] = buf[0]; dst[1] = buf[1]; dst[2] = buf[2];
-                    if (n >= 4) dst[3] = buf[3];
-                }
-                tf->eax = n;
-            } else {
+        case 78: { /* SYS_CHERRYUSB_MOUSE_READ ???removed, use SYS_USB_MOUSE_POLL instead */
+            tf->eax = -1;
+            break;
+        }
+        case SYS_LS_DISK: {
+            /* arg1 = user buf, arg2 = max, arg3 = path string */
+            char *kbuf = (char *)kmalloc(4096);
+            char kpath[128];
+            int outmax = arg2;
+            int ret = -1;
+            if (!kbuf) {
                 tf->eax = -1;
+                break;
             }
+            if (outmax <= 0 || outmax > 4096) outmax = 4096;
+            kbuf[0] = '\0';
+            const char *path = "/";
+            if (arg3) {
+                copy_from_user(kpath, (const char*)arg3, sizeof(kpath) - 1);
+                kpath[sizeof(kpath) - 1] = '\0';
+                path = kpath;
+            }
+            extern int vfs_list_dir(const char *path, char *buf, int max);
+            ret = vfs_list_dir(path, kbuf, outmax);
+            printf("[lsdisk] path='%s' ret=%d first='%c'\n",
+                   path, ret, kbuf[0] ? kbuf[0] : '.');
+            if (ret < 0) {
+                int p = 0;
+                const char *s = "ls: cannot access ";
+                while (s[p] && p < outmax - 1) { kbuf[p] = s[p]; p++; }
+                for (int i = 0; path[i] && p < outmax - 1; i++) kbuf[p++] = path[i];
+                if (p < outmax - 1) kbuf[p++] = '\n';
+                kbuf[p] = '\0';
+            } else {
+                if (ret >= outmax) ret = outmax - 1;
+                kbuf[ret] = '\0';
+            }
+            if(arg1) copy_to_user((void*)arg1, kbuf, outmax);
+            kfree(kbuf);
+            tf->eax = ret;
+            break;
+        }
+        case 80: { /* SYS_NETLOG: netlog <ip> <port> ???send console via UDP */
+            uint32_t ebx = tf->ebx;
+            uint32_t ecx = tf->ecx;
+            printf("[netlog] ebx=0x%x ecx=%d\n", ebx, ecx);
+            if (ebx == 0) {
+                printf("[netlog] disabled\n");
+                tf->eax = 0;
+                break;
+            }
+            /* Parse IP */
+            const char *ip_str = (const char *)ebx;
+            printf("[netlog] ip_str='%s'\n", ip_str);
+            int port = (int)ecx;
+            if (port <= 0 || port > 65535) port = 9999;
+            uint32_t dst_ip = 0;
+            uint8_t octets[4]; int oi = 0; uint32_t cur = 0;
+            const char *p = ip_str; while (*p == ' ') p++;
+            for (; *p; p++) {
+                if (*p == '.') { octets[oi++] = (uint8_t)cur; cur = 0; }
+                else if (*p >= '0' && *p <= '9') cur = cur * 10 + (*p - '0');
+                else if (*p == ' ') break;
+            }
+            octets[oi] = (uint8_t)cur;
+            dst_ip = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+            printf("[netlog] dst=%d.%d.%d.%d:%d\n", octets[0], octets[1], octets[2], octets[3], port);
+
+            /* Get console data */
+            extern void *console_get_buf(void);
+            extern int  console_get_len(void);
+            char *data = (char *)console_get_buf();
+            int len = console_get_len();
+            printf("[netlog] console buf=%p len=%d first=%02x%02x%02x\n",
+                   data, len, data?data[0]:0, data?data[1]:0, data?data[2]:0);
+            if (!data || len <= 0) { printf("[netlog] console empty\n"); tf->eax = -1; break; }
+
+            /* Get device ???copy case 45 */
+            extern int net_get_device_count(void);
+            extern net_device_t **net_get_all_devices(void);
+            int cnt = net_get_device_count();
+            net_device_t **devs = net_get_all_devices();
+            printf("[netlog] net devs=%d\n", cnt);
+            net_device_t *dev = NULL;
+            for (int i = 0; i < cnt; i++)
+                if (devs[i] && devs[i]->send && strcmp(devs[i]->name, "lo") != 0)
+                    { dev = devs[i]; printf("[netlog] picked %s\n", dev->name); break; }
+            if (!dev) { printf("[netlog] no device\n"); tf->eax = -2; break; }
+
+            /* Send */
+            extern int udp_output(net_device_t *d, uint32_t ip,
+                                  uint16_t sp, uint16_t dp, uint8_t *b, uint32_t l);
+            printf("[netlog] calling udp_output dev=%s dst=0x%x port=%d len=%d data=%p\n",
+                   dev->name, dst_ip, port, len, data);
+            int ret = udp_output(dev, dst_ip, port, port, (uint8_t *)data, len);
+            printf("[netlog] udp_output returned %d\n", ret);
+            tf->eax = (ret >= 0) ? 0 : -4;
+            break;
+        }
+        case 81: { /* klog.flush */
+            extern int klog_flush(void);
+            tf->eax = klog_flush();
+            break;
+        }
+        case 82: { /* SYS_GET_USB_LOG ???filter by keyword in edx, or all if empty */
+            char *ubuf = (char *)tf->ebx;
+            int   maxlen = (int)tf->ecx;
+            const char *kw = (const char *)tf->edx; /* filter keyword, "" or NULL = all */
+            int kwlen = 0; if(kw) while(kw[kwlen]) kwlen++;
+            extern void usb_log_snapshot(void);
+            extern void *usb_log_get_buf(void);
+            extern int   usb_log_get_size(void);
+            usb_log_snapshot();
+            char *kbuf = (char *)usb_log_get_buf();
+            int   klen = usb_log_get_size();
+            if (!ubuf || maxlen <= 0) { tf->eax = -1; break; }
+            if (!kbuf || klen <= 0) { tf->eax = 0; break; }
+
+            int out = 0, ls = 0;
+            for (int i = 0; i < klen && out < maxlen - 1; i++) {
+                if (kbuf[i] != '\n' && i < klen - 1) continue;
+                int ok = (kwlen == 0); /* no filter = match all */
+                if (!ok) {
+                    for (int j = ls; j <= i - kwlen; j++) {
+                        int m = 1;
+                        for (int k = 0; k < kwlen; k++)
+                            if (kbuf[j+k] != kw[k]) { m=0; break; }
+                        if (m) { ok = 1; break; }
+                    }
+                }
+                if (ok) {
+                    for (int j = ls; j <= i && out < maxlen - 1; j++)
+                        ubuf[out++] = kbuf[j];
+                }
+                ls = i + 1;
+            }
+            ubuf[out] = 0;
+            tf->eax = out;
+            break;
+        }
+        case SYS_USB_INIT: {
+            extern int usb_get_init_state(void);
+            tf->eax = usb_get_init_state();
+            printf("[syscall] USB init syscall is status-only, state=%d\n", tf->eax);
+            break;
+        }
+        case SYS_USB_LOG_SAVE: {
+            extern int fat32_save_log(void);
+            tf->eax = fat32_save_log();
+            printf("[syscall] USB log save %s\n",
+                   tf->eax == 0 ? "OK" : "failed");
+            break;
+        }
+        case SYS_USB_STATUS: {
+            extern int usb_get_init_state(void);
+            tf->eax = usb_get_init_state();
+            break;
+        }
+        case SYS_USB_LOG_DISPLAY: {
+            extern void usb_log_set_console(int enabled);
+            extern int usb_log_get_console(void);
+            if ((int)tf->ebx >= 0)
+                usb_log_set_console(tf->ebx ? 1 : 0);
+            tf->eax = usb_log_get_console();
             break;
         }
         default:
@@ -2458,10 +2734,10 @@ void syscall_dispatch(struct trapframe *tf) {
     // Linux 0.11CR3
 }
 
-// ==================== 系统调用包装函数 ====================
+// ==================== ???????????????????????? ====================
 
 /**
- * @brief syscall_net_ifconfig() - 获取网卡接口配置
+ * @brief syscall_net_ifconfig() - ????????????????????????
  */
 int syscall_net_ifconfig(void) {
     int ret;
@@ -2475,7 +2751,7 @@ int syscall_net_ifconfig(void) {
 }
 
 /**
- * @brief syscall_lspci() - 列出所有 PCI 设备
+ * @brief syscall_lspci() - ????????????PCI ??????
  */
 int syscall_lspci(void) {
     int ret;
@@ -2489,7 +2765,7 @@ int syscall_lspci(void) {
 }
 
 /**
- * @brief net_send_udp() - 发送 UDP 包
+ * @brief net_send_udp() - ??????UDP ???
  */
 int net_send_udp(const char *ip, int port, const char *data, int len) {
     int ret;
@@ -2501,3 +2777,5 @@ int net_send_udp(const char *ip, int port, const char *data, int len) {
     );
     return ret;
 }
+
+

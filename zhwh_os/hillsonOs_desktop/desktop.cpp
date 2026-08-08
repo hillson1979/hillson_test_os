@@ -101,20 +101,55 @@ int main(void) {
     int mx = fb.width / 2, my = fb.height / 2;
     int lcx = -1, lcy = -1;
     int pp = fb.pitch / 4;
+    uint32_t cursorBg[25 * 25];
+    bool cursorVisible = false;
+    int cursorBgX = 0, cursorBgY = 0;
 
-    // XOR cursor drawing helper (big crosshair)
+    auto saveCursorBg = [&](int cx, int cy) {
+        cursorBgX = cx;
+        cursorBgY = cy;
+        for (int dy = -12; dy <= 12; dy++) {
+            for (int dx = -12; dx <= 12; dx++) {
+                int x = cx + dx;
+                int y = cy + dy;
+                int i = (dy + 12) * 25 + (dx + 12);
+                if (x >= 0 && x < (int)fb.width && y >= 0 && y < (int)fb.height)
+                    cursorBg[i] = fb_virt[y * pp + x];
+                else
+                    cursorBg[i] = 0;
+            }
+        }
+    };
+
+    auto restoreCursorBg = [&]() {
+        if (!cursorVisible)
+            return;
+        for (int dy = -12; dy <= 12; dy++) {
+            for (int dx = -12; dx <= 12; dx++) {
+                int x = cursorBgX + dx;
+                int y = cursorBgY + dy;
+                int i = (dy + 12) * 25 + (dx + 12);
+                if (x >= 0 && x < (int)fb.width && y >= 0 && y < (int)fb.height)
+                    fb_virt[y * pp + x] = cursorBg[i];
+            }
+        }
+        cursorVisible = false;
+    };
+
     auto drawCursor = [&](int cx, int cy) {
+        saveCursorBg(cx, cy);
         for (int dy = -12; dy <= 12; dy++)
             if (cy + dy >= 0 && cy + dy < (int)fb.height)
-                fb_virt[(cy + dy) * pp + cx] ^= 0x00FFFFFF;
+                fb_virt[(cy + dy) * pp + cx] = 0x00FFFFFF;
         for (int dx = -12; dx <= 12; dx++)
             if (cx + dx >= 0 && cx + dx < (int)fb.width)
-                fb_virt[cy * pp + (cx + dx)] ^= 0x00FFFFFF;
+                fb_virt[cy * pp + (cx + dx)] = 0x00FFFFFF;
         // filled center dot
         for (int dy = -2; dy <= 2; dy++)
             for (int dx = -2; dx <= 2; dx++)
                 if (cy+dy >= 0 && cy+dy < (int)fb.height && cx+dx >= 0 && cx+dx < (int)fb.width)
-                    fb_virt[(cy+dy)*pp + cx+dx] ^= 0x00FFFF00;
+                    fb_virt[(cy+dy)*pp + cx+dx] = 0x00FFFF00;
+        cursorVisible = true;
     };
 
     // Initial cursor
@@ -131,10 +166,8 @@ int main(void) {
         input_event_t me;
         int mr = read_input(&me, 2);
         if (mr == 1) {
-            // Erase old cursor
-            if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height) {
-                drawCursor(lcx, lcy);
-            }
+            // Erase old cursor by restoring the saved framebuffer pixels.
+            restoreCursorBg();
 
             mx = me.x; my = me.y;
             if (mx < 0) mx = 0;
@@ -172,8 +205,7 @@ int main(void) {
                 if (desktop.windowCount() > 0) {
                     QDesktopWindow *fw = desktop.focusedWindow();
                     if (fw) {
-                        if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
-                            drawCursor(lcx, lcy);
+                        restoreCursorBg();
                         desktop.removeWindow(fw);
                         delete fw;
                         needRender = true;
@@ -219,8 +251,7 @@ int main(void) {
                     if (mx < 0) mx = 0; if (my < 0) my = 0;
                     if (mx >= (int)fb.width) mx = fb.width - 1;
                     if (my >= (int)fb.height) my = fb.height - 1;
-                    if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
-                        drawCursor(lcx, lcy);
+                    restoreCursorBg();
                     drawCursor(mx, my);
                     lcx = mx; lcy = my;
                     if (desktop.isDragging()) {
@@ -233,8 +264,7 @@ int main(void) {
 
             // Enter / Space — click (unless terminal focused)
             if (!isTerm && (qtKey == Qt::Key_Return || qtKey == Qt::Key_Enter || qtKey == Qt::Key_Space)) {
-                if (lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height)
-                    drawCursor(lcx, lcy);
+                restoreCursorBg();
                 desktop.handleMouse(mx, my, 1, &needRender);
                 desktop.handleMouse(mx, my, 0, &needRender);
                 drawCursor(mx, my);
@@ -269,11 +299,7 @@ int main(void) {
 
         // Render if needed
         if (needRender) {
-            // Only erase cursor if it has moved (avoid flicker on keyboard events)
-            bool cursorMovedRender = (mx != lcx || my != lcy);
-            if (cursorMovedRender && lcx >= 0 && lcx < (int)fb.width && lcy >= 0 && lcy < (int)fb.height) {
-                drawCursor(lcx, lcy);
-            }
+            restoreCursorBg();
             desktop.render(&painter);
             // Redraw cursor
             drawCursor(mx, my);

@@ -196,7 +196,16 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
         }
 
         // 检查内核页表中是否有这个具体的页映射
-        uint32_t *pt_kernel_pt = (uint32_t*)phys_to_virt(kernel_pd[pt_kernel_pd_index] & ~0xFFF);
+        uint32_t pt_kernel_pt_phys = kernel_pd[pt_kernel_pd_index] & ~0xFFF;
+        uint32_t *pt_kernel_pt;
+        if (pt_kernel_pt_phys >= 0x800000)
+            pt_kernel_pt = (uint32_t*)map_highmem_physical(pt_kernel_pt_phys, 4096, 0x3);
+        else
+            pt_kernel_pt = (uint32_t*)phys_to_virt(pt_kernel_pt_phys);
+        if (!pt_kernel_pt) {
+            printf("[map_page] Cannot access PT kernel mapping page\n");
+            return;
+        }
 
         if (!(pt_kernel_pt[pt_kernel_pt_index] & PAGE_PRESENT)) {
             // 为内核创建这个物理页的映射
@@ -206,7 +215,15 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
         }
 
         // 清零页表
-        uint32_t *pt_virt = (uint32_t*)pt_virt_addr;
+        uint32_t *pt_virt;
+        if (pt_phys >= 0x800000)
+            pt_virt = (uint32_t*)map_highmem_physical(pt_phys, PAGE_SIZE, 0x3);
+        else
+            pt_virt = (uint32_t*)pt_virt_addr;
+        if (!pt_virt) {
+            printf("[map_page] Cannot zero new PT phys=0x%x\n", pt_phys);
+            return;
+        }
         memset(pt_virt, 0, PAGE_SIZE);
 
         // 填写用户页目录的 PDE（只设置一次，后续不会覆盖）
@@ -218,7 +235,16 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
     }
 
     // 得到页表虚拟地址
-    uint32_t *pt = (uint32_t*)phys_to_virt(pd_user[pd_index] & ~0xFFF);
+    uint32_t mapped_pt_phys = pd_user[pd_index] & ~0xFFF;
+    uint32_t *pt;
+    if (mapped_pt_phys >= 0x800000)
+        pt = (uint32_t*)map_highmem_physical(mapped_pt_phys, 4096, 0x3);
+    else
+        pt = (uint32_t*)phys_to_virt(mapped_pt_phys);
+    if (!pt) {
+        printf("[map_page] Cannot access target PT phys=0x%x\n", mapped_pt_phys);
+        return;
+    }
 
     // 填写 PTE
     pt[pt_index] =  (paddr & ~0xFFF) | (flags & 0xFFF) | PAGE_PRESENT;

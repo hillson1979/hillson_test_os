@@ -281,14 +281,19 @@ static pci_dev_t *pci_probe(unsigned bus, unsigned dev, unsigned fn) {
   if (pci_read32(bus, dev, fn, 0) == 0xFFFFFFFF)
     return NULL;
 
-  pci_dev_t *d = (pci_dev_t *)kmalloc_early(sizeof(pci_header_t));//phys_to_virt(pmm_alloc_page());//
+  if (num_devices >= MAX_PCI_DEVICES)
+    return NULL;
+
+  pci_dev_t *d = (pci_dev_t *)kmalloc_early(sizeof(pci_dev_t));
+  if (!d)
+    return NULL;
 
   d->bus_id = bus;
   d->dev_id = dev;
   d->fn_id = fn;
   uint32_t *h32 = (uint32_t*)&d->header;
   for (unsigned i = 0; i < 0x10; ++i)
-    h32[i] = pci_read32(bus, dev, fn, i);
+    h32[i] = pci_read32(bus, dev, fn, i * sizeof(uint32_t));
 
   devices[num_devices++] = d;
   return d;

@@ -37,6 +37,9 @@ private:
     char  m_cmdBuf[256];
     int   m_cmdLen;
     int   m_scrollOffset;
+    char  m_history[20][256];  // command history
+    int   m_histCount;
+    int   m_histIdx;
 };
 
 #endif // QTERMINAL_H

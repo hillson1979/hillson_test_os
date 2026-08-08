@@ -89,7 +89,7 @@ typedef bool (*activity_callback_t)(struct task_t* task, void* opaque);
 
 #define TASK_IFRAME   OFFSETOF(struct task_t, tf)
 
-#define KSTACK_SIZE 4096
+#define KSTACK_SIZE (4096 * 2)
 
 // 信号处理函数类型定义
 typedef void (*sighandler_t)(int);
@@ -143,6 +143,7 @@ typedef struct task_t {
         struct trapframe * tf;
         uint32_t task_total_count;
         uint32_t *pde;
+        uint32_t user_brk;       // program break for sbrk()
 
         uint32_t *kstack;//kernel stack
 

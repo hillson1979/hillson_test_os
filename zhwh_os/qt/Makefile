@@ -32,7 +32,7 @@ INCLUDE_DIR = ../include
 INCLUDES = -I. -I./include -I$(USER_DIR) -I$(INCLUDE_DIR) -I$(INCLUDE_DIR)/lvgl
 
 # Shared OS compatibility objects
-LIB_OBJS = $(USER_DIR)/libuser.o \
+LIB_OBJS = $(USER_DIR)/libuser_nostart.o \
            $(LVGL_DIR)/string_compat.o \
            $(LVGL_DIR)/libgcc_compat.o
 
@@ -83,9 +83,9 @@ qt_embedded_test.elf: $(QT_OBJS) $(QT_EMBEDDED_OBJS) test_qt_embedded.o $(LIB_OB
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # --- Compile C (OS libs) ---
-$(USER_DIR)/libuser.o: $(USER_DIR)/libuser.c
+$(USER_DIR)/libuser_nostart.o: $(USER_DIR)/libuser.c
 	@echo "[CC]  $<"
-	@$(CC) $(CFLAGS) -I$(USER_DIR) -I$(INCLUDE_DIR) -c $< -o $@
+	@$(CC) $(CFLAGS) -DLIBUSER_NO_START -I$(USER_DIR) -I$(INCLUDE_DIR) -c $< -o $@
 
 $(LVGL_DIR)/string_compat.o: $(LVGL_DIR)/string_compat.c
 	@echo "[CC]  $<"

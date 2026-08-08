@@ -134,6 +134,10 @@ int usb_hid_set_protocol(struct usb_dev_t *usb, uint8_t protocol,
     usb_wait_transfer(&transfer);
     usb_delete_transfer(&transfer);
 
+    /* Keep the result visible through SYS_USB_MOUSE_INFO for the physical
+     * machine diagnostics. */
+    extern int g_usb_setproto_result;
+    g_usb_setproto_result = transfer.success ? 1 : 0;
     return transfer.success;
 }
 

@@ -37,6 +37,7 @@
 #include <mm/kheap.h>
 
 extern void kernel_usb_status_line(const char *stage, const char *detail);
+extern void kernel_usb_msc_status_line(const char *stage, const char *detail);
 extern void kernel_usb_error_line(const char *stage, const char *detail);
 extern int snprintf(char *str, unsigned int size, const char *fmt, ...);
 
@@ -428,7 +429,7 @@ int usb_poll_transfer(struct usb_transfer_t *transfer)
                    (transfer->dev && transfer->dev->ops) ?
                        (void*)transfer->dev->ops->poll_transfer : NULL);
 
-    /* Bypass vtable for XHCI â€” linker sometimes corrupts the function pointer */
+    /* Bypass vtable for XHCI â€?linker sometimes corrupts the function pointer */
     if (transfer->dev && transfer->dev->type == USB_TYPE_XHCI) {
         extern int xhci_poll_transfer(struct usb_transfer_t *transfer);
         if (cnt <= 3)
@@ -567,9 +568,6 @@ void usb_in_transaction(struct usb_transfer_t *transfer,
     size_t minlen;
     int remaining;
 
-    /* xHCI transfer rings describe buffers, not individual USB packets.
-     * Queue one Data Stage TRB for the whole control payload and let the
-     * controller split it according to EP0 MPS on the wire. */
     if(transfer->type == USB_TRANSFER_CTRL && transfer->dev &&
        transfer->dev->type == USB_TYPE_XHCI)
     {
@@ -699,6 +697,7 @@ void usb_out_transaction(struct usb_transfer_t *transfer,
     }
 }
 
+
 #undef APPEND_TRANSACTION
 
 
@@ -762,6 +761,11 @@ int usb_get_device_descriptor(struct usb_dev_t *dev, uint8_t len)
     struct usb_device_descriptor_t desc;
     int res = -EIO;
 
+    /* A few physical devices legally complete the initial 8-byte probe with
+     * a zero-length short packet.  Do not inspect uninitialized stack bytes
+     * as if they were a descriptor header. */
+    A_memset(&desc, 0, sizeof(desc));
+
     if(usb_ctrl_in(dev, &desc, 0x80, 6, 1, 0, 0, len))
     {
         {
@@ -776,6 +780,14 @@ int usb_get_device_descriptor(struct usb_dev_t *dev, uint8_t len)
                 pos += snprintf(raw + pos, sizeof(raw) - pos,
                                 " %02x", b[i]);
             kernel_usb_status_line("usb desc raw", raw);
+            if (b[0] == 0 && b[1] == 0 && len <= 8) {
+                usb_printk("usb: initial device descriptor probe returned "
+                           "zero bytes; keeping EP0 MPS=%d\n",
+                           dev->endpoints->mps ? dev->endpoints->mps : 8);
+                if (!dev->endpoints->mps)
+                    dev->endpoints->mps = 8;
+                return 0;
+            }
             if (b[0] != 18 || b[1] != 1) {
                 kernel_usb_error_line("usb desc invalid", "bad device descriptor header");
                 return -EIO;
@@ -785,7 +797,7 @@ int usb_get_device_descriptor(struct usb_dev_t *dev, uint8_t len)
 
         /* Decode bMaxPacketSize0:
          *   USB 1.x / 2.0 (bcdUSB < 0x0300): literal value (8, 16, 32, 64)
-         *   USB 3.0  (bcdUSB >= 0x0300): exponent â€” real MPS = 2^exp (9 => 512)
+         *   USB 3.0  (bcdUSB >= 0x0300): exponent â€?real MPS = 2^exp (9 => 512)
          */
         if (desc.bcd_usb >= 0x0300 && desc.mps >= 7 && desc.mps <= 12) {
             real_mps = 1u << desc.mps;   /* 9 -> 512, 10 -> 1024, etc. */
@@ -1216,7 +1228,7 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
             {
                 found = 1;
                 usb_printk("usb: setting up Mass Storage Device (MSD)\n");
-                kernel_usb_status_line("usb class", "mass storage detected");
+                kernel_usb_msc_status_line("usb class", "mass storage detected");
                 init_msd(iface);
             }
             else if(iface->desc.class == 0x03)
@@ -1280,20 +1292,26 @@ void usb_process_deferred_clears(void)
      * xhci_poll_transfer (see "STALL recovery" block).
      * The HC driver writes CLEAR_FEATURE to EP0 and waits
      * for its completion inline, THEN re-arms EP3.
-     * No deferred processing needed â€” the flag is cleared
+     * No deferred processing needed â€?the flag is cleared
      * inside the recovery function itself. */
 }
 
 /*
- * Poll interrupt transfers â€” called from xhci_poll() in the main
- * scheduler idle loop (via usb_periodic_poll_callback â†’ usb_hcd_poll_hotplug).
+ * Poll interrupt transfers â€?called from xhci_poll() in the main
+ * scheduler idle loop (via usb_periodic_poll_callback â†?usb_hcd_poll_hotplug).
  * Each HC driver's poll() handles event-ring completions and
  * re-queues interrupt TRBs.
  */
 void usb_poll_interrupts(void)
 {
     volatile struct usb_transfer_t *t;
+    int pass;
     static int call_cnt = 0;
+    static int in_poll = 0;
+
+    if (in_poll)
+        return;
+    in_poll = 1;
 
     if (++call_cnt <= 5)
         usb_printk("usb_poll_intr: call #%d head=%p\n",
@@ -1304,12 +1322,22 @@ void usb_poll_interrupts(void)
      * Also called from usb_periodic_poll_callback (idle path). */
     usb_process_deferred_clears();
 
-    for (t = inttransfer_head.next_inttransfer; t != NULL;
-         t = t->next_inttransfer) {
-        if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback) {
-            t->callback(t->callback_arg);
+    /* Temporary single-event-ring policy: service HID/small periodic pipes
+     * first so storage traffic cannot delay mouse re-arming. */
+    for (pass = 0; pass < 2; pass++) {
+        for (t = inttransfer_head.next_inttransfer; t != NULL;
+             t = t->next_inttransfer) {
+            int hid_priority = t->dev &&
+                (t->dev->class == 3 ||
+                 (t->endpoint && t->endpoint->mps <= 16));
+            if ((pass == 0) != hid_priority)
+                continue;
+            if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback)
+                t->callback(t->callback_arg);
         }
     }
+
+    in_poll = 0;
 }
 
 

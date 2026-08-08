@@ -153,11 +153,70 @@ void d_add(dentry_t *dentry, inode_t *inode) {
 }
 
 // ================================
+// VFS 挂载点管理
+// ================================
+
+#define VFS_MAX_MOUNTS  4
+
+static struct {
+    char mount_path[64];
+    inode_t *root_inode;
+} vfs_mounts[VFS_MAX_MOUNTS];
+static int vfs_num_mounts = 0;
+
+int vfs_mount(const char *mount_path, inode_t *root_inode) {
+    if (!mount_path || !root_inode) return -1;
+
+    if (vfs_num_mounts >= VFS_MAX_MOUNTS) {
+        printf("[vfs] mount: table full\n");
+        return -1;
+    }
+
+    int i = vfs_num_mounts++;
+    int j = 0;
+    while (mount_path[j] && j < 63) {
+        vfs_mounts[i].mount_path[j] = mount_path[j];
+        j++;
+    }
+    vfs_mounts[i].mount_path[j] = '\0';
+    vfs_mounts[i].root_inode = root_inode;
+    root_inode->i_sb = root_sb;  /* share superblock with ramfs */
+    root_inode->i_parent = root_sb->s_root;
+
+    printf("[vfs] mount: '%s' registered\n", mount_path);
+    return 0;
+}
+
+inode_t *vfs_get_mount_root(const char *path, const char **remainder) {
+    for (int i = 0; i < vfs_num_mounts; i++) {
+        int j = 0;
+        while (vfs_mounts[i].mount_path[j] && path[j] &&
+               vfs_mounts[i].mount_path[j] == path[j]) {
+            j++;
+        }
+        if (vfs_mounts[i].mount_path[j] == '\0') {
+            /* mount_path fully matched */
+            if (path[j] == '\0' || path[j] == '/') {
+                if (path[j] == '/') j++;  /* skip separator */
+                *remainder = path + j;
+                return vfs_mounts[i].root_inode;
+            }
+        }
+    }
+    *remainder = NULL;
+    return NULL;
+}
+
+// ================================
 // 路径解析
 // ================================
 
 /**
  * @brief 路径查找（返回 inode）
+ *
+ * Checks the mount table first. If the path starts with a mount-point
+ * prefix (e.g., "/usb"), delegates to the mounted filesystem's
+ * inode_ops.lookup for the remaining path components.
  */
 inode_t *path_lookup(const char *path) {
     if (!path || !root_sb) {
@@ -166,6 +225,51 @@ inode_t *path_lookup(const char *path) {
 
     printf("[vfs] path_lookup: '%s'\n", path);
 
+    /* — Check mount table — */
+    const char *remainder;
+    inode_t *mounted_root = vfs_get_mount_root(path, &remainder);
+    if (mounted_root) {
+        printf("[vfs] path_lookup: mount redirect -> '%s'\n",
+               remainder ? remainder : "(root)");
+
+        if (!remainder || *remainder == '\0')
+            return mounted_root;
+
+        /* Walk remaining path using the mounted filesystem's lookup */
+        inode_t *current = mounted_root;
+        char path_copy[256];
+        char *token;
+
+        strncpy(path_copy, remainder, sizeof(path_copy) - 1);
+        path_copy[sizeof(path_copy) - 1] = '\0';
+        token = strtok(path_copy, "/");
+
+        while (token != NULL) {
+            printf("[vfs] mounted lookup: '%s'\n", token);
+
+            if (!S_ISDIR(current->i_mode)) {
+                printf("[vfs] Not a directory (mounted)\n");
+                return NULL;
+            }
+            if (!current->i_op || !current->i_op->lookup) {
+                printf("[vfs] No lookup op (mounted)\n");
+                return NULL;
+            }
+
+            dentry_t *dentry;
+            if (current->i_op->lookup(current, token, &dentry) != 0) {
+                printf("[vfs] Component not found (mounted): %s\n", token);
+                return NULL;
+            }
+            current = dentry->d_inode;
+            token = strtok(NULL, "/");
+        }
+        printf("[vfs] path_lookup: found (mounted) size=%u\n",
+               current ? current->i_size : 0);
+        return current;
+    }
+
+    /* — Original ramfs path lookup — */
     inode_t *current = root_sb->s_root;
     char path_copy[256];
     char *token;
@@ -356,6 +460,81 @@ int filp_lseek(file_t *file, int64_t offset, int whence) {
     }
 
     return file->f_op->lseek(file, offset, whence);
+}
+
+// ================================
+// 目录列表
+// ================================
+
+/**
+ * @brief List directory contents into a text buffer.
+ *
+ * Uses the inode's listdir callback. Format is one entry per line:
+ *   "name  size\\n" for files, "name/  (dir)\\n" for directories.
+ *
+ * @param path  Directory path (e.g., "/", "/usb")
+ * @param buf   Output buffer
+ * @param max   Max bytes to write
+ * @return Number of bytes written, or negative on error
+ */
+int vfs_list_dir(const char *path, char *buf, int max) {
+    if (!path || !buf || max <= 0) return -1;
+
+    inode_t *dir = path_lookup(path);
+    if (!dir) {
+        printf("[vfs] list_dir: path not found '%s'\n", path);
+        return -1;
+    }
+
+    if (!S_ISDIR(dir->i_mode)) {
+        printf("[vfs] list_dir: not a directory '%s'\n", path);
+        return -1;
+    }
+
+    if (!dir->i_op || !dir->i_op->listdir) {
+        printf("[vfs] list_dir: no listdir operation for '%s'\n", path);
+        return -1;
+    }
+
+    int ret = dir->i_op->listdir(dir, buf, max);
+
+    /*
+     * Mount points live in the VFS mount table.  They are not necessarily
+     * backed by a ramfs dentry, so make them visible when listing "/".
+     */
+    if (ret >= 0 && path[0] == '/' && path[1] == '\0') {
+        int pos = ret;
+        for (int i = 0; i < vfs_num_mounts; i++) {
+            const char *mp = vfs_mounts[i].mount_path;
+            if (!mp || mp[0] != '/' || !mp[1])
+                continue;
+
+            /* Avoid duplicating entries that already exist as real dentries. */
+            char name[64];
+            int n = 0;
+            for (const char *s = mp + 1; *s && *s != '/' && n < 62; s++)
+                name[n++] = *s;
+            name[n] = '\0';
+            if (!n)
+                continue;
+
+            dentry_t *de = NULL;
+            if (dir->i_op && dir->i_op->lookup &&
+                dir->i_op->lookup(dir, name, &de) == 0)
+                continue;
+
+            if (pos + n + 3 >= max)
+                break;
+            for (int j = 0; j < n; j++)
+                buf[pos++] = name[j];
+            buf[pos++] = '/';
+            buf[pos++] = '\n';
+            buf[pos] = '\0';
+        }
+        ret = pos;
+    }
+
+    return ret;
 }
 
 // ================================

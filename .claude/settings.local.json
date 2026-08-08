@@ -67,9 +67,21 @@
       "WebFetch(domain:wiki.osdev.org)",
       "WebFetch(domain:download.qt.io)",
       "Bash(curl -sk --connect-timeout 10 \"https://download.qt.io/archive/qt/3/\")",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(make)",
+      "Bash(where gcc *)",
+      "Bash(gcc --version)",
+      "Read(//c/mingw64/bin/**)",
+      "Read(//c/msys64/usr/bin/**)",
+      "Read(//c/ProgramData/chocolatey/bin/**)",
+      "Read(//c/Program Files/Git/usr/bin/**)",
+      "Bash(mkdir -p f:/hillson_test_os/zhwh_os/include/kernel)",
+      "Bash(wsl bash *)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "f:\\hillson_test_os\\zhwh_os\\include"
+    ]
   }
 }

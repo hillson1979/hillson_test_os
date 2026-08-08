@@ -452,23 +452,8 @@ start_task(struct task_t* th, task_entry_callback_t entry) {
 
 
 void handle_idle_state(uint8_t cpu) {
-    // 检查 USB 设备热插拔事件（在空闲时检测）
-    extern int usb_hcd_poll_hotplug(int controller_id);
-    extern int num_uhci_controllers;
-
-    for (int ctrl_id = 0; ctrl_id < num_uhci_controllers; ctrl_id++) {
-        static int hotplug_count[8] = {0};  // 每个 USB 控制器独立的计数器
-        int changed = usb_hcd_poll_hotplug(ctrl_id);
-
-        if (changed > 0) {
-            printf("[IDLE] USB hotplug event detected on controller %d\n", ctrl_id);
-            hotplug_count[ctrl_id] = 0;  // 重置计数器
-        } else if (++hotplug_count[ctrl_id] >= 10000) {
-            // 每 10000 次空闲循环打印一次状态（减少输出）
-            hotplug_count[ctrl_id] = 0;
-            // printf("[IDLE] USB hotplug check: controller %d, no change\n", ctrl_id);
-        }
-    }
+    extern void usb_periodic_poll_callback(void);
+    usb_periodic_poll_callback();
 
     if (task_list[cpu] == NULL) __asm__ __volatile__("sti; hlt; cli");
 }
@@ -479,13 +464,16 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
         // 使用 kmalloc_early 替代伙伴系统来分配任务结构体
         // 理由：kmalloc_early 分配的内存地址固定，不会产生高内存地址的问题
         // 从而避免了 map_highmem_physical 映射失败导致的系统崩溃
-        task_t* newtask =(task_t*)kmalloc_early(PAGE_SIZE);//phys_to_virt(pmm_alloc_page());//
+        /* Keep two pages for the task object plus its kernel stack.  USB
+         * polling can nest several control/formatting calls during a user
+         * syscall; one page leaves no room and overwrites adjacent objects. */
+        task_t* newtask =(task_t*)kmalloc_early(PAGE_SIZE * 2);//phys_to_virt(pmm_alloc_page());//
 
         if (!newtask) {
             printf("Out of memory starting new taskess\n");
             return NULL;
         }
-        memset(newtask, 0, PAGE_SIZE);
+        memset(newtask, 0, PAGE_SIZE * 2);
 
         // 任务结构体放在页首
         // 只在第一次创建用户任务时设置全局 th_u
@@ -497,7 +485,7 @@ task_t* task_load(const char* fullpath, pid_t parent_pid, bool with_ustack)
 
         // 栈放在页尾（从高地址往下长）
         // 注意: kmalloc_early 返回的是内核虚拟地址
-        newtask->kstack = (uint32_t*)((uint8_t*)newtask + PAGE_SIZE);
+        newtask->kstack = (uint32_t*)((uint8_t*)newtask + PAGE_SIZE * 2);
 
         // ⚠️ kstack 已经指向页末尾（栈顶），所以 esp0 = kstack
         // 在用户态→内核态切换时，CPU会使用这个地址作为内核栈指针

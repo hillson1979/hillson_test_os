@@ -17,30 +17,48 @@ ASFLAGS = $(TARGET_ARCH)
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T linker/os.ld -Wl,-Map=kernel.map
 
 # 包含目录
-INCLUDES = -I./include
+INCLUDES = -I./include -I./include/fs
 
 # 源文件
-C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c
+C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c klog.c
 C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += driver/vbe.c  # 添加 VBE 驱动
 C_SOURCES += driver/uart.c  # 添加串口驱动
 C_SOURCES += driver/netdebug.c  # 添加以太网调试接口
-C_SOURCES += driver/usb_hcd.c  # 添加 USB 主机控制器驱动
-C_SOURCES += driver/usb_ehci.c  # EHCI driver
-C_SOURCES += driver/usb.c  # 添加 USB 核心协议栈
-C_SOURCES += driver/usb_mouse.c  # 添加 USB 鼠标驱动
-C_SOURCES += driver/cherryusb/cherryusb_hid_mouse.c  # CherryUSB HID 鼠标驱动
-C_SOURCES += driver/cherryusb/core/usbh_core.c        # CherryUSB Host Core
-C_SOURCES += driver/cherryusb/class/hid/usbh_hid.c    # CherryUSB HID Class
-C_SOURCES += driver/cherryusb/class/hid/umouse.c     # RT-Thread umouse
-C_SOURCES += driver/cherryusb/port/hillson_hcd.c      # CherryUSB Port (EHCI/UHCI/OHCI)
-C_SOURCES += driver/cherryusb/port/uhci/usb_hc_uhci.c # CherryUSB UHCI driver
-C_SOURCES += driver/usb_uhci2.c  # 添加 UHCI 伴侣控制器驱动
+C_SOURCES += driver/usb/usb_hcd.c  # USB HCD
+C_SOURCES += driver/usb/usb_ehci.c # EHCI driver
+C_SOURCES += driver/usb/usb_log.c  # USB debug log
+C_SOURCES += driver/usb/usb_fat32_write.c # FAT32 file write
+C_SOURCES += driver/usb/usb_msc.c  # USB Mass Storage Class wrapper
+C_SOURCES += driver/usb/usb_msd.c  # USB Mass Storage Device (SCSI)
+C_SOURCES += driver/usb/usb.c      # USB core
+C_SOURCES += driver/usb/usb_xhci.c # XHCI driver
+C_SOURCES += driver/usb/usb_mouse.c # USB mouse
+C_SOURCES += driver/usb/usb_mouse_interrupt.c # USB mouse interrupt mode
+# CherryUSB files removed — directory does not exist
+# C_SOURCES += driver/cherryusb/cherryusb_hid_mouse.c
+# C_SOURCES += driver/cherryusb/core/usbh_core.c
+# C_SOURCES += driver/cherryusb/class/hid/usbh_hid.c
+# C_SOURCES += driver/cherryusb/class/hid/umouse.c
+# C_SOURCES += driver/cherryusb/port/hillson_hcd.c
+# C_SOURCES += driver/cherryusb/port/uhci/usb_hc_uhci.c
+C_SOURCES += driver/usb/usb_uhci.c     # UHCI controller
+C_SOURCES += driver/usb/usb_hci_stubs.c  # OHCI stubs
+C_SOURCES += driver/usb/usb_hid.c     # HID class driver
+C_SOURCES += driver/usb/usb_keytable.c # USB HID keycode table
+C_SOURCES += driver/usb/usb_hub.c      # USB hub driver
+# Deferred: UHCI, OHCI, ioctl
+# C_SOURCES += driver/usb/usb_uhci2.c
+# C_SOURCES += driver/usb/usb_ohci.c
+# C_SOURCES += driver/usb/usb_ioctl.c
 C_SOURCES += driver/ps2mouse.c  # 添加 PS/2 鼠标驱动
-C_SOURCES += mm/buddy.c  # 启用 Buddy System（减小了 MAX_BUDDY_BLOCKS）
+C_SOURCES += mm/buddy.c  # 启用 Buddy System
+# C_SOURCES += mm/slab.c    # Slab分配器 (需要先验证USB枚举)
+# C_SOURCES += mm/kmalloc.c  # kmalloc (复用了kmalloc_early)
 C_SOURCES += mm/test_memory.c  # 启用内存测试
 C_SOURCES += fs/ramfs.c  # 添加 ramfs 文件系统
 C_SOURCES += fs/vfs.c  # 添加 VFS 层
+C_SOURCES += fs/fat32.c # 添加 FAT32 文件系统驱动
 C_SOURCES += net/core.c  # 添加网络核心
 C_SOURCES += net/loopback.c  # 添加回环设备
 C_SOURCES += net/rtl8139.c  # 添加 RTL8139 网卡驱动

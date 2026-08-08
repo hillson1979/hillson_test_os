@@ -5,6 +5,7 @@
 #include "proc.h"
 #include "interrupt.h"
 #include "printf.h"
+#include "vga.h"
 #include "page.h"
 
 #include "sched.h"
@@ -37,30 +38,30 @@ tvinit(void)
   }
   // 
 
-  // 🔥🔥 详细调试：在使用 vectors[T_SYSCALL] 之前检查其值
+  // 🔥🔥 详细调试：在使用 vectors[T_SYSCALL] 之前检查其�?
   printf("[tvinit] Debug before SETGATE:\n");
   printf("  vectors base address=0x%x\n", (uint32_t)vectors);
   printf("  vectors[T_SYSCALL] addr=0x%x (direct)\n", (uint32_t)(&vectors[T_SYSCALL]));
   printf("  vectors[T_SYSCALL] value=0x%x (direct)\n", vectors[T_SYSCALL]);
 
-  // 使用临时变量存储 vectors[T_SYSCALL] 的值
+  // 使用临时变量存储 vectors[T_SYSCALL] 的�?
   uint32_t tmp_vector = vectors[T_SYSCALL];//vectors[T_SYSCALL];
   printf("  tmp_vector stored as=0x%x\n", tmp_vector);
 
-  // 设置系统调用门
+  // 设置系统调用�?
   SETGATE(idt[T_SYSCALL], 1, SEG_KCODE<<3, tmp_vector, DPL_USER);
 
-  // 调试：打印系统调用门的设置
+  // 调试：打印系统调用门的设�?
   printf("[tvinit] System call gate (IDT[%d]):\n", T_SYSCALL);
   printf("  offset=0x%x, seg=0x%x, type=%d, dpl=%d, present=%d\n",
          tmp_vector, SEG_KCODE<<3,
          idt[T_SYSCALL].type, idt[T_SYSCALL].dpl, idt[T_SYSCALL].p);
   printf("  vector128 address=0x%x (tmp variable)\n", tmp_vector);
 
-  // 🔥 再次检查 vectors[T_SYSCALL] 的值
+  // 🔥 再次检�?vectors[T_SYSCALL] 的�?
   printf("[tvinit] After SETGATE - vectors[T_SYSCALL]=0x%x\n", vectors[T_SYSCALL]);
 
-  // 🔥 诊断：打印关键 IDT 项（Trap 13, Trap 19, IRQ 0）
+  // 🔥 诊断：打印关�?IDT 项（Trap 13, Trap 19, IRQ 0�?
   printf("[tvinit] Trap 13 (GP Fault): offset=0x%x, seg=0x%x, type=%d, dpl=%d, p=%d\n",
          (uint32_t)vectors[13], SEG_KCODE<<3, idt[13].type, idt[13].dpl, idt[13].p);
   printf("[tvinit] Trap 19 (SIMD): offset=0x%x, seg=0x%x, type=%d, dpl=%d, p=%d\n",
@@ -79,7 +80,7 @@ idtinit(void)
 
 #define KERNEL_DS (SEG_KDATA << 3)
 
-// 外部声明当前进程（如需调度）
+// 外部声明当前进程（如需调度�?
 extern struct task_t *current;
 extern int need_resched;
 
@@ -90,7 +91,7 @@ extern void do_exit(int code);
 void handle_divide_error(struct trapframe *tf) {
     extern task_t *current_task[];
 
-    // 🔥 调试：打印 tf 指针和原始栈内容
+    // 🔥 调试：打�?tf 指针和原始栈内容
     uint32_t tf_ptr = (uint32_t)tf;
     uint32_t *raw_stack = (uint32_t *)tf_ptr;
 
@@ -106,7 +107,7 @@ void handle_divide_error(struct trapframe *tf) {
 
     task_t *task = current_task[logical_cpu_id()];
     if (!task) {
-        // 🔥 内核初始化阶段的除零错误 - 打印详细信息并跳过
+        // 🔥 内核初始化阶段的除零错误 - 打印详细信息并跳�?
         printf("  No current task - this is a kernel divide error!\n");
         printf("  EIP=0x%x, CS=0x%x, EFLAGS=0x%x\n", tf->eip, tf->cs, tf->eflags);
         printf("  EAX=0x%x, EBX=0x%x, ECX=0x%x, EDX=0x%x\n", tf->eax, tf->ebx, tf->ecx, tf->edx);
@@ -114,8 +115,8 @@ void handle_divide_error(struct trapframe *tf) {
         printf("  DS=0x%x, ES=0x%x, FS=0x%x, GS=0x%x\n", tf->ds, tf->es, tf->fs, tf->gs);
         printf("==================================================\n");
 
-        // 🔥 尝试跳过触发除零错误的指令
-        // 大多数除零指令是 2-3 字节，我们跳过 3 字节
+        // 🔥 尝试跳过触发除零错误的指�?
+        // 大多数除零指令是 2-3 字节，我们跳�?3 字节
         tf->eip += 3;
         printf("[DIVIDE ERROR] Skipped 3 bytes, continuing at EIP=0x%x\n", tf->eip);
         return;
@@ -126,51 +127,52 @@ void handle_divide_error(struct trapframe *tf) {
            task->pid, tf->eip);
     printf("[DIVIDE ERROR] Terminating task...\n");
 
-    // 终止出错的任务
+    // 终止出错的任�?
     do_exit(-1);
 
-    // do_exit 会设置 need_resched=1，调度器会在 interrupt_exit 中处理
-    // 任务不会返回到这里继续执行
+    // do_exit 会设�?need_resched=1，调度器会在 interrupt_exit 中处�?
+    // 任务不会返回到这里继续执�?
 }
 //void handle_page_fault(struct trapframe *tf){};
-// 时钟中断计数器
+// 时钟中断计数�?
 static uint32_t timer_ticks = 0;
-#define TIME_SLICE 10  // 每10个时钟中断触发一次调度
+#define TIME_SLICE 10  // �?0个时钟中断触发一次调�?
 
 void handle_timer_interrupt(struct trapframe *tf){
     extern uint32_t ticks;
     ticks++;
     timer_ticks++;
 
-    // 每个时间片检查是否需要调度
+
+    // 每个时间片检查是否需要调�?
     if (timer_ticks >= TIME_SLICE) {
         timer_ticks = 0;
 
-        // 设置需要重新调度标志
+        // 设置需要重新调度标�?
         extern int need_resched;
         need_resched = 1;
 
-        // 注意：实际的调度会在中断返回后发生
+        // 注意：实际的调度会在中断返回后发�?
         // 这样可以避免在中断处理函数中直接调度
     }
 };
 void handle_keyboard_interrupt(struct trapframe *tf){
-    // 调用键盘驱动的中断处理函数
+    // 调用键盘驱动的中断处理函�?
     extern void keyboard_handler(void);
     keyboard_handler();
 };
 // ... 其他中断处理函数 ...
 
-// 向8259A发送中断结束信号（EOI）
+// �?259A发送中断结束信号（EOI�?
 static void send_eoi(int irq) {
     if (irq >= 8) {
-        outb(0xA0, 0x20);  // 从8259A
+        outb(0xA0, 0x20);  // �?259A
     }
-    outb(0x20, 0x20);      // 主8259A
+    outb(0x20, 0x20);      // �?259A
 }
-// 系统调用：处理用户进程主动阻塞
+// 系统调用：处理用户进程主动阻�?
 static int sys_block(struct trapframe *tf) {
-    // 1. 检查当前进程合法性
+    // 1. 检查当前进程合法�?
 
     current=current_task[logical_cpu_id()];
     if (!current) return -1;
@@ -178,13 +180,13 @@ static int sys_block(struct trapframe *tf) {
     // 2. 关中断，保护队列操作
     cli();
 
-    // 3. 修改进程状态为阻塞态
+    // 3. 修改进程状态为阻塞�?
     current->state = PS_BLOCKED;
 
-    // 4. 将进程从就绪队列移除（关键：否则调度器仍会选中）
+    // 4. 将进程从就绪队列移除（关键：否则调度器仍会选中�?
     llist_delete(&current->sched_node);
 
-    // 5. 开中断并触发调度
+    // 5. 开中断并触发调�?
     sti();
     need_resched = 1;
     schedule();  // 内核中调用调度器，切换到其他进程
@@ -192,26 +194,26 @@ static int sys_block(struct trapframe *tf) {
     return 0;
 }
 
-// ⚠️⚠️⚠️ 关键修复：在中断返回前检查 need_resched 标志
-//      用于实现 syscall_yield() 的调度功能
+// ⚠️⚠️⚠️ 关键修复：在中断返回前检�?need_resched 标志
+//      用于实现 syscall_yield() 的调度功�?
 void check_and_schedule(struct trapframe *tf) {
     extern int need_resched;
 
-    // 检查是否需要调度
+    // 检查是否需要调�?
     if (need_resched) {
         // 清除标志
         need_resched = 0;
 
         // 只在用户态中断时调度（检查段选择子的 RPL 位）
         if ((tf->cs & 3) == 3) {
-            // 用户态中断：调用调度器
+            // 用户态中断：调用调度�?
             extern void schedule(void);
             schedule();
         }
     }
 }
 
-// 读 CR2: Page Fault 时 CPU 会把出错的虚拟地址放在 CR2
+// �?CR2: Page Fault �?CPU 会把出错的虚拟地址放在 CR2
 static inline uint32_t readcr2(void) {
     uint32_t val;
     asm volatile("mov %%cr2, %0" : "=r"(val));
@@ -223,7 +225,7 @@ static inline void flush_tlb_single(uint32_t vaddr) {
     asm volatile ("invlpg (%0)" :: "r"(vaddr) : "memory");
 }
 
-// COW (Copy-On-Write) 页错误处理
+// COW (Copy-On-Write) 页错误处�?
 static int handle_cow_fault(uint32_t fault_va, uint32_t err) {
     extern task_t *current_task[];
     extern uint32_t pmm_alloc_page(void);
@@ -236,16 +238,16 @@ static int handle_cow_fault(uint32_t fault_va, uint32_t err) {
     if (!cur)
         return 0;
 
-    // 获取当前页目录
+    // 获取当前页目�?
     // ⚠️ CR3 的低 12 位是标志位，需要清除才能得到物理地址
     uint32_t *pd = (uint32_t *)phys_to_virt((uint32_t)cur->cr3 & ~0xFFF);
 
     uint32_t pdi = fault_va >> 22;
     uint32_t pti = (fault_va >> 12) & 0x3FF;
 
-    // 检查页目录项
+    // 检查页目录�?
     if (!(pd[pdi] & 0x1))
-        return 0;  // 页表不存在
+        return 0;  // 页表不存�?
 
     // 获取页表
     uint32_t *pt = (uint32_t *)phys_to_virt(pd[pdi] & ~0xFFF);
@@ -256,7 +258,7 @@ static int handle_cow_fault(uint32_t fault_va, uint32_t err) {
         return 0;
 
     // ===============================
-    // 真正的 COW 处理开始
+    // 真正�?COW 处理开�?
     // ===============================
 
     // ⚠️ 暂时禁用 printf
@@ -272,10 +274,10 @@ static int handle_cow_fault(uint32_t fault_va, uint32_t err) {
         return 0;
     }
 
-    // 拷贝原页面内容
+    // 拷贝原页面内�?
     memcpy(phys_to_virt(new_phys), phys_to_virt(old_phys), PGSIZE);
 
-    // 更新 PTE：指向新页 + 可写
+    // 更新 PTE：指向新�?+ 可写
     pt[pti] = new_phys | 0x7;  // PRESENT | WRITABLE | USER
 
     // 刷新单页 TLB
@@ -297,23 +299,23 @@ void handle_page_fault(struct trapframe *tf) {
 
     // 尝试 COW 处理
     if (handle_cow_fault(fault_va, err)) {
-        // COW 处理成功，直接返回用户态继续执行
+        // COW 处理成功，直接返回用户态继续执�?
         return;
     }
 
     // 不是 COW，按普通页错误处理
-    // 🔧 修复：未处理的页面错误应该终止任务
+    // 🔧 修复：未处理的页面错误应该终止任�?
     extern void do_exit(int);
 
     // ⚠️ 关键修复：正确判断是用户态还是内核态页错误
-    // 不能使用 user_stack 判断，应该检查 CS 的 RPL 位
+    // 不能使用 user_stack 判断，应该检�?CS �?RPL �?
     bool is_user_mode = (tf->cs & 3) == 3;
 
     if (is_user_mode) {
-        // 用户任务触发页面错误，可能是程序错误或内存不足
+        // 用户任务触发页面错误，可能是程序错误或内存不�?
         printf("[PF] User task page fault, terminating\n");
         // 终止任务并返回错误码
-        do_exit(-1);  // 使用 -1 表示异常退出
+        do_exit(-1);  // 使用 -1 表示异常退�?
     } else {
         // 内核任务触发页面错误，这是严重的内核 bug
         printf("[PF] Kernel page fault, halting\n");
@@ -321,55 +323,29 @@ void handle_page_fault(struct trapframe *tf) {
         printf("[PF] fault_addr=0x%x, eip=0x%x, cs=0x%x\n", fault_va, tf->eip, tf->cs);
         extern void klog_save_to_ramfs(void);
         klog_save_to_ramfs();
-
-        // 🔥 Blue screen: write crash info to VGA text buffer
         {
-            volatile uint16_t *vga = (volatile uint16_t *)0xC00B8000;
-            // Fill screen: blue bg, white text
-            for (int y = 0; y < 25; y++)
-                for (int x = 0; x < 80; x++)
-                    vga[y*80 + x] = 0x1F00 | ' ';
-            // Title
-            const char *title = "KERNEL PANIC: Page Fault";
-            for (int i = 0; title[i]; i++) vga[0*80 + 2 + i] = 0x1F00 | title[i];
-            // Info lines
-            char info[80];
-            // Line 2: fault address
-            int y = 2;
-            for (int i = 0; i < 80; i++) info[i] = ' '; info[79] = 0;
-            info[0] = 'F'; info[1] = 'A'; info[2] = ':'; info[3] = ' ';
-            uint32_t va = fault_va;
-            for (int i = 7; i >= 0; i--) { info[4+i] = "0123456789ABCDEF"[va & 0xF]; va >>= 4; }
-            for (int i = 0; i < 80; i++) vga[y*80 + i] = 0x1F00 | info[i];
-            // Line 3: EIP
-            y = 3; va = tf->eip;
-            info[0] = 'E'; info[1] = 'I'; info[2] = 'P'; info[3] = ':';
-            for (int i = 7; i >= 0; i--) { info[4+i] = "0123456789ABCDEF"[va & 0xF]; va >>= 4; }
-            for (int i = 0; i < 80; i++) vga[y*80 + i] = 0x1F00 | info[i];
-            // Line 4: error code
-            y = 4; va = err;
-            info[0] = 'E'; info[1] = 'R'; info[2] = 'R'; info[3] = ':';
-            for (int i = 7; i >= 0; i--) { info[4+i] = "0123456789ABCDEF"[va & 0xF]; va >>= 4; }
-            for (int i = 0; i < 80; i++) vga[y*80 + i] = 0x1F00 | info[i];
-            // Line 6: halt message
-            y = 6;
-            const char *halt = "System halted. Press reset or power cycle.";
-            for (int i = 0; halt[i]; i++) vga[y*80 + 2 + i] = 0x1F00 | halt[i];
+            char line1[48];
+            char line2[48];
+            char line3[48];
+            extern int snprintf(char *, unsigned int, const char *, ...);
+            snprintf(line1, sizeof(line1), "Fault addr: 0x%x", fault_va);
+            snprintf(line2, sizeof(line2), "EIP: 0x%x  ERR: 0x%x", tf->eip, err);
+            snprintf(line3, sizeof(line3), "CS: 0x%x  EFLAGS: 0x%x", tf->cs, tf->eflags);
+            vga_panic_screen("KERNEL PANIC: Page Fault", line1, line2, line3);
         }
 
-        // 停止系统
         __asm__ volatile("cli; hlt; jmp .");
     }
-}
+    }
 
 void handle_page_fault_(struct trapframe *tf) {
     uint32_t fault_va = readcr2();
 
-    // 🔥 启用页错误调试信息
+    // 🔥 启用页错误调试信�?
     printf("\n[Page Fault] cr2 = 0x%x\n", fault_va);
     printf("  EIP=0x%x, ESP=0x%x\n", tf->eip, tf->esp);
 
-    // 这里你可以根据 err 分析是读/写，用户/内核 等错误
+    // 这里你可以根�?err 分析是读/写，用户/内核 等错�?
     if ((tf->err & 1) == 0)
         printf("  -> caused by non-present page\n");
     if (tf->err & 2)
@@ -384,24 +360,24 @@ void handle_page_fault_(struct trapframe *tf) {
     printf("Page Fault!\n");
 }
 
-// 打印原始栈内容用于调试
+// 打印原始栈内容用于调�?
 void print_raw_stack(uint32_t *esp) {
-    // ⚠️⚠️⚠️ 暂时禁用所有 printf！
+    // ⚠️⚠️⚠️ 暂时禁用所�?printf�?
     // printf("[RAW] ESP=%p, dumping first 20 dwords:\n", esp);
     // for (int i = 0; i < 20; i++) {
     //     printf("[RAW] esp+%d (0x%x): 0x%x", i*4, i*4, esp[i]);
-    //     ... (所有其他 printf)
+    //     ... (所有其�?printf)
     // }
     // printf("[RAW] End of dump\n");
 }
 // VGA 颜色函数
 extern void vga_setcolor(uint8_t fg, uint8_t bg);
 #define SET_COLOR_RED()     vga_setcolor(4, 0)   // 红字黑底
-// 中断处理主函数
+// 中断处理主函�?
 void do_irq_handler(struct trapframe *tf) {
-    // ⚠️⚠️⚠️ 调试：打印原始 trapframe 内存
+    // ⚠️⚠️⚠️ 调试：打印原�?trapframe 内存
     // ⚠️⚠️⚠️ 重要：printf 会破坏段寄存器！只能用于调试，不能在生产代码中使用！
-    // ⚠️⚠️⚠️ 如果启用 printf，必须在 printf 后恢复正确的段寄存器值
+    // ⚠️⚠️⚠️ 如果启用 printf，必须在 printf 后恢复正确的段寄存器�?
     // printf("\n========== TRAP %d DEBUG ==========\n", tf->trapno);
     // printf("  EIP=0x%x, CS=0x%x, EFLAGS=0x%x\n", tf->eip, tf->cs, tf->eflags);
     // printf("  ERR=0x%x, ESP=0x%x\n", tf->err, tf->esp);
@@ -413,7 +389,7 @@ void do_irq_handler(struct trapframe *tf) {
     #ifdef DEBUG_IRQ_PRINT
     printf("\n[ do_irq_handler] TRAP %d DEBUG ==========\n", tf->trapno);
 
-    // 🔥 打印原始内存（前 19 个 uint32_t）
+    // 🔥 打印原始内存（前 19 �?uint32_t�?
     uint32_t *raw = (uint32_t *)tf;
     printf("  Raw memory [0-19]: ");
     for (int i = 0; i < 19; i++) {
@@ -431,8 +407,8 @@ void do_irq_handler(struct trapframe *tf) {
 
 
 
-    // 🔥🔥 详细寄存器打印（用于诊断 Trap 19/13 问题）
-    // ⚠️⚠️⚠️ 禁用 printf，避免在处理 Trap 19 时再次触发 Trap 19
+    // 🔥🔥 详细寄存器打印（用于诊断 Trap 19/13 问题�?
+    // ⚠️⚠️⚠️ 禁用 printf，避免在处理 Trap 19 时再次触�?Trap 19
     if(tf->trapno == 19 || tf->trapno == 13) {
         // 直接使用串口输出，不调用 printf
         // printf("\n========== TRAP %d DEBUG ==========\n", tf->trapno);
@@ -445,7 +421,7 @@ void do_irq_handler(struct trapframe *tf) {
 
         // 🔥 暂时跳过 Trap 19，防止无限递归
         if(tf->trapno == 19) {
-            // Trap 19 (SIMD) - 可能是 FPU/SSE 问题
+            // Trap 19 (SIMD) - 可能�?FPU/SSE 问题
             // 跳过触发异常的指令，继续执行
             tf->eip += 3;  // 跳过 3 字节指令
             return;
@@ -459,8 +435,8 @@ void do_irq_handler(struct trapframe *tf) {
         //printf("[IRQ] tf->trapno=%d\n", tf->trapno);
     }
     
-    // ⚠️⚠️⚠️ 暂时禁用所有 printf 调试！
-    // 原因：printf 会使用 ES 寄存器访问字符串，破坏栈上保存的 ES 值
+    // ⚠️⚠️⚠️ 暂时禁用所�?printf 调试�?
+    // 原因：printf 会使�?ES 寄存器访问字符串，破坏栈上保存的 ES �?
     // 导致后续恢复时使用错误的 ES 值，造成系统崩溃
 
     // printf("\n========== IRQ ENTRY ==========\n");
@@ -478,8 +454,8 @@ void do_irq_handler(struct trapframe *tf) {
 
 
     if(tf->trapno == T_SYSCALL){
-        // ⚠️⚠️⚠️ 暂时禁用 syscall 调试打印！
-        // 原因：printf 会使用 ES 寄存器访问字符串，破坏栈上保存的 ES 值
+        // ⚠️⚠️⚠️ 暂时禁用 syscall 调试打印�?
+        // 原因：printf 会使�?ES 寄存器访问字符串，破坏栈上保存的 ES �?
         // printf("[syscall] num=%d (eax=%d, ebx=%x, ecx=%x, edx=%x)\n",
         //        tf->eax, tf->eax, tf->ebx, tf->ecx, tf->edx);
         // printf("[syscall] eip=0x%x, esp=0x%x, cs=0x%x, ds/es/fs/gs=0x%x/0x%x/0x%x/0x%x\n",
@@ -494,29 +470,17 @@ void do_irq_handler(struct trapframe *tf) {
             // ⚠️ 移除所有printf调试,避免printf中的除法导致二次异常
             handle_divide_error(tf);
             break;
-        case 8:  // 🔥 双重故障（Double Fault）- 这是系统重启的主要原因！
+        case 8:  // DOUBLE FAULT
             {
-                // 🔥 添加调试信息，在重启前显示
-                printf("\n\n🔥🔥🔥 DOUBLE FAULT - System will restart! 🔥🔥🔥\n");
-                printf("  EIP=0x%x, ESP=0x%x\n", tf->eip, tf->esp);
-                printf("  Error code=0x%x\n", tf->err != 0xDEADBEEF ? tf->err : 0);
-
-                // 尝试显示栈信息
-                printf("  Stack dump:\n");
-                uint32_t *stack = (uint32_t*)tf->esp;
-                for (int i = 0; i < 8; i++) {
-                    printf("    [esp+%d] = 0x%x\n", i*4, stack[i]);
-                }
-
-                // 检查内核栈哨兵
-                extern uint32_t stack_base;
-                if (*(uint32_t*)&stack_base != 0xDEADBEEF) {
-                    printf("  ⚠️ Stack sentinel CORRUPTED! Stack overflow detected!\n");
-                } else {
-                    printf("  ✓ Stack sentinel OK\n");
-                }
-
-                printf("  Halting...\n");
+                char line1[48];
+                char line2[48];
+                char line3[48];
+                extern int snprintf(char *, unsigned int, const char *, ...);
+                printf("\n\nDOUBLE FAULT - System will restart!\n");
+                snprintf(line1, sizeof(line1), "EIP: 0x%x", tf->eip);
+                snprintf(line2, sizeof(line2), "ESP: 0x%x", tf->esp);
+                snprintf(line3, sizeof(line3), "ERR: 0x%x", tf->err != 0xDEADBEEF ? tf->err : 0);
+                vga_panic_screen("DOUBLE FAULT", line1, line2, line3);
                 asm volatile("cli; hlt");
                 break;
             }
@@ -538,14 +502,14 @@ void do_irq_handler(struct trapframe *tf) {
                 }
             }
             break;
-        case 14: // 页错误
+        case 14: // 页错�?
             // 页错误的err包含详细信息（如读写、存在位等）
             handle_page_fault(tf);
             break;
-        case 32: // 时钟中断（IRQ0）
+        case 32: // 时钟中断（IRQ0�?
             handle_timer_interrupt(tf);
-            // 时钟中断只设置 need_resched 标志
-            // 实际调度由 interrupt_exit 在返回用户态前执行
+            // 时钟中断只设�?need_resched 标志
+            // 实际调度�?interrupt_exit 在返回用户态前执行
             send_eoi(0);  // 发送EOI
             break;
        case T_IRQ0 + IRQ_SYS_BLOCK:
@@ -555,24 +519,24 @@ void do_irq_handler(struct trapframe *tf) {
             lapiceoi();
             break;
         case 33:
-        case 66: { // 键盘中断（IRQ1）
+        case 66: { // 键盘中断（IRQ1�?
             // 调用键盘驱动处理程序
             extern void keyboard_handler(void);
             keyboard_handler();
-            // 使用 lapiceoi() 而不是 send_eoi()
-            // 因为这个系统使用的是 IOAPIC，不是 8259A PIC
+            // 使用 lapiceoi() 而不�?send_eoi()
+            // 因为这个系统使用的是 IOAPIC，不�?8259A PIC
             lapiceoi();
             break;
         }
-        // PS/2 mouse interrupt (IRQ12 → trap 44)
+        // PS/2 mouse interrupt (IRQ12 �?trap 44)
         case T_IRQ0 + 12:
             extern void ps2mouse_handler(void);
             ps2mouse_handler();
             lapiceoi();
             break;
-        // EHCI interrupt handler removed — IOAPIC not configured for USB IRQ
+        // EHCI interrupt handler removed �?IOAPIC not configured for USB IRQ
         /* case T_IRQ0 + 16 ... T_IRQ0 + 23: ehci_intr_handler(); */
-        // WiFi 中断已禁用
+        // WiFi 中断已禁�?
         /* case T_IRQ0 + 16: case T_IRQ0 + 17: case T_IRQ0 + 18: case T_IRQ0 + 19:
            case T_IRQ0 + 20: case T_IRQ0 + 21: case T_IRQ0 + 22: case T_IRQ0 + 23:
         {
@@ -582,7 +546,7 @@ void do_irq_handler(struct trapframe *tf) {
             break;
         } */
 
-        // 🔥 E1000 网卡中断（常见 IRQ: 5, 9, 10, 11, 36）
+        // 🔥 E1000 网卡中断（常�?IRQ: 5, 9, 10, 11, 36�?
         case 43: //qemu 专用
         case 36:  // trapno 36 = IRQ 4
         {
@@ -596,17 +560,17 @@ void do_irq_handler(struct trapframe *tf) {
         // ... 其他中断类型 ...
         case T_SIMDERR: // 19 - SIMD Floating-Point Exception
         case 16: { // x87 FPU Error
-            // 🔥 完全静默处理 - 不打印任何信息
+            // 🔥 完全静默处理 - 不打印任何信�?
             __asm__ volatile("fnclex");
             //tf->eip += 12;  // 跳过 lea (7) + call (5)
-            // 不调用 printf，避免递归异常
+            // 不调�?printf，避免递归异常
             break;
         }
         case 13: { // GP Fault - 打印调试信息
             extern uint32_t readcr2(void);
             uint32_t cr2 = readcr2();
 
-            // ⚠️⚠️⚠️ 暂时禁用 GP Fault 调试打印！
+            // ⚠️⚠️⚠️ 暂时禁用 GP Fault 调试打印�?
             // printf("\n=== GP Fault ===\n");
             // printf("EIP=0x%x CS=0x%x\n", tf->eip, tf->cs);
             // printf("EAX=0x%x EBX=0x%x ECX=0x%x EDX=0x%x\n", tf->eax, tf->ebx, tf->ecx, tf->edx);
@@ -614,8 +578,8 @@ void do_irq_handler(struct trapframe *tf) {
             // printf("DS=0x%x ES=0x%x FS=0x%x GS=0x%x\n", tf->ds, tf->es, tf->fs, tf->gs);
             // printf("EFLAGS=0x%x\n", tf->eflags);
             // printf("trapno=%d err=0x%x\n", tf->trapno, tf->err);
-            // printf("CR2=0x%x (虽然GP Fault通常不用CR2,但打印出来看看)\n", cr2);
-            // ... (所有其他 printf)
+            // printf("CR2=0x%x (虽然GP Fault通常不用CR2,但打印出来看�?\n", cr2);
+            // ... (所有其�?printf)
 
             // 停止系统,避免无限循环
             while(1) {
@@ -623,32 +587,19 @@ void do_irq_handler(struct trapframe *tf) {
             }
             break;
         }
-        // 🔥 UHCI USB控制器中断处理（IRQ 9-11 常见范围）
         case T_IRQ0 + 9:
         case T_IRQ0 + 10:
-        //case T_IRQ0 + 11:
-        {
-            // 🔥 调试：显示UHCI中断
-            printf("[IRQ] UHCI interrupt received! trapno=%d (IRQ%d)\n",
-                   tf->trapno, tf->trapno - T_IRQ0);
-
-            // 🔥 调用UHCI中断处理函数
-            extern void uhci_irq_handler(void);
-            uhci_irq_handler();
-
-            // 发送EOI
             lapiceoi();
             break;
-        }
         default:
-            // 捕获所有未处理的异常
-            // ⚠️⚠️⚠️ 不能在中断处理程序中使用 printf！
+            // 捕获所有未处理的异�?
+            // ⚠️⚠️⚠️ 不能在中断处理程序中使用 printf�?
             // printf 会破坏段寄存器，导致系统崩溃
             #ifdef DEBUG_IRQ_PRINT
             printf("[do_irq_handler] [TRAP] Unhandled trap: trapno=%d, eip=0x%x, err=0x%x\n",
                    tf->trapno, tf->eip, tf->err);
             #endif
-            // 外部中断需要发送EOI，避免阻塞
+            // 外部中断需要发送EOI，避免阻�?
             if (tf->trapno >= 32 && tf->trapno <= 47) {
                 send_eoi(tf->trapno - 32);
             }
@@ -675,7 +626,7 @@ trap(struct trapframe *tf)
 
   switch(tf->trapno){
   case T_IRQ0 + IRQ_TIMER:
-    // ✅ Enable Local APIC Timer for scheduling (IH-005)
+    // �?Enable Local APIC Timer for scheduling (IH-005)
     // Increment tick counter and trigger scheduling when needed
     if(cpu_id() == 0){
       //acquire(&tickslock);
@@ -752,14 +703,14 @@ trap(struct trapframe *tf)
 */
 
 // ================================
-// 调试函数：用于 interrupt_exit
+// 调试函数：用�?interrupt_exit
 // ================================
 
 extern void debug_print_interrupt_exit_entry(uint32_t esp) {
     printf("[interrupt_exit] ENTRY: ESP=0x%x\n", esp);
     printf("[interrupt_exit] Dumping trapframe at ESP:\n");
 
-    // 读取 trapframe 的关键字段
+    // 读取 trapframe 的关键字�?
     uint32_t *tf = (uint32_t *)esp;
     printf("  edi=0x%x, esi=0x%x, ebp=0x%x\n", tf[0], tf[1], tf[2]);
     printf("  ebx=0x%x, edx=0x%x, ecx=0x%x, eax=0x%x\n", tf[4], tf[5], tf[6], tf[7]);
@@ -799,7 +750,7 @@ extern void debug_print_after_restore_regs(uint32_t esp) {
 }
 
 // ================================
-// 调试函数：用于 trap_entry
+// 调试函数：用�?trap_entry
 // ================================
 
 extern void debug_print_trap_entry(uint32_t marker) {

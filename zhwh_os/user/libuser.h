@@ -21,6 +21,7 @@
 #define SYS_CLOSE 21
 #define SYS_READ 22
 #define SYS_LSEEK 23
+#define SYS_SBRK 24      // sbrk — dynamic memory for user programs
 #define SYS_NET_PING 30  // 新增：网络 ping 系统调用
 #define SYS_NET_IFCONFIG 31  // 新增：网卡接口配置
 #define SYS_WIFI_SCAN 32    // WiFi 扫描
@@ -127,6 +128,7 @@ int net_ping(const char *ip_addr);  // Ping 指定的 IP 地址（使用默认�
 int net_ping_dev(const char *ip_addr, const char *dev_name);  // Ping 指定 IP 和设备
 int net_ifconfig(void);  // 显示网卡接口配置
 int lspci(void);  // 列出 PCI 设备
+int lsdisk(const char *path, char *buf, int max);  // 列出目录 (syscall 79)
 
 // 🔥 网卡初始化系统调用
 int rtl8139_init_user(void);  // 初始化 RTL8139 网卡

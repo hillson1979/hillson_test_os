@@ -106,6 +106,8 @@ int usb_mouse_read(int mouse_index, void *report)
  * ================================================================ */
 int usb_mouse_data_available(int mouse_index)
 {
+    static uint32_t debug_calls;
+    uint32_t debug_call;
     if (mouse_index < 0 || mouse_index >= g_mouse_count) {
         return 0;
     }
@@ -118,7 +120,25 @@ int usb_mouse_data_available(int mouse_index)
     /* Peek only — don't consume new_data.
      * The actual read happens in usb_mouse_read(). */
     extern struct usb_hid_dev_t *g_first_mouse_hid;
-    return (g_first_mouse_hid && g_first_mouse_hid->new_data);
+    struct usb_hid_dev_t *hid = g_first_mouse_hid;
+    debug_call = debug_calls++;
+    /* Keep this diagnostic from crowding useful USB enumeration logs. */
+    if (hid && (debug_call < 4 || ((debug_call & 0xFF) == 0))) {
+        struct usb_endpoint_t *ep = hid->iface ? hid->iface->endpoint_interrupt : NULL;
+        // usb_printk("usb mouse vars: count=%d slot=%d port=%d ep=%02x mps=%d "
+        //            "interval=%d new=%d abs=%d report_len=%d actual=%d "
+        //            "data=%02x %02x %02x %02x %02x %02x %02x %02x\n",
+        //            g_mouse_count,
+        //            hid->iface && hid->iface->usb ? hid->iface->usb->num : -1,
+        //            hid->iface && hid->iface->usb ? hid->iface->usb->port : -1,
+        //            ep ? ep->addr | (ep->direction == USB_ENDPOINT_IN ? 0x80 : 0) : 0,
+        //            ep ? ep->mps : 0, ep ? ep->interval : 0,
+        //            hid->new_data, hid->mouse_absolute, hid->report_len,
+        //            hid->transfer.actual_length,
+        //            hid->buf[0], hid->buf[1], hid->buf[2], hid->buf[3],
+        //            hid->buf[4], hid->buf[5], hid->buf[6], hid->buf[7]);
+    }
+    return (hid && hid->new_data);
 }
 
 /* ================================================================

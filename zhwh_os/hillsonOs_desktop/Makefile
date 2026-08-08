@@ -33,7 +33,7 @@ INC_DIR  = ../include
 INCLUDES = -I./include -I. -I$(QT_DIR) -I$(QT_DIR)/include -I$(USER_DIR) -I$(INC_DIR) -I$(INC_DIR)/lvgl
 
 # Shared OS compatibility objects
-LIB_OBJS = $(USER_DIR)/libuser.o \
+LIB_OBJS = $(USER_DIR)/libuser_nostart.o \
            $(LVGL_DIR)/string_compat.o \
            $(LVGL_DIR)/libgcc_compat.o
 
@@ -65,9 +65,9 @@ desktop.elf: $(QT_OBJS) $(DESKTOP_OBJS) $(LIB_OBJS)
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # --- Compile C (OS libs) ---
-$(USER_DIR)/libuser.o: $(USER_DIR)/libuser.c
+$(USER_DIR)/libuser_nostart.o: $(USER_DIR)/libuser.c
 	@echo "[CC]  $<"
-	@$(CC) $(CFLAGS) -I$(USER_DIR) -I$(INC_DIR) -c $< -o $@
+	@$(CC) $(CFLAGS) -DLIBUSER_NO_START -I$(USER_DIR) -I$(INC_DIR) -c $< -o $@
 
 $(LVGL_DIR)/string_compat.o: $(LVGL_DIR)/string_compat.c
 	@echo "[CC]  $<"

@@ -89,74 +89,56 @@ static net_device_t *netdebug_dev = NULL;
 /**
  * @brief 格式化输出到缓冲区（简化的 vsnprintf）
  */
-static int netdebug_vsnprintf(char *buf, int size, const char *fmt, va_list args) {
+int netdebug_vsnprintf(char *buf, int size, const char *fmt, va_list args) {
     int len = 0;
 
     while (*fmt && len < size - 1) {
-        if (*fmt == '%') {
-            fmt++;
-            if (*fmt == '\0') break;
+        if (*fmt != '%') { buf[len++] = *fmt++; continue; }
+        fmt++; if (*fmt == '\0') break;
 
-            // 简单的格式化支持
-            if (*fmt == 's') {
-                // 字符串
-                const char *s = va_arg(args, const char*);
-                if (s) {
-                    while (*s && len < size - 1) {
-                        buf[len++] = *s++;
-                    }
-                }
-            } else if (*fmt == 'd' || *fmt == 'u') {
-                // 十进制整数
-                int val = va_arg(args, int);
-                char tmp[32];
-                int i = 0;
+        /* Parse width and flags */
+        int zero_pad = 0, width = 0;
+        if (*fmt == '0') { zero_pad = 1; fmt++; }
+        while (*fmt >= '0' && *fmt <= '9') { width = width * 10 + (*fmt - '0'); fmt++; }
+        if (*fmt == 'l') fmt++; /* skip 'l' prefix */
 
-                if (val == 0) {
-                    buf[len++] = '0';
-                } else {
-                    if (val < 0) {
-                        buf[len++] = '-';
-                        val = -val;
-                    }
-                    while (val > 0 && i < 31) {
-                        tmp[i++] = '0' + (val % 10);
-                        val /= 10;
-                    }
-                    while (i > 0 && len < size - 1) {
-                        buf[len++] = tmp[--i];
-                    }
-                }
-            } else if (*fmt == 'x' || *fmt == 'X') {
-                // 十六进制整数
-                uint32_t val = va_arg(args, uint32_t);
-                char tmp[16];
-                int i = 0;
+        char type = *fmt++;
 
-                if (val == 0) {
-                    buf[len++] = '0';
-                } else {
-                    while (val > 0 && i < 8) {
-                        int digit = val & 0xF;
-                        tmp[i++] = (digit < 10) ? ('0' + digit) : ('A' + digit - 10);
-                        val >>= 4;
-                    }
-                    while (i > 0 && len < size - 1) {
-                        buf[len++] = tmp[--i];
-                    }
-                }
-            } else if (*fmt == 'c') {
-                // 字符
-                char c = (char)va_arg(args, int);
-                buf[len++] = c;
-            } else if (*fmt == '%') {
-                // %% 输出 %
-                buf[len++] = '%';
+        if (type == 's') {
+            const char *s = va_arg(args, const char*);
+            if (!s) s = "(null)";
+            while (*s && len < size - 1) buf[len++] = *s++;
+        } else if (type == 'd' || type == 'u') {
+            int val = va_arg(args, int);
+            char tmp[16]; int i = 0, neg = 0;
+            if (val < 0) { neg = 1; val = -val; }
+            if (val == 0) tmp[i++] = '0';
+            else while (val > 0 && i < 15) { tmp[i++] = '0' + (val % 10); val /= 10; }
+            if (neg) tmp[i++] = '-';
+            while (i < width) tmp[i++] = zero_pad ? '0' : ' ';
+            while (i > 0 && len < size - 1) buf[len++] = tmp[--i];
+        } else if (type == 'x' || type == 'X') {
+            uint32_t val = va_arg(args, uint32_t);
+            char tmp[16]; int i = 0;
+            if (val == 0) tmp[i++] = '0';
+            else while (val > 0 && i < 15) { int d = val & 0xF; tmp[i++] = (d < 10) ? ('0'+d) : ('A'+d-10); val >>= 4; }
+            while (i < width) tmp[i++] = zero_pad ? '0' : ' ';
+            while (i > 0 && len < size - 1) buf[len++] = tmp[--i];
+        } else if (type == 'p') {
+            uint32_t val = va_arg(args, uint32_t);
+            char tmp[16]; int i = 0;
+            if (val == 0) { buf[len++] = '0'; buf[len++] = 'x'; buf[len++] = '0'; }
+            else {
+                while (val > 0 && i < 15) { int d = val & 0xF; tmp[i++] = (d < 10) ? ('0'+d) : ('A'+d-10); val >>= 4; }
+                buf[len++] = '0'; buf[len++] = 'x';
+                while (i > 0 && len < size - 1) buf[len++] = tmp[--i];
             }
-
-            fmt++;
+        } else if (type == 'c') {
+            buf[len++] = (char)va_arg(args, int);
+        } else if (type == '%') {
+            buf[len++] = '%';
         } else {
-            buf[len++] = *fmt++;
+            buf[len++] = '%'; if (len < size - 1) buf[len++] = type;
         }
     }
 

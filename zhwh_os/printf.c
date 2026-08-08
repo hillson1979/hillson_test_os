@@ -254,13 +254,11 @@ int snprintf(char *str, size_t size, const char *fmt, ...) {
                 // 负号
                 if (neg && len < size - 1) {
                     str[len++] = '-';
-                    len++;
                 }
 
                 // 数字
                 while (i > 0 && len < size - 1) {
                     str[len++] = buf[--i];
-                    len++;
                 }
                 break;
             }
@@ -282,7 +280,6 @@ int snprintf(char *str, size_t size, const char *fmt, ...) {
 
                 while (i > 0 && len < size - 1) {
                     str[len++] = buf[--i];
-                    len++;
                 }
                 break;
             }
@@ -305,7 +302,6 @@ int snprintf(char *str, size_t size, const char *fmt, ...) {
 
                 while (i > 0 && len < size - 1) {
                     str[len++] = buf[--i];
-                    len++;
                 }
                 break;
             }

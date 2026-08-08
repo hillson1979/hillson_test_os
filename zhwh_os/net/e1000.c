@@ -843,13 +843,17 @@ int e1000_probe(pci_dev_t **devices, unsigned num_devices, const char *dev_name)
     for (unsigned i = 0; i < num_devices; i++) {
         pci_dev_t *dev = devices[i];
 
+        /* Match any Intel NIC (vendor 0x8086, class 0x02) */
         if (dev->header.vendor_id == E1000_VENDOR_ID &&
+            dev->header.class == 0x02 &&
             (dev->header.device_id == E1000_DEVICE_ID ||
              dev->header.device_id == E1000_DEVICE_ID_I82545 ||
              dev->header.device_id == E1000_DEVICE_ID_I82546 ||
-             dev->header.device_id == E1000_DEVICE_ID_I82579LM)) {  // 🔥 支持 82579LM
+             dev->header.device_id == E1000_DEVICE_ID_I82579LM)) {
 
-            printf("[e1000] Found E1000 device!\n");
+            printf("[e1000] Found Intel NIC: %04x:%04x (class=0x%02x)\n",
+                   dev->header.vendor_id, dev->header.device_id,
+                   dev->header.class);
             printf("[e1000]   Bus: %d, Device: %d, Function: %d\n",
                    dev->bus_id, dev->dev_id, dev->fn_id);
             printf("[e1000]   Vendor: 0x%x, Device: 0x%x\n",
@@ -874,20 +878,54 @@ int e1000_probe(pci_dev_t **devices, unsigned num_devices, const char *dev_name)
  * @brief E1000 初始化（从 PCI 设备列表探测）
  */
 int e1000_init(const char *dev_name) {
-    printf("[e1000] E1000 driver init\n");
+    printf("[e1000] E1000 driver init (direct PCI scan)\n");
 
-    // 获取 PCI 设备列表
-    pci_dev_t **devices = pci_get_devices();
+    /* Direct PCI scan */
+    for (unsigned bus = 0; bus < 256; bus++) {
+        for (unsigned dev = 0; dev < 32; dev++) {
+            uint32_t vd = pci_read_config_dword(bus, dev, 0, 0);
+            if (vd == 0xFFFFFFFF || vd == 0) continue;
 
-    // 统计设备数量
-    unsigned num_devices = 0;
-    while (devices[num_devices] != NULL) {
-        num_devices++;
+            uint16_t vid = vd & 0xFFFF;
+            uint16_t did = (vd >> 16) & 0xFFFF;
+            uint8_t  cls = pci_read_config_byte(bus, dev, 0, 0x0B);
+
+            int supported = did == E1000_DEVICE_ID ||
+                            did == E1000_DEVICE_ID_I82545 ||
+                            did == E1000_DEVICE_ID_I82546 ||
+                            did == E1000_DEVICE_ID_I82579LM;
+            if (vid == E1000_VENDOR_ID && cls == 0x02 && supported) {
+                printf("[e1000] Found %04x:%04x at %02x:%02x.0, init...\n",
+                       vid, did, bus, dev);
+
+                /* Build a pci_dev_t for e1000_init_dev */
+                pci_dev_t pci;
+                pci.bus_id = bus;
+                pci.dev_id = dev;
+                pci.fn_id = 0;
+                pci.header.vendor_id = vid;
+                pci.header.device_id = did;
+                pci.header.class = cls;
+                pci.header.subclass = pci_read_config_byte(bus, dev, 0, 0x0A);
+                pci.header.prog_if = pci_read_config_byte(bus, dev, 0, 0x09);
+                pci.header.header_type = pci_read_config_byte(bus, dev, 0, 0x0E);
+                pci.header.u.h00.interrupt_line = pci_read_config_byte(bus, dev, 0, 0x3C);
+                pci.header.command = pci_read_config_word(bus, dev, 0, 0x04);
+                for (int bar = 0; bar < 6; bar++)
+                    pci.header.u.h00.bar[bar] = pci_read_config_dword(bus, dev, 0, 0x10 + bar * 4);
+
+                if (e1000_init_dev(&pci, dev_name) < 0) {
+                    printf("[e1000] init failed for %02x:%02x.0\n", bus, dev);
+                    continue;
+                }
+                printf("[e1000] init OK\n");
+                return 0;
+            }
+        }
     }
 
-    printf("[e1000] Found %d PCI devices\n", num_devices);
-
-    return e1000_probe(devices, num_devices, dev_name);
+    printf("[e1000] No Intel NIC found\n");
+    return -1;
 }
 
 /**
