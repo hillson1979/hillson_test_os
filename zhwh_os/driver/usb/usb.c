@@ -1305,13 +1305,7 @@ void usb_process_deferred_clears(void)
 void usb_poll_interrupts(void)
 {
     volatile struct usb_transfer_t *t;
-    int pass;
     static int call_cnt = 0;
-    static int in_poll = 0;
-
-    if (in_poll)
-        return;
-    in_poll = 1;
 
     if (++call_cnt <= 5)
         usb_printk("usb_poll_intr: call #%d head=%p\n",
@@ -1322,24 +1316,13 @@ void usb_poll_interrupts(void)
      * Also called from usb_periodic_poll_callback (idle path). */
     usb_process_deferred_clears();
 
-    /* Temporary single-event-ring policy: service HID/small periodic pipes
-     * first so storage traffic cannot delay mouse re-arming. */
-    for (pass = 0; pass < 2; pass++) {
-        for (t = inttransfer_head.next_inttransfer; t != NULL;
-             t = t->next_inttransfer) {
-            int hid_priority = t->dev &&
-                (t->dev->class == 3 ||
-                 (t->endpoint && t->endpoint->mps <= 16));
-            if ((pass == 0) != hid_priority)
-                continue;
-            if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback)
-                t->callback(t->callback_arg);
+    for (t = inttransfer_head.next_inttransfer; t != NULL;
+         t = t->next_inttransfer) {
+        if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback) {
+            t->callback(t->callback_arg);
         }
     }
-
-    in_poll = 0;
 }
-
 
 static inline char *usbtype(uint8_t prog_if)
 {

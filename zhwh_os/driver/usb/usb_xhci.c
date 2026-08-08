@@ -153,6 +153,18 @@ static uint32_t xhci_last_cmd_control;
 
 /* Physical-machine diagnostics: solve the low-speed HID device first. */
 #define XHCI_ENUM_SLOT_LIMIT 2
+static int g_usb_msc_runtime_enabled = 0;
+
+void usb_msc_enable_runtime(int enabled)
+{
+    g_usb_msc_runtime_enabled = enabled ? 1 : 0;
+}
+
+int usb_msc_runtime_enabled(void)
+{
+    return g_usb_msc_runtime_enabled;
+}
+
 #define XHCI_MOUSE_ONLY      0
 
 static void xhci_parse_supported_protocols(volatile struct xhci_dev_t *xhci,
@@ -827,6 +839,17 @@ static int xhci_prepare_event_ring(volatile struct xhci_dev_t *xhci)
     res = xhci_ring_init(&xhci->event_ring, XHCI_EVENT_RING_SIZE);
     if (res < 0)
         return res;
+
+    /* xhci_ring_init() creates a producer Transfer Ring and therefore puts a
+     * Link TRB in its final slot. An Event Ring is an ERST-described linear
+     * segment: it has no Link TRB, and all XHCI_EVENT_RING_SIZE entries are
+     * owned by the controller. Leaving that Link TRB in place makes the
+     * first Event Ring wrap consume a bogus event / lose cycle alignment. */
+    A_memset(xhci->event_ring.ring, 0,
+             XHCI_EVENT_RING_SIZE * sizeof(struct xhci_trb_t));
+    xhci->event_ring.enqueue = 0;
+    xhci->event_ring.dequeue = 0;
+    xhci->event_ring.ccs = 1;
 
     xhci->erst->addr_lo = (uint32_t)xhci->event_ring.phys;
     xhci->erst->addr_hi = (uint32_t)(xhci->event_ring.phys >> 32);
@@ -1602,6 +1625,25 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
                 return;
             }
 
+            if (!g_usb_msc_runtime_enabled) {
+                struct usb_interface_t *boot_iface;
+                for (boot_iface = usb->interfaces; boot_iface;
+                     boot_iface = boot_iface->next) {
+                    if (boot_iface->desc.class == 0x08 &&
+                        boot_iface->desc.subclass == 0x06) {
+                        usb_printk("xhci: closing boot MSC port %d slot %d\n",
+                                   port, slot_id);
+                        kernel_usb_msc_status_line("MSC", "boot port disabled; replug after desktop");
+                        xhci_disable_slot(xhci, slot_id);
+                        portsc = mmio_read32(reg);
+                        mmio_write32(reg, portsc | XHCI_PORT_PED);
+                        mmio_read32(reg);
+                        xhci_free_addr((void *)xhci, slot_id);
+                        usb_destroy_dev(usb);
+                        return;
+                    }
+                }
+            }
             xhci->slots[slot_id].usb     = usb;
             xhci->slots[slot_id].enabled = 1;
             xhci->slots[slot_id].speed   = speed;
@@ -1634,10 +1676,12 @@ static void xhci_enable_ports(volatile struct xhci_dev_t *xhci)
 
         if (!(portsc & XHCI_PORT_CCS))
             continue;
-#if XHCI_MOUSE_ONLY
-        if (speed_id != 2)
+        /* Preserve the 2026-08-05 physical-mouse boot path: before the
+         * desktop enables MSC runtime handling, enumerate only the low-speed
+         * mouse port.  A later hotplug scan may enable MSC and accept all
+         * connected ports. */
+        if (!g_usb_msc_runtime_enabled && speed_id != 2)
             continue;
-#endif
 
         usb_printk("xhci: port %d PORTSC=0x%x\n", i, portsc);
         xhci_status_regs("port connected", "port=%x portsc=%x speedid=%x",
@@ -2304,12 +2348,7 @@ static void xhci_in_transaction(struct usb_transaction_t *transaction)
         } else {
             /* Normal TRB direction is implied by the endpoint context. */
             data_trb.control = TRB_TYPE(TRB_TYPE_NORMAL) | TRB_IO;
-            if (transfer->type == USB_TRANSFER_INTERRUPT) {
-                /* HID reports are commonly shorter than the endpoint MPS.
-                 * ISP makes a short interrupt-IN packet complete this TD and
-                 * produce a Transfer Event on strict xHCI controllers. */
-                data_trb.control |= TRB_ISP;
-            }
+
         }
     } else {
         /* Zero-length: Status Stage for control, or skip for interrupt */
@@ -3247,6 +3286,23 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
             xhci->init_port_phase = 31;
             return;
         }
+        if (!g_usb_msc_runtime_enabled) {
+        /* Defer boot MSC traffic until a physical replug after desktop. */
+        usb_printk("xhci: boot MSC on port %d disabled until replug\n", i);
+        kernel_usb_msc_status_line("MSC", "boot port disabled; replug after desktop");
+        xhci_disable_slot(xhci, xhci->init_slot_id);
+        portsc = mmio_read32(reg);
+        mmio_write32(reg, portsc | XHCI_PORT_PED);
+        mmio_read32(reg);
+        usb_destroy_dev(xhci->init_usb);
+        xhci->init_usb = NULL;
+        xhci->init_iface = NULL;
+        xhci->init_endpoint = NULL;
+        xhci->init_port_phase = 0;
+        xhci->init_port_cursor++;
+        return;
+        }
+
         if (!xhci->init_iface->endpoint_in || !xhci->init_iface->endpoint_out) {
             usb_printk("xhci: async MSC missing bulk endpoints\n");
             xhci->init_port_phase = 0;
@@ -3839,6 +3895,24 @@ static void xhci_schedule_transfer(struct usb_transfer_t *transfer)
     mmio_write32(xhci->db_base + (slot_id * 4), db_val);
     /* Flush: read back the same doorbell register we just wrote */
     mmio_read32(xhci->db_base + (slot_id * 4));
+
+    /* One bounded snapshot of the exact endpoint context and first TRB
+     * visible immediately after the HID doorbell. */
+    if (transfer->type == USB_TRANSFER_INTERRUPT) {
+        static uint32_t hid_post_db_log;
+        if (hid_post_db_log++ == 0) {
+            uint32_t *out = (uint32_t *)xhci->slots[slot_id].dev_ctx;
+            uint32_t *epc = xhci_output_ep_ctx(xhci, out, ep_id);
+            struct xhci_ring_t *ring =
+                &xhci->slots[slot_id].ep_rings[ep_id];
+            usb_printk("xhci: HID post-db epctx=%x,%x,%x,%x,%x "
+                       "trb=%x,%x,%x\n",
+                       epc[0], epc[1], epc[2], epc[3], epc[4],
+                       (uint32_t)ring->ring[0].param,
+                       ring->ring[0].status,
+                       ring->ring[0].control);
+        }
+    }
 }
 
 static void xhci_wait_transfer(struct usb_transfer_t *transfer)
@@ -4154,10 +4228,8 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                 struct xhci_trb_t dt;
                 A_memset(&dt, 0, sizeof(dt));
                 dt.param = dp;
-                dt.status = TRB_XFER_LEN(ilen) |
-                            TRB_TD_SIZE(0) |
-                            TRB_INTR_TARGET(0);
-                dt.control = TRB_TYPE(TRB_TYPE_NORMAL) | TRB_IO | TRB_ISP;
+                dt.status = ilen;
+                dt.control = TRB_TYPE(TRB_TYPE_NORMAL) | TRB_IO;
                 {
                     int idx = ring_enqueue(tr, &dt);
                     if (idx >= 0 && trans)
@@ -4223,6 +4295,21 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
         }
     }
 
+    if (transfer->type == USB_TRANSFER_INTERRUPT) {
+        static uint32_t hid_wait_log;
+        struct xhci_trb_t *head =
+            &xhci->event_ring.ring[xhci->event_ring.dequeue];
+        if (hid_wait_log < 16 &&
+            (head->control & TRB_CYCLE) != xhci->event_ring.ccs) {
+            struct xhci_ring_t *hid_ring =
+                &xhci->slots[transfer->dev->num].ep_rings[3];
+            usb_printk("xhci: HID wait slot=%d evctrl=%x ccs=%d enq=%d deq=%d\n",
+                       transfer->dev->num, head->control,
+                       xhci->event_ring.ccs, hid_ring->enqueue,
+                       hid_ring->dequeue);
+            hid_wait_log++;
+        }
+    }
     if (xhci_get_event(xhci, &event) > 0) {
         uint8_t trb_type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
         if (trb_type == TRB_TYPE_TRANSFER_EVENT) {
@@ -4280,6 +4367,13 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                             trans->buf && rx > 0) {
                             static uint32_t runtime_report_lines;
                             A_memcpy(trans->buf, (void *)trans->data, rx);
+                            {
+                                extern uint8_t g_dma_bytes[8];
+                                uint32_t b;
+                                for (b = 0; b < 8; b++)
+                                    g_dma_bytes[b] = b < rx ?
+                                        ((uint8_t *)trans->data)[b] : 0;
+                            }
                             report_ready = 1;
                             {
                                 static uint32_t runtime_report_log;
@@ -4328,6 +4422,21 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
 
                     struct xhci_ring_t *tr =
                         &xhci->slots[slot_id].ep_rings[ep_val];
+
+                    /* The host has consumed the completed Normal TRB.  Keep
+                     * the software producer/consumer accounting in step so
+                     * a long-lived HID pipe can reuse its 63 usable entries.
+                     * The Link TRB is permanently reserved at size - 1. */
+                    if (cc != CC_ENDPOINT_NOT_ENABLED && event.param &&
+                        tr->ring && event.param >= tr->phys) {
+                        uint64_t offset = event.param - tr->phys;
+                        uint32_t completed = (uint32_t)(offset /
+                            sizeof(struct xhci_trb_t));
+                        if ((offset % sizeof(struct xhci_trb_t)) == 0 &&
+                            completed < tr->size - 1)
+                            tr->dequeue = completed + 1;
+                    }
+
                     void *data_buf = (void *)trans->data;
                     uint32_t data_phys = data_buf && data_buf != (void *)0x1
                         ? (uint32_t)virt_to_phys(data_buf) : 0;
@@ -4384,11 +4493,8 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                         struct xhci_trb_t data_trb;
                         A_memset(&data_trb, 0, sizeof(data_trb));
                         data_trb.param   = (uint64_t)data_phys;
-                        data_trb.status  = TRB_XFER_LEN(intr_len) |
-                                            TRB_TD_SIZE(0) |
-                                            TRB_INTR_TARGET(0);
-                        data_trb.control = TRB_TYPE(TRB_TYPE_NORMAL) |
-                                            TRB_IO | TRB_ISP;
+                        data_trb.status  = intr_len;
+                        data_trb.control = TRB_TYPE(TRB_TYPE_NORMAL) | TRB_IO;
                         {
                             int idx = ring_enqueue(tr, &data_trb);
                             if (idx >= 0)

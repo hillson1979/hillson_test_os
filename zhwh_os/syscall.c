@@ -2674,10 +2674,26 @@ void syscall_dispatch(struct trapframe *tf) {
             if (!ubuf || maxlen <= 0) { tf->eax = -1; break; }
             if (!kbuf || klen <= 0) { tf->eax = 0; break; }
 
+            /* An unfiltered request is a console view: return the newest
+             * complete lines, rather than filling the caller buffer with the
+             * oldest part of the circular log snapshot. */
+            if (kwlen == 0) {
+                int start = klen - (maxlen - 1);
+                if (start < 0) start = 0;
+                while (start > 0 && start < klen && kbuf[start - 1] != '\n')
+                    start++;
+                int out = 0;
+                for (int i = start; i < klen && out < maxlen - 1; i++)
+                    ubuf[out++] = kbuf[i];
+                ubuf[out] = 0;
+                tf->eax = out;
+                break;
+            }
+
             int out = 0, ls = 0;
             for (int i = 0; i < klen && out < maxlen - 1; i++) {
                 if (kbuf[i] != '\n' && i < klen - 1) continue;
-                int ok = (kwlen == 0); /* no filter = match all */
+                int ok = 0;
                 if (!ok) {
                     for (int j = ls; j <= i - kwlen; j++) {
                         int m = 1;

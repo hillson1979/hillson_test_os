@@ -26,7 +26,7 @@
 #define BOOT_AUTO_USB 1
 /* Temporary physical-machine diagnostics. Set to 0 after xHCI mouse input is
  * stable so runtime USB status lines cannot overwrite the desktop. */
-#define USB_RUNTIME_SCREEN_DEBUG 1
+#define USB_RUNTIME_SCREEN_DEBUG 0
 
 // Forward declarations for task types
 typedef struct {

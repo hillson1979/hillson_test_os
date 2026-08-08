@@ -115,6 +115,8 @@ int usb_mouse_data_available(int mouse_index)
     /* This runs in kernel context after the user process enters the mouse
      * input syscall. Only service queued interrupt transfers here; root-port
      * hotplug scanning belongs to the kernel USB polling path. */
+    /* The desktop input syscall is the active runtime poller.  The scheduler
+     * idle hook only supplements this path when no user task is runnable. */
     usb_poll_interrupts();
 
     /* Peek only — don't consume new_data.

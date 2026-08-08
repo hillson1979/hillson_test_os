@@ -202,10 +202,17 @@ static void usb_handle_mouse_input(void *__hid)
 
     struct usb_hid_dev_t *hid = __hid;
     uint8_t *buf = hid->buf;
+    static uint32_t mouse_report_log_count;
+    uint32_t report_number = mouse_report_log_count++;
+    int log_report = report_number < 16 ||
+        (report_number % 64) == 0;
 
-    usb_printk("usb mouse report: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-               buf[0], buf[1], buf[2], buf[3],
-               buf[4], buf[5], buf[6], buf[7]);
+    if (log_report) {
+        usb_printk("usb mouse report #%d: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                   report_number,
+                   buf[0], buf[1], buf[2], buf[3],
+                   buf[4], buf[5], buf[6], buf[7]);
+    }
 
     if (hid->mouse_absolute) {
         int off = (hid->report_id && buf[0] == hid->report_id) ? 1 : 0;
@@ -275,8 +282,11 @@ static void usb_handle_mouse_input(void *__hid)
     uint8_t buttons = b0[buf[0] & 0x1F];  /* 5-button mask */
 
     cur_button_state = buttons;
-    usb_printk("usb mouse input: dx=%d dy=%d wheel=%d buttons=%x\n",
-               dx, dy, wheel, (uint32_t)(buf[0] & 0x1F));
+    if (log_report) {
+        usb_printk("usb mouse input #%d: dx=%d dy=%d wheel=%d buttons=%x\n",
+                   report_number, dx, dy, wheel,
+                   (uint32_t)(buf[0] & 0x1F));
+    }
     add_mouse_packet(dx, dy, buttons);
     hid->new_data = 1;  /* Signal usb_mouse_periodic_poll */
     unblock_kernel_task(mouse_task);

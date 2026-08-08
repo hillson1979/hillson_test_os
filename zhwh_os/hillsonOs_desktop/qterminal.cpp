@@ -166,7 +166,7 @@ void QTerminal::runBuiltin(const char *cmd) {
         appendOutput("Commands:\n");
         appendOutput("  help ls lspci net usb mem fb clear echo exec java log cat\n");
         appendOutput("  log            - show kernel log\n");
-        appendOutput("  log usb        - show /usb.log from the RAM log buffer\n");
+        appendOutput("  log usb        - show recent USB driver log\n");
         appendOutput("  log mouse      - show USB mouse/HID state and reports\n");
         appendOutput("  net init rtl  - init RTL8139 NIC\n");
         appendOutput("  net init e1k  - init E1000 NIC\n");
@@ -502,6 +502,24 @@ void QTerminal::runBuiltin(const char *cmd) {
             appendOutput(ds); appendOutput(" setproto=");
             decstr((info >> 24) & 0xFF, ds); appendOutput(ds);
             appendOutput("\n");
+            int dma_lo, dma_hi;
+            __asm__ volatile("int $0x80":"=a"(dma_lo):
+                             "a"(76), "b"(1):"memory");
+            __asm__ volatile("int $0x80":"=a"(dma_hi):
+                             "a"(76), "b"(2):"memory");
+            appendOutput("last-dma=");
+            for (int b = 0; b < 4; b++) {
+                char byte_hex[3];
+                uint8_t value = (uint8_t)((dma_lo >> (b * 8)) & 0xFF);
+                byte_hex[0] = hex(value >> 4); byte_hex[1] = hex(value); byte_hex[2] = 0;
+                appendOutput(byte_hex); appendOutput(b == 3 ? " " : ":");
+            }
+            for (int b = 0; b < 4; b++) {
+                char byte_hex[3];
+                uint8_t value = (uint8_t)((dma_hi >> (b * 8)) & 0xFF);
+                byte_hex[0] = hex(value >> 4); byte_hex[1] = hex(value); byte_hex[2] = 0;
+                appendOutput(byte_hex); appendOutput(b == 3 ? "\n" : ":");
+            }
             if (len > 0) {
             const char *patterns[7] = {
                 "mouse", "HID", "hid", "usb_mouse", "ep=3", "dci=3",
@@ -537,9 +555,17 @@ void QTerminal::runBuiltin(const char *cmd) {
             } else appendOutput("No USB mouse log available.\n");
             return;
         }
-        const char *log_path =
-            (a[0]=='u' && a[1]=='s' && a[2]=='b' && a[3]==0)
-                ? "/usb.log" : "/kern.log";
+        if (a[0]=='u' && a[1]=='s' && a[2]=='b' && a[3]==0) {
+            static char ubuf[8192];
+            int len;
+            __asm__ volatile("int $0x80":"=a"(len):
+                             "a"(82), "b"(ubuf), "c"((int)sizeof(ubuf)),
+                             "d"(0):"memory");
+            if (len > 0) appendOutput(ubuf);
+            else appendOutput("No USB log available.\n");
+            return;
+        }
+        const char *log_path = "/kern.log";
         int fd = open(log_path, 0);
         if (fd == 0) { appendOutput("Cannot open\n"); return; }
         /* 只读最�?1024 字节 */

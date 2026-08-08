@@ -623,6 +623,12 @@ int init_msd(struct usb_interface_t *iface)
     extern void kernel_usb_msc_status_line(const char *stage, const char *detail);
     extern void kernel_usb_error_line(const char *stage, const char *detail);
 
+    extern int usb_msc_runtime_enabled(void);
+    if (!usb_msc_runtime_enabled()) {
+        usb_printk("usb-msd: boot MSC deferred until desktop replug\n");
+        kernel_usb_msc_status_line("fat32", "MSC deferred until replug");
+        return 0;
+    }
     kernel_usb_msc_status_line("fat32", "init_msd start");
 
     if (!iface->usb || !iface->usb->endpoints) {
