@@ -519,12 +519,12 @@ void do_irq_handler(struct trapframe *tf) {
             lapiceoi();
             break;
         case 33:
-        case 66: { // 键盘中断（IRQ1�?
-            // 调用键盘驱动处理程序
-            extern void keyboard_handler(void);
-            keyboard_handler();
-            // 使用 lapiceoi() 而不�?send_eoi()
-            // 因为这个系统使用的是 IOAPIC，不�?8259A PIC
+        case 66: {
+            handle_keyboard_interrupt(tf);
+            // 键盘中断（IRQ1�?
+            /* Keyboard IRQ can arrive through the legacy PIC during early
+             * boot or through the IOAPIC later; acknowledge both paths. */
+            send_eoi(1);
             lapiceoi();
             break;
         }

@@ -11,6 +11,9 @@ QDesktopWindow::QDesktopWindow(QWidget *parent, const char *name, const char *ti
     m_title = nullptr;
     m_content = nullptr;
     m_focused = false;
+    m_maximized = false;
+    m_restoreX = m_restoreY = 0;
+    m_restoreW = m_restoreH = 0;
     // Allocate and copy title
     int len = 0; while (title[len]) len++;
     m_title = new char[len + 1];
@@ -37,6 +40,21 @@ void QDesktopWindow::setFocused(bool f) {
     m_focused = f;
 }
 
+void QDesktopWindow::toggleMaximize(int desktopWidth, int desktopHeight,
+                                    int taskbarHeight) {
+    if (!m_maximized) {
+        m_restoreX = m_x;
+        m_restoreY = m_y;
+        m_restoreW = m_w;
+        m_restoreH = m_h;
+        setGeometry(0, 0, desktopWidth, desktopHeight - taskbarHeight);
+        m_maximized = true;
+    } else {
+        setGeometry(m_restoreX, m_restoreY, m_restoreW, m_restoreH);
+        m_maximized = false;
+    }
+}
+
 QDesktopWindow::HitZone QDesktopWindow::hitTest(int px, int py) const {
     int lx = px - m_x;
     int ly = py - m_y;
@@ -49,6 +67,12 @@ QDesktopWindow::HitZone QDesktopWindow::hitTest(int px, int py) const {
     if (lx >= closeX() && lx <= closeX() + closeW() &&
         ly >= closeY() && ly <= closeY() + closeH())
         return HIT_CLOSE;
+    if (lx >= maximizeX() && lx <= maximizeX() + closeW() &&
+        ly >= closeY() && ly <= closeY() + closeH())
+        return HIT_MAXIMIZE;
+    if (lx >= minimizeX() && lx <= minimizeX() + closeW() &&
+        ly >= closeY() && ly <= closeY() + closeH())
+        return HIT_MINIMIZE;
 
     // Title bar
     if (ly < TITLE_H + BORDER_W)
@@ -95,11 +119,18 @@ void QDesktopWindow::paintEvent(QPainter *painter) {
         painter->drawText(x + BORDER_W + 4, y + BORDER_W + 4, m_title);
     }
 
-    // Close button [X]
+    // Window controls: minimize, maximize/restore, close.
+    int mnx = x + minimizeX();
+    int mxx = x + maximizeX();
     int cx = x + closeX(), cy = y + closeY();
-    painter->setColor(0x00CC0000);
+    painter->setColor(0x003A5F8A);
+    painter->fillRect(mnx, cy, closeW(), closeH());
+    painter->fillRect(mxx, cy, closeW(), closeH());
+    painter->setColor(0x00C42B1C);
     painter->fillRect(cx, cy, closeW(), closeH());
     painter->setColor(COLOR_WHITE);
+    painter->drawText(mnx + 6, cy + 3, "-");
+    painter->drawText(mxx + 6, cy + 3, m_maximized ? "+" : "[]");
     painter->drawText(cx + 5, cy + 3, "X");
 
     // Border

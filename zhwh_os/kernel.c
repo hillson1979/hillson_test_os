@@ -577,11 +577,13 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("[KERNEL] BEFORE tvinit: vectors[127] = 0x%x, vectors[128] = 0x%x, vectors[129] = 0x%x\n",
                vectors[127], vectors[128], vectors[129]);
         tvinit();
+        boot_color(4, 0x0000FF00); /* 4 green: IDT gates populated */
         printf("[KERNEL] AFTER tvinit: vectors[127] = 0x%x, vectors[128] = 0x%x, vectors[129] = 0x%x\n",
                vectors[127], vectors[128], vectors[129]);
         printf("After tvinit\n");
         
         idtinit();
+        boot_color(5, 0x000000FF); /* 5 blue: IDTR loaded */
         printf("segment idt init is ok\n");
 
         // 馃敟馃敟 鍦ㄥ紑涓柇鍓嶅啀娆＄‘淇?FPU 宸插垵濮嬪寲锛堥槻姝?Trap 19�?
@@ -592,6 +594,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         cr0_check &= ~(1 << 3);  // 娓呴�?TS
         cr0_check &= ~(1 << 2);  // 娓呴�?EM
         __asm__ volatile("movl %0, %%cr0" : : "r"(cr0_check));
+        boot_color(6, 0x00FF00FF); /* 6 magenta: FPU/CR0 ready */
 
         // 馃敟 璋冭瘯锛氭墦鍗板綋鍓嶆爤鎸囬�?
         uint32_t current_esp;
@@ -602,9 +605,29 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("[FPU] Re-initialized before STI\n");
 
         // 鍚敤鍏ㄥ眬涓柇锛堥噸瑕侊紒USB 榧犳爣闇€瑕佷腑鏂�?
-        __asm__ volatile("sti");
-        printf("Global interrupts ENABLED\n");
-        boot_color(4, 0x0000FF00); /* 4 green: interrupts and drivers */
+        /* Keep every legacy PIC source masked while the IDT and kernel
+         * runtime are still coming up. On AC power, a pending firmware
+         * power/SCI event can otherwise arrive immediately after STI. */
+        /* BIOS leaves the 8259 PIC at vectors 0x08/0x70. Remap it before
+         * STI so a legacy IRQ cannot enter a CPU exception vector. */
+        outb(0x20, 0x11);
+        outb(0x80, 0);
+        outb(0xA0, 0x11);
+        outb(0x80, 0);
+        outb(0x21, 0x20);
+        outb(0x80, 0);
+        outb(0xA1, 0x28);
+        outb(0x80, 0);
+        outb(0x21, 0x04);
+        outb(0x80, 0);
+        outb(0xA1, 0x02);
+        outb(0x80, 0);
+        outb(0x21, 0x01);
+        outb(0x80, 0);
+        outb(0xA1, 0x01);
+        outb(0x80, 0);
+        outb(0x21, 0xFF);
+        outb(0xA1, 0xFF);
 
         // 鍦ㄥ惎鐢ㄤ腑鏂悗鍒濆鍖栭敭鐩橀┍鍔?
         extern void keyboard_init(void);
@@ -640,6 +663,11 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         // 馃敟馃敟馃敟 鍏抽敭淇锛氱鐢?8254 PIT 瀹氭椂鍣?
         // PIT 鐨勮緭鍑鸿繛鎺ュ�?IRQ 0锛屽嵆浣?LAPIC Timer 琚鐢紝PIT 浠嶄細瑙﹀彂涓柇
+        /* Interrupt handlers and controller masks are now configured. */
+        boot_color(7, 0x00FFFFFF); /* 7 white: ready to enable interrupts */
+        __asm__ volatile("sti; nop" ::: "memory");
+        printf("Global interrupts ENABLED\n");
+
         printf("Disabling 8254 PIT Timer...\n");
         // 璇诲彇褰撳墠 PIT 閰嶇�?
         unsigned char pit_ctrl = inb(0x43);

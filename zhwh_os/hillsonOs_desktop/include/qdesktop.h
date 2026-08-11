@@ -33,6 +33,9 @@ public:
     QDesktopWindow *addWindow(const char *title, QWidget *content, int w, int h);
     void removeWindow(QDesktopWindow *win);
     void focusWindow(QDesktopWindow *win);
+    void minimizeWindow(QDesktopWindow *win);
+    void maximizeWindow(QDesktopWindow *win);
+    QDesktopWindow *findWindowByTitle(const char *title) const;
     QDesktopWindow *focusedWindow() const { return m_focusedWindow; }
 
     // Icon management
@@ -78,6 +81,7 @@ private:
 
     // Drag/resize state
     bool m_dragging;
+    int  m_mouseButtons;
     int  m_dragStartX, m_dragStartY;
     int  m_dragWinX, m_dragWinY, m_dragWinW, m_dragWinH;
     QDesktopWindow *m_dragWindow;

@@ -21,6 +21,7 @@ QDesktop::QDesktop(int fbWidth, int fbHeight)
     m_numIcons = 0;
 
     m_dragging = false;
+    m_mouseButtons = 0;
     m_dragWindow = nullptr;
     m_dragZone = QDesktopWindow::HIT_NONE;
     m_tickCount = 0;
@@ -97,6 +98,43 @@ void QDesktop::focusWindow(QDesktopWindow *win) {
     m_focusedWindow = win;
     if (m_focusedWindow) m_focusedWindow->setFocused(true);
     bringToFront(win);
+}
+
+void QDesktop::minimizeWindow(QDesktopWindow *win) {
+    if (!win) return;
+    win->hide();
+    if (m_focusedWindow == win) {
+        m_focusedWindow = nullptr;
+        for (int i = m_numWindows - 1; i >= 0; i--) {
+            if (m_windows[i] && m_windows[i]->isVisible()) {
+                focusWindow(m_windows[i]);
+                break;
+            }
+        }
+    }
+}
+
+void QDesktop::maximizeWindow(QDesktopWindow *win) {
+    if (!win) return;
+    win->toggleMaximize(m_width, m_height, TASKBAR_H);
+    focusWindow(win);
+}
+
+QDesktopWindow *QDesktop::findWindowByTitle(const char *title) const {
+    if (!title) return nullptr;
+    for (int i = 0; i < m_numWindows; i++) {
+        QDesktopWindow *win = m_windows[i];
+        if (!win || !win->title()) continue;
+        const char *a = win->title();
+        const char *b = title;
+        while (*a && *b && *a == *b) {
+            a++;
+            b++;
+        }
+        if (*a == 0 && *b == 0)
+            return win;
+    }
+    return nullptr;
 }
 
 void QDesktop::addIcon(int x, int y, const char *name, uint32_t color,
@@ -177,6 +215,7 @@ void QDesktop::toggleShowDesktop() {
 
 bool QDesktop::handleMouse(int mx, int my, int buttons, bool *needRender) {
     if (!buttons) {
+        m_mouseButtons = 0;
         // Mouse release: end drag
         if (m_dragging) {
             m_dragging = false;
@@ -188,9 +227,12 @@ bool QDesktop::handleMouse(int mx, int my, int buttons, bool *needRender) {
 
     bool isLeft  = (buttons & 1) != 0;
     bool isRight = (buttons & 2) != 0;
+    bool leftPressed = isLeft && !(m_mouseButtons & 1);
+    bool rightPressed = isRight && !(m_mouseButtons & 2);
+    m_mouseButtons = buttons;
 
     // Right-click on empty desktop: toggle show desktop
-    if (isRight && !isLeft) {
+    if (rightPressed && !isLeft) {
         // Check if click is on empty desktop (not on any window or icon)
         bool hitWindow = false;
         for (int i = m_numWindows - 1; i >= 0; i--) {
@@ -224,7 +266,7 @@ bool QDesktop::handleMouse(int mx, int my, int buttons, bool *needRender) {
     }
 
     // Left-click handling
-    if (!isLeft) return false;
+    if (!isLeft || !leftPressed) return false;
 
     // Check taskbar first
     if (my >= taskbarY()) {
@@ -238,6 +280,8 @@ bool QDesktop::handleMouse(int mx, int my, int buttons, bool *needRender) {
         int bx = 4;
         for (int i = 0; i < m_numWindows; i++) {
             if (mx >= bx && mx < bx + 120 && m_windows[i]) {
+                if (!m_windows[i]->isVisible())
+                    m_windows[i]->show();
                 focusWindow(m_windows[i]);
                 *needRender = true;
                 return true;
@@ -269,6 +313,18 @@ bool QDesktop::handleMouse(int mx, int my, int buttons, bool *needRender) {
             if (zone == QDesktopWindow::HIT_CLOSE) {
                 removeWindow(win);
                 delete win;
+                *needRender = true;
+                return true;
+            }
+
+            if (zone == QDesktopWindow::HIT_MINIMIZE) {
+                minimizeWindow(win);
+                *needRender = true;
+                return true;
+            }
+
+            if (zone == QDesktopWindow::HIT_MAXIMIZE) {
+                maximizeWindow(win);
                 *needRender = true;
                 return true;
             }
@@ -450,8 +506,9 @@ void QDesktop::paintEvent(QPainter *painter) {
             painter->setClipRect(
                 m_windows[i]->x(), m_windows[i]->y(),
                 m_windows[i]->width(), m_windows[i]->height());
-            m_windows[i]->render(painter,
-                m_windows[i]->x(), m_windows[i]->y());
+            // Desktop windows already store absolute geometry. Passing their
+            // coordinates as an extra parent offset draws them twice as far.
+            m_windows[i]->render(painter);
             painter->clearClip();
         }
     }

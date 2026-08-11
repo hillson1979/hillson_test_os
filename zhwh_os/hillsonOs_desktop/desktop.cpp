@@ -39,23 +39,36 @@ static QHillsonKeyboardHandler g_kbd;
 // Icon click callbacks
 static QDesktop *g_desktop = nullptr;
 
+static bool focusExistingWindow(const char *title) {
+    if (!g_desktop) return false;
+    QDesktopWindow *win = g_desktop->findWindowByTitle(title);
+    if (!win) return false;
+    win->show();
+    g_desktop->focusWindow(win);
+    return true;
+}
+
 static void launchEditor(void *userData) {
     if (!g_desktop) return;
+    if (focusExistingWindow("Text Editor")) return;
     createTextEditorApp(g_desktop);
 }
 
 static void launchUsbMonitor(void *userData) {
     if (!g_desktop) return;
+    if (focusExistingWindow("USB Monitor")) return;
     createUsbMonitorApp(g_desktop);
 }
 
 static void launchSysInfo(void *userData) {
     if (!g_desktop) return;
+    if (focusExistingWindow("System Info")) return;
     createSysInfoApp(g_desktop);
 }
 
 static void launchTerminal(void *userData) {
     if (!g_desktop) return;
+    if (focusExistingWindow("Terminal")) return;
     createTerminalApp(g_desktop);
 }
 
@@ -161,6 +174,7 @@ int main(void) {
         yield_cpu();
 
         bool needRender = false;
+        bool keyboardWindowRender = false;
 
         // Read mouse
         input_event_t me;
@@ -294,7 +308,9 @@ int main(void) {
 
             // Forward to focused window for text input
             // Pass Qt key code + Unicode char to the widget
-            desktop.handleQtKey(qtKey, uni, isShift, &needRender);
+            bool contentChanged = false;
+            desktop.handleQtKey(qtKey, uni, isShift, &contentChanged);
+            if (contentChanged) keyboardWindowRender = true;
         }
 
         // Render if needed
@@ -302,6 +318,20 @@ int main(void) {
             restoreCursorBg();
             desktop.render(&painter);
             // Redraw cursor
+            drawCursor(mx, my);
+            lcx = mx; lcy = my;
+        } else if (keyboardWindowRender) {
+            /* Typing changes only the focused application. Redrawing the
+             * full desktop clears and repaints the framebuffer every key and
+             * is the source of the visible keyboard flicker. */
+            restoreCursorBg();
+            QDesktopWindow *fw = desktop.focusedWindow();
+            if (fw && fw->isVisible()) {
+                painter.setClipRect(fw->x(), fw->y(),
+                                    fw->width(), fw->height());
+                fw->render(&painter);
+                painter.clearClip();
+            }
             drawCursor(mx, my);
             lcx = mx; lcy = my;
         }

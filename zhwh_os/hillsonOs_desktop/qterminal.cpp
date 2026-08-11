@@ -647,12 +647,11 @@ void QTerminal::paintEvent(QPainter *painter) {
     int x = m_x, y = m_y;
     painter->setColor(m_bgColor);
     painter->fillRect(x, y, m_w, m_h);
-    if (!m_buf || m_bufLen == 0) return;
 
     painter->setColor(0x0000FF00);
     int maxLines = (m_h - 4) / 10;
     int ly = y + 4, col = 0, drawn = 0;
-    char *p = m_buf;
+    char *p = m_buf ? m_buf : (char *)"";
     // Skip scrolled lines
     int skip = m_scrollOffset;
     while (skip > 0 && *p) {
@@ -666,8 +665,15 @@ void QTerminal::paintEvent(QPainter *painter) {
         if (col < 120) { char t[2]={*p,0}; painter->drawText(x+4+col*8, ly, t); }
         col++; p++;
     }
-}
 
+    /* Keep a static insertion caret visible at the input position. */
+    int totalLines = termLineCount(m_buf);
+    int maxOffset = totalLines > maxLines ? totalLines - maxLines : 0;
+    if (m_scrollOffset == maxOffset && ly < y + m_h - 2) {
+        int caretCol = col < 120 ? col : 119;
+        painter->fillRect(x + 4 + caretCol * 8, ly, 2, 9);
+    }
+}
 // Desktop integration
 extern "C" void term_keyPress(void *w, int sc, bool sh) { ((QTerminal*)w)->keyPress(sc, sh); }
 extern "C" void term_qtKeyPress(void *w, int qtKey, int uni, bool sh) { ((QTerminal*)w)->keyPressQt(qtKey, uni, sh); }

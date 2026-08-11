@@ -17,6 +17,8 @@ public:
         HIT_TITLEBAR,
         HIT_CONTENT,
         HIT_CLOSE,
+        HIT_MAXIMIZE,
+        HIT_MINIMIZE,
         HIT_EDGE_N,  HIT_EDGE_S,  HIT_EDGE_E,  HIT_EDGE_W,
         HIT_EDGE_NE, HIT_EDGE_NW, HIT_EDGE_SE, HIT_EDGE_SW
     };
@@ -38,9 +40,13 @@ public:
     // Window management
     bool isFocused() const { return m_focused; }
     void setFocused(bool f);
+    bool isMaximized() const { return m_maximized; }
+    void toggleMaximize(int desktopWidth, int desktopHeight, int taskbarHeight);
 
-    // Close button area (local coords)
+    // Title-bar control areas (local coordinates)
     int closeX() const { return m_w - 24; }
+    int maximizeX() const { return m_w - 46; }
+    int minimizeX() const { return m_w - 68; }
     int closeY() const { return 2; }
     int closeW() const { return 20; }
     int closeH() const { return 18; }
@@ -53,6 +59,11 @@ private:
     char    *m_title;
     QWidget *m_content;
     bool     m_focused;
+    bool     m_maximized;
+    int      m_restoreX;
+    int      m_restoreY;
+    int      m_restoreW;
+    int      m_restoreH;
 };
 
 #endif // QDESKTOPWINDOW_H

@@ -98,7 +98,7 @@ OFFSET_GEN = gen_asm_offsets
 OFFSET_HEADER = task_offsets.s
 
 # 默认目标（依赖自动生成的偏移量文件）
-all: $(OFFSET_HEADER) $(TARGET) $(RAW_TARGET)
+all: $(OFFSET_HEADER) $(TARGET) $(RAW_TARGET) desktop
 
 # 自动生成汇编偏移量文件（推荐方式）
 $(OFFSET_HEADER): gen_asm_offsets.c include/task.h
@@ -130,6 +130,9 @@ gen-offsets: $(OFFSET_HEADER)
 	@echo "✓ Offset file generated successfully!"
 
 # 使用gcc链接（推荐）
+desktop:
+	+$(MAKE) -C hillsonOs_desktop
+
 $(TARGET): $(OBJECTS) linker/os.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
 	@echo "Linked: $@"
@@ -157,6 +160,7 @@ net/wifi/firmware/atheros/fw-5.o:
 	@echo "Assembled: $<"
 
 clean:
+	+$(MAKE) -C hillsonOs_desktop clean
 	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso $(OFFSETcalc) $(OFFSET_GEN) $(OFFSET_HEADER)
 	@echo "Cleaned object files and binaries"
 
@@ -170,5 +174,5 @@ help:
 	@echo "  clean       - 清理对象文件"
 	@echo "  help        - 显示此帮助信息"
 
-.PHONY: all clean help calc-offset gen-offsets
+.PHONY: all clean help calc-offset gen-offsets desktop
 
