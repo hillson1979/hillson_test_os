@@ -392,8 +392,10 @@ void kfree(void *ptr) {
         return;
     }
 
+#if KFREE_VERBOSE
     printf("kfree: freeing %u bytes (%u pages) at virt=0x%x, phys=0x%x\n",
            hdr->size, hdr->page_count, (uint32_t)hdr->virt_addr, hdr->phys_addr);
+#endif
 
     // 如果是物理页分配（page_count > 0），真正释放物理页
     if (hdr->page_count > 0) {

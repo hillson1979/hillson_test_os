@@ -529,8 +529,10 @@ void *dma_alloc_coherent(size_t size, uint32_t *dma_handle) {
     void *vaddr = (void *)(DMA_VIRT_BASE + dma_alloc_ptr);
     uint32_t paddr = DMA_PHYS_BASE + dma_alloc_ptr;
 
+#if DMA_ALLOC_VERBOSE
     printf("[dma] alloc: size=%u, virt=0x%x, phys=0x%x\n",
            (uint32_t)size, (uint32_t)vaddr, paddr);
+#endif
 
     // 更新分配指针
     dma_alloc_ptr += size;
