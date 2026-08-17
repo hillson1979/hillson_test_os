@@ -14,7 +14,9 @@ static char  usb_buf[USB_LOG_SZ];
 static int   usb_w = 0;
 static char  usb_snap[USB_LOG_SZ];
 static int   usb_snap_len = 0;
-static int   usb_console_enabled = 0;
+/* Keep USB probe diagnostics visible on the serial console while drivers
+ * such as RTL8188EUS are being brought up. */
+static int   usb_console_enabled = 1;
 
 void usb_log_write(const char *s, int len) {
     if (len <= 0) return;
@@ -51,6 +53,33 @@ void usb_printk_set_dev(net_device_t *d) {
     printf("[usb_log] dev set: %s\n", d ? d->name : "NULL");
 }
 
+extern void kernel_usb_status_line(const char *stage, const char *detail);
+
+static char usb_screen_line[256];
+static int usb_screen_line_len;
+
+static void usb_log_write_screen_lines(const char *text, int length)
+{
+    int i;
+
+    if (!text || length <= 0)
+        return;
+    for (i = 0; i < length; i++) {
+        char c = text[i];
+        if (c == '\r')
+            continue;
+        if (c == '\n') {
+            if (usb_screen_line_len > 0) {
+                usb_screen_line[usb_screen_line_len] = 0;
+                kernel_usb_status_line("kernel", usb_screen_line);
+                usb_screen_line_len = 0;
+            }
+            continue;
+        }
+        if (usb_screen_line_len < (int)sizeof(usb_screen_line) - 1)
+            usb_screen_line[usb_screen_line_len++] = c;
+    }
+}
 /* usb_printk — printf + buffer + UDP via eth0 */
 int usb_printk(const char *fmt, ...) {
     char line[2048];
@@ -64,9 +93,11 @@ int usb_printk(const char *fmt, ...) {
     if (usb_console_enabled)
         printf("%s", line);
     if (len <= 0) return len;
-    /* netdebug_vsnprintf may return the would-be length on truncation. */
     if (len >= (int)sizeof(line))
         len = sizeof(line) - 1;
+    if (usb_console_enabled)
+        usb_log_write_screen_lines(line, len);
+    /* Length was clamped before screen and ring-buffer output. */
     usb_log_write(line, len);
 
     return len;

@@ -23,6 +23,9 @@ int net_ifup(const char *dev);
 int net_arp(const char *dev, int scan);
 int net_dump_regs(const char *dev);
 int net_send_udp(const char *ip, int port, const char *data, int len);
+int wifi_scan(void);
+int wifi_connect(const char *ssid, const char *password);
+int wifi_disconnect(void);
 int execv(const char *path, char *const argv[]);
 int spawn(const char *path, const char *arg);
 void yield(void);
@@ -181,6 +184,8 @@ void QTerminal::runBuiltin(const char *cmd) {
         appendOutput("  net.regs      - dump NIC registers\n");
         appendOutput("  USB logs auto-send via UDP broadcast :9999 (netdebug)\n");
         appendOutput("  ping <ip>     - ping IP address\n");
+        appendOutput("  wifi scan | wifi status | wifi disconnect\n");
+        appendOutput("  wifi connect <ssid> <password> (quote SSID with spaces)\n");
         appendOutput("  exec <path>   - run ELF program\n");
         return;
     }
@@ -244,6 +249,40 @@ void QTerminal::runBuiltin(const char *cmd) {
             appendOutput("usage: netlog <ip> [port]\n");
         }
         return;
+    }
+if (cmd[0]=='w' && cmd[1]=='i' && cmd[2]=='f' && cmd[3]=='i' && (cmd[4]==0 || cmd[4]==' ')) {
+        const char *a = cmd + 4; while (*a == ' ') a++;
+        if (a[0]=='s' && a[1]=='c' && a[2]=='a' && a[3]=='n' && a[4]==0) {
+            appendOutput("Scanning Wi-Fi channels 1-13...\n");
+            int ret = wifi_scan();
+            if (ret >= 0) { char n[16]; decstr(ret, n); appendOutput("Scan complete: "); appendOutput(n); appendOutput(" network(s). See 'log usb' for details.\n"); }
+            else appendOutput("Wi-Fi scan failed; adapter/firmware is not ready.\n");
+            return;
+        }
+        if (a[0]=='s' && a[1]=='t' && a[2]=='a' && a[3]=='t' && a[4]=='u' && a[5]=='s' && a[6]==0) {
+            int state; __asm__ volatile("int $0x80":"=a"(state):"a"(35):"memory");
+            static const char *names[]={"absent","firmware loading","ready","scanning","target found","authenticating","associating","WPA2 handshake","connected","failed"};
+            appendOutput("Wi-Fi: "); appendOutput(state>=0 && state<10 ? names[state] : "unavailable"); appendOutput("\n"); return;
+        }
+        if (a[0]=='d' && a[1]=='i' && a[2]=='s' && a[3]=='c' && a[4]=='o' && a[5]=='n' && a[6]=='n' && a[7]=='e' && a[8]=='c' && a[9]=='t' && a[10]==0) {
+            appendOutput(wifi_disconnect()==0 ? "Wi-Fi disconnected.\n" : "Wi-Fi adapter is absent.\n"); return;
+        }
+        if (a[0]=='c' && a[1]=='o' && a[2]=='n' && a[3]=='n' && a[4]=='e' && a[5]=='c' && a[6]=='t' && a[7]==' ') {
+            char ssid[33], password[64]; int si=0, pi=0; a+=8; while(*a==' ')a++;
+            if (*a=='"') { a++; while(*a && *a!='"' && si<32)ssid[si++]=*a++; if(*a=='"')a++; }
+            else while(*a && *a!=' ' && si<32)ssid[si++]=*a++;
+            ssid[si]=0; while(*a==' ')a++; while(*a && pi<63)password[pi++]=*a++; password[pi]=0;
+            if (!si || !pi) { appendOutput("Usage: wifi connect <ssid> <password>\n"); return; }
+            appendOutput("Connecting to "); appendOutput(ssid); appendOutput("...\n");
+            int ret=wifi_connect(ssid,password); for(pi=0;pi<(int)sizeof(password);pi++)password[pi]=0;
+            if(ret==0)appendOutput("Wi-Fi connected.\n");
+            else if(ret==-95)appendOutput("AP found, but WPA2 handshake/key installation is not implemented yet.\n");
+            else if(ret==-2)appendOutput("SSID not found.\n");
+            else if(ret==-22)appendOutput("Invalid SSID or WPA2 password (8-63 characters).\n");
+            else appendOutput("Connection failed; adapter/firmware is not ready.\n");
+            return;
+        }
+        appendOutput("Usage: wifi scan | wifi connect <ssid> <password> | wifi status | wifi disconnect\n"); return;
     }
     if (cmd[0]=='u' && cmd[1]=='s' && cmd[2]=='b' && cmd[3]==' ') {
         const char *a = cmd + 4; while (*a == ' ') a++;

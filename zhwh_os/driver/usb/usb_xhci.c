@@ -12,6 +12,8 @@
 #include <kernel/usb.h>
 #include <kernel/usb_hid.h>
 #include <kernel/usb_xhci.h>
+
+#define XHCI_VERBOSE_TRACE 0
 #include <kernel/ata.h>
 #include <kernel/hillsonos.h>
 #include <mm/kheap.h>
@@ -152,7 +154,7 @@ static uint8_t xhci_last_completion_slot;
 static uint32_t xhci_last_cmd_control;
 
 /* Physical-machine diagnostics: solve the low-speed HID device first. */
-#define XHCI_ENUM_SLOT_LIMIT 2
+#define XHCI_ENUM_SLOT_LIMIT 8
 static int g_usb_msc_runtime_enabled = 0;
 
 void usb_msc_enable_runtime(int enabled)
@@ -1661,7 +1663,7 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
 static void xhci_enable_ports(volatile struct xhci_dev_t *xhci)
 {
     volatile uint32_t i;
-    uint32_t candidates[2];
+    uint32_t candidates[XHCI_ENUM_SLOT_LIMIT];
     unsigned int candidate_count = 0;
 
     usb_printk("%s: enabling %u ports...\n", "xhci", xhci->port_count);
@@ -1680,8 +1682,6 @@ static void xhci_enable_ports(volatile struct xhci_dev_t *xhci)
          * desktop enables MSC runtime handling, enumerate only the low-speed
          * mouse port.  A later hotplug scan may enable MSC and accept all
          * connected ports. */
-        if (!g_usb_msc_runtime_enabled && speed_id != 2)
-            continue;
 
         usb_printk("xhci: port %d PORTSC=0x%x\n", i, portsc);
         xhci_status_regs("port connected", "port=%x portsc=%x speedid=%x",
@@ -1703,7 +1703,7 @@ static void xhci_enable_ports(volatile struct xhci_dev_t *xhci)
 
         /* Check if device connected */
         if (portsc & XHCI_PORT_CCS) {
-            if (candidate_count < 2) {
+            if (candidate_count < XHCI_ENUM_SLOT_LIMIT) {
                 if (speed_id == 2 && candidate_count > 0) {
                     candidates[1] = candidates[0];
                     candidates[0] = i;
@@ -2246,7 +2246,8 @@ static int xhci_setup_transaction(struct usb_transaction_t *transaction)
                      "slot=%x port=%x bytes=%02x %02x %02x %02x %02x %02x %02x %02x",
                      (uint32_t)slot_id, (uint32_t)usb->port,
                      b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);
-            kernel_usb_status_line("xhci setup packet", setup_hex);
+            if (XHCI_VERBOSE_TRACE)
+                kernel_usb_status_line("xhci setup packet", setup_hex);
         }
     }
     setup_trb.status  = 8;                  /* transfer length = 8 */
@@ -2261,7 +2262,8 @@ static int xhci_setup_transaction(struct usb_transaction_t *transaction)
     /* Compare the exact 16 bytes we constructed with the exact 16 bytes
      * copied into the xHCI transfer ring.  If these differ, ring_enqueue,
      * ring index, cache coherency, or physical mapping is wrong. */
-    xhci_dump_trb("xhci SETUP built 16B", &setup_trb);
+    if (XHCI_VERBOSE_TRACE)
+        xhci_dump_trb("xhci SETUP built 16B", &setup_trb);
 
     /* Store the transfer context pointer for later stages */
     /* (We store the TRB index for completion tracking) */
@@ -2299,8 +2301,9 @@ static void xhci_in_transaction(struct usb_transaction_t *transaction)
     ep_id = xhci_transfer_ep_id(transfer);
     tr = &xhci->slots[slot_id].ep_rings[ep_id];
 
-    usb_printk("xhci: IN trans len=%d buf=%p ep=%d xfer_type=%d\n",
-        transaction->len, transaction->buf, ep_id, transfer->type);
+    if (XHCI_VERBOSE_TRACE)
+        usb_printk("xhci: IN trans len=%d buf=%p ep=%d xfer_type=%d\n",
+            transaction->len, transaction->buf, ep_id, transfer->type);
 
     if (!tr->ring) {
         usb_printk("%s: no transfer ring for IN ep=%d\n", "xhci", ep_id);
@@ -2552,8 +2555,10 @@ static int xhci_parse_config_async(volatile struct xhci_dev_t *xhci)
                     iface->endpoint_interrupt = ep;
                 else if (ep->direction == USB_ENDPOINT_IN)
                     iface->endpoint_in = ep;
-                else
+                else if (!iface->endpoint_out)
                     iface->endpoint_out = ep;
+                else
+                    iface->endpoint_out2 = ep;
             }
             usb_printk("xhci: async EP%d %s type=%d mps=%d interval=%d\n",
                        ep->addr, ep->direction == USB_ENDPOINT_IN ? "IN" : "OUT",
@@ -3862,7 +3867,7 @@ static void xhci_schedule_transfer(struct usb_transfer_t *transfer)
     int ep_id = xhci_transfer_ep_id(transfer);
     uint32_t db_val = (uint32_t)ep_id;
 
-    if (transfer->type == USB_TRANSFER_CTRL) {
+    if (XHCI_VERBOSE_TRACE && transfer->type == USB_TRANSFER_CTRL) {
         struct xhci_ring_t *ring =
             &xhci->slots[slot_id].ep_rings[ep_id];
         uint32_t *out = (uint32_t *)xhci->slots[slot_id].dev_ctx;
@@ -4027,6 +4032,9 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
                 }
 
                 if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET) {
+                    /* One synchronous request is in flight per endpoint. */
+                    xhci->slots[transfer->dev->num].ep_rings[my_ep].dequeue =
+                        xhci->slots[transfer->dev->num].ep_rings[my_ep].enqueue;
                     if (transfer->type == USB_TRANSFER_BULK &&
                         transfer->trans_head) {
                         uint32_t requested = transfer->trans_head->len;

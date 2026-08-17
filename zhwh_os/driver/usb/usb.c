@@ -34,6 +34,7 @@
 #include <kernel/usb_hid.h>
 #include <kernel/usb_hub.h>
 #include <kernel/usb_xhci.h>
+#include <kernel/rtl8188eu_wifi.h>
 #include <mm/kheap.h>
 
 extern void kernel_usb_status_line(const char *stage, const char *detail);
@@ -47,6 +48,45 @@ pci_compat_t *usbbus[MAX_USB_BUSES + 1];
 
 static struct usb_transfer_t inttransfer_head;
 static kernel_mutex_t inttransfer_list_lock;
+
+#define USB_TRANSACTION_POOL_SIZE 128
+static struct usb_transaction_t usb_transaction_pool[USB_TRANSACTION_POOL_SIZE];
+static volatile uint8_t usb_transaction_pool_used[USB_TRANSACTION_POOL_SIZE];
+
+static struct usb_transaction_t *usb_alloc_transaction(void)
+{
+    unsigned int i;
+
+    for(i = 0; i < USB_TRANSACTION_POOL_SIZE; i++)
+    {
+        if(__sync_bool_compare_and_swap(&usb_transaction_pool_used[i], 0, 1))
+        {
+            A_memset(&usb_transaction_pool[i], 0,
+                     sizeof(usb_transaction_pool[i]));
+            return &usb_transaction_pool[i];
+        }
+    }
+
+    usb_printk("usb: transaction pool exhausted\n");
+    return NULL;
+}
+
+static void usb_free_transaction(volatile struct usb_transaction_t *transaction)
+{
+    unsigned int index;
+
+    if(!transaction || transaction < usb_transaction_pool ||
+       transaction >= usb_transaction_pool + USB_TRANSACTION_POOL_SIZE)
+    {
+        kfree((void *)transaction);
+        return;
+    }
+
+    index = (unsigned int)(transaction - usb_transaction_pool);
+    A_memset((void *)&usb_transaction_pool[index], 0,
+             sizeof(usb_transaction_pool[index]));
+    __sync_lock_release(&usb_transaction_pool_used[index]);
+}
 
 
 static void print_device(struct usb_dev_t *dev)
@@ -494,7 +534,7 @@ void usb_delete_transfer(struct usb_transfer_t *transfer)
             trans->data = NULL;
         }
 
-        kfree((void *)trans);
+        usb_free_transaction(trans);
         trans = next;
     }
 
@@ -521,12 +561,10 @@ uint8_t usb_setup_transaction(struct usb_transfer_t *transfer,
     struct usb_transaction_t *transaction;
     uint8_t res = 0;
 
-    if(!(transaction = kmalloc(sizeof(struct usb_transaction_t))))
+    if(!(transaction = usb_alloc_transaction()))
     {
         return 0;
     }
-
-    A_memset(transaction, 0, sizeof(struct usb_transaction_t));
 
     transaction->dev = transfer->dev;
     transaction->type = USB_TRANS_SETUP;
@@ -593,12 +631,10 @@ void usb_in_transaction(struct usb_transfer_t *transfer,
         }
     }
 
-    if(!(transaction = kmalloc(sizeof(struct usb_transaction_t))))
+    if(!(transaction = usb_alloc_transaction()))
     {
         return;
     }
-
-    A_memset(transaction, 0, sizeof(struct usb_transaction_t));
 
     transaction->dev = transfer->dev;
     transaction->type = USB_TRANS_IN;
@@ -658,12 +694,10 @@ void usb_out_transaction(struct usb_transfer_t *transfer,
             remaining++;
     }
 
-    if(!(transaction = kmalloc(sizeof(struct usb_transaction_t))))
+    if(!(transaction = usb_alloc_transaction()))
     {
         return;
     }
-
-    A_memset(transaction, 0, sizeof(struct usb_transaction_t));
 
     transaction->dev = transfer->dev;
     transaction->type = USB_TRANS_OUT;
@@ -995,8 +1029,10 @@ int usb_get_config_descriptor(struct usb_dev_t *dev)
                         current_iface->endpoint_interrupt = endpoint;
                     else if (endpoint->direction == USB_ENDPOINT_IN)
                         current_iface->endpoint_in = endpoint;
-                    else
+                    else if (!current_iface->endpoint_out)
                         current_iface->endpoint_out = endpoint;
+                    else
+                        current_iface->endpoint_out2 = endpoint;
                 }
             }
         }
@@ -1224,7 +1260,15 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
 
         for(iface = dev->interfaces; iface != NULL; iface = iface->next)
         {
-            if(iface->desc.class == 0x08 && iface->desc.subclass == 0x06)   // MSD
+            if(rtl8188eu_usb_match(dev))
+            {
+                found = 1;
+                usb_printk("usb: RTL8188EUS wireless adapter detected\n");
+                if(rtl8188eu_usb_probe(iface) < 0)
+                    usb_printk("usb: RTL8188EUS probe failed\n");
+                break;
+            }
+            else if(iface->desc.class == 0x08 && iface->desc.subclass == 0x06)   // MSD
             {
                 found = 1;
                 usb_printk("usb: setting up Mass Storage Device (MSD)\n");

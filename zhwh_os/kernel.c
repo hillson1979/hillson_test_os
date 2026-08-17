@@ -26,7 +26,7 @@
 #define BOOT_AUTO_USB 1
 /* Temporary physical-machine diagnostics. Set to 0 after xHCI mouse input is
  * stable so runtime USB status lines cannot overwrite the desktop. */
-#define USB_RUNTIME_SCREEN_DEBUG 0
+#define USB_RUNTIME_SCREEN_DEBUG 1
 
 // Forward declarations for task types
 typedef struct {
@@ -179,13 +179,48 @@ static void usb_boot_status_screen(const char *stage, const char *detail)
         }
 }
 
+static int boot_log_contains_ci(const char *text, const char *word)
+{
+        if (!text || !word || !*word)
+                return 0;
+        for (; *text; text++) {
+                const char *a = text;
+                const char *b = word;
+                while (*a && *b) {
+                        char ca = *a;
+                        char cb = *b;
+                        if (ca >= 'A' && ca <= 'Z') ca = (char)(ca + ('a' - 'A'));
+                        if (cb >= 'A' && cb <= 'Z') cb = (char)(cb + ('a' - 'A'));
+                        if (ca != cb) break;
+                        a++; b++;
+                }
+                if (!*b) return 1;
+        }
+        return 0;
+}
 void kernel_usb_status_line(const char *stage, const char *detail)
 {
         extern int usb_get_init_state(void);
+        uint32_t saved_text_color = usb_boot_text_color;
         if (!USB_RUNTIME_SCREEN_DEBUG && usb_get_init_state() == 4)
                 return;
+        if (boot_log_contains_ci(detail, "not ready") ||
+            boot_log_contains_ci(detail, "not-ready") ||
+            boot_log_contains_ci(detail, "failed") ||
+            boot_log_contains_ci(detail, "failure") ||
+            boot_log_contains_ci(detail, "error") ||
+            boot_log_contains_ci(detail, "timeout"))
+                usb_boot_text_color = 0x00CC0000;
+        else if (boot_log_contains_ci(detail, "ok") ||
+                 boot_log_contains_ci(detail, "success") ||
+                 boot_log_contains_ci(detail, "ready") ||
+                 boot_log_contains_ci(detail, "complete"))
+                usb_boot_text_color = 0x00008000;
+        else
+                usb_boot_text_color = 0x00000000;
         usb_boot_status_screen(stage, detail);
         usb_boot_sticky_error(stage, detail);
+        usb_boot_text_color = saved_text_color;
 }
 
 void kernel_usb_msc_status_line(const char *stage, const char *detail)

@@ -16,6 +16,7 @@
 #include "fs.h"
 #include "mm.h"
 #include "usb_display.h"
+#include <kernel/rtl8188eu_wifi.h>
 
 #define SYS_USB_INIT 83
 #define SYS_USB_LOG_SAVE 84
@@ -964,10 +965,7 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_WIFI_SCAN: {
-            // wifi_scan() - WiFi 
-            extern int wifi_scan(void);
-            int ret = wifi_scan();
-            tf->eax = ret;  // 
+            tf->eax = rtl8188eu_wifi_scan();
             break;
         }
         case SYS_WIFI_CONNECT: {
@@ -976,59 +974,32 @@ void syscall_dispatch(struct trapframe *tf) {
             const char *password = (const char *)arg2;
 
             // 
-            char kssid[32];
+            char kssid[33];
             char kpassword[64];
-
             int i;
-            for (i = 0; i < 31 && ssid[i] != '\0'; i++) {
-                __asm__ volatile (
-                    "pushfl\n"
-                    "orl $0x40000, (%%esp)\n"
-                    "popfl\n"
-                    "movb (%1), %0\n"
-                    "pushfl\n"
-                    "andl $~0x40000, (%%esp)\n"
-                    "popfl\n"
-                    : "=r"(kssid[i])
-                    : "r"(&ssid[i])
-                    : "memory", "cc"
-                );
+            if (!ssid || !password) { tf->eax = -1; break; }
+            for (i = 0; i < 32; i++) {
+                copy_from_user(&kssid[i], &ssid[i], 1);
+                if (!kssid[i]) break;
             }
-            kssid[i] = '\0';
-
-            for (i = 0; i < 63 && password[i] != '\0'; i++) {
-                __asm__ volatile (
-                    "pushfl\n"
-                    "orl $0x40000, (%%esp)\n"
-                    "popfl\n"
-                    "movb (%1), %0\n"
-                    "pushfl\n"
-                    "andl $~0x40000, (%%esp)\n"
-                    "popfl\n"
-                    : "=r"(kpassword[i])
-                    : "r"(&password[i])
-                    : "memory", "cc"
-                );
+            kssid[i < 32 ? i : 32] = 0;
+            for (i = 0; i < 63; i++) {
+                copy_from_user(&kpassword[i], &password[i], 1);
+                if (!kpassword[i]) break;
             }
-            kpassword[i] = '\0';
-
-            extern int wifi_connect(const char *, const char *);
-            int ret = wifi_connect(kssid, kpassword);
-            tf->eax = ret;
+            kpassword[i < 63 ? i : 63] = 0;
+            tf->eax = rtl8188eu_wifi_connect(kssid, kpassword);
+            for (i = 0; i < (int)sizeof(kpassword); i++) kpassword[i] = 0;
             break;
         }
         case SYS_WIFI_DISCONNECT: {
             // wifi_disconnect() - WiFi 
-            extern int wifi_disconnect(void);
-            int ret = wifi_disconnect();
-            tf->eax = ret;
+            tf->eax = rtl8188eu_wifi_disconnect();
             break;
         }
         case SYS_WIFI_STATUS: {
             // wifi_status() - WiFi 
-            extern void wifi_status(void);
-            wifi_status();
-            tf->eax = 0;
+            tf->eax = rtl8188eu_wifi_status();
             break;
         }
         case SYS_WIFI_LOAD_FIRMWARE: {

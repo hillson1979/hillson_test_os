@@ -278,6 +278,7 @@ struct usb_interface_t {
     struct usb_dev_t *usb;
     struct usb_endpoint_t *endpoint_in;
     struct usb_endpoint_t *endpoint_out;
+    struct usb_endpoint_t *endpoint_out2;
     struct usb_endpoint_t *endpoint_interrupt;
     uint32_t cur_tag;
     struct usb_interface_t *next;
