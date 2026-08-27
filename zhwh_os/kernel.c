@@ -1419,6 +1419,14 @@ void usb_periodic_poll_callback(void)
     if ((++usb_hotplug_div & 7) != 0)
         return;
 
+    /* RTL8188EUS keeps one Bulk IN request armed. Poll it from the same
+     * single-consumer USB idle path so endpoint events cannot be stolen by
+     * competing driver threads. */
+    {
+        extern void rtl8188eu_wifi_poll(void);
+        rtl8188eu_wifi_poll();
+    }
+
     int max_ctrl = num_uhci_controllers;
     if (max_ctrl < 1) max_ctrl = 1;
 

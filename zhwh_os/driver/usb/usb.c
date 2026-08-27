@@ -606,9 +606,13 @@ void usb_in_transaction(struct usb_transfer_t *transfer,
     size_t minlen;
     int remaining;
 
-    if(transfer->type == USB_TRANSFER_CTRL && transfer->dev &&
-       transfer->dev->type == USB_TYPE_XHCI)
+    if(transfer->dev && transfer->dev->type == USB_TYPE_XHCI &&
+       (transfer->type == USB_TRANSFER_CTRL ||
+        transfer->type == USB_TRANSFER_BULK))
     {
+        /* xHCI Normal TRBs describe the complete Bulk IN buffer.  Splitting
+         * at endpoint MPS would create independent, unchained TDs and the
+         * first 512-byte TRB could not receive an RTL8188EUS USB aggregate. */
         minlen = len;
         len = 0;
         remaining = 0;
@@ -1027,7 +1031,9 @@ int usb_get_config_descriptor(struct usb_dev_t *dev)
                 if (current_iface) {
                     if (endpoint->type == USB_ENDPOINT_INTERRUPT)
                         current_iface->endpoint_interrupt = endpoint;
-                    else if (endpoint->direction == USB_ENDPOINT_IN)
+                    else if (endpoint->type == USB_ENDPOINT_BULK &&
+                             endpoint->direction == USB_ENDPOINT_IN &&
+                             !current_iface->endpoint_in)
                         current_iface->endpoint_in = endpoint;
                     else if (!current_iface->endpoint_out)
                         current_iface->endpoint_out = endpoint;
@@ -1260,12 +1266,19 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
 
         for(iface = dev->interfaces; iface != NULL; iface = iface->next)
         {
-            if(rtl8188eu_usb_match(dev))
+            if(rtl8188eu_usb_match(dev) &&
+               iface->endpoint_in && iface->endpoint_out &&
+               iface->endpoint_in->type == USB_ENDPOINT_BULK &&
+               iface->endpoint_out->type == USB_ENDPOINT_BULK &&
+               iface->endpoint_in->direction == USB_ENDPOINT_IN &&
+               iface->endpoint_out->direction == USB_ENDPOINT_OUT)
             {
                 found = 1;
                 usb_printk("usb: RTL8188EUS wireless adapter detected\n");
-                if(rtl8188eu_usb_probe(iface) < 0)
-                    usb_printk("usb: RTL8188EUS probe failed\n");
+                int wifi_probe_ret = rtl8188eu_usb_probe(iface);
+                if(wifi_probe_ret < 0)
+                    usb_printk("usb: RTL8188EUS probe failed ret=%d id=%04x%04x\n",
+                               wifi_probe_ret, dev->vendor, dev->product);
                 break;
             }
             else if(iface->desc.class == 0x08 && iface->desc.subclass == 0x06)   // MSD
@@ -1359,6 +1372,14 @@ void usb_poll_interrupts(void)
      * Uses fire-and-forget (no wait) to avoid stack overflow.
      * Also called from usb_periodic_poll_callback (idle path). */
     usb_process_deferred_clears();
+
+    /* The xHCI Event Ring is shared by interrupt and persistent Bulk IN
+     * transfers.  Service RTL8188EUS here as well so a DCI 3 RX event
+     * cannot block a synchronous DCI 4 Bulk OUT completion behind it. */
+    {
+        extern void rtl8188eu_wifi_poll(void);
+        rtl8188eu_wifi_poll();
+    }
 
     for (t = inttransfer_head.next_inttransfer; t != NULL;
          t = t->next_inttransfer) {

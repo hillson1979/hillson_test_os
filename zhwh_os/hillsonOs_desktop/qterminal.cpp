@@ -253,10 +253,10 @@ void QTerminal::runBuiltin(const char *cmd) {
 if (cmd[0]=='w' && cmd[1]=='i' && cmd[2]=='f' && cmd[3]=='i' && (cmd[4]==0 || cmd[4]==' ')) {
         const char *a = cmd + 4; while (*a == ' ') a++;
         if (a[0]=='s' && a[1]=='c' && a[2]=='a' && a[3]=='n' && a[4]==0) {
-            appendOutput("Scanning Wi-Fi channels 1-13...\n");
+            appendOutput("Scanning Wi-Fi channel 1 (sample mode)...\n");
             int ret = wifi_scan();
             if (ret >= 0) { char n[16]; decstr(ret, n); appendOutput("Scan complete: "); appendOutput(n); appendOutput(" network(s). See 'log usb' for details.\n"); }
-            else appendOutput("Wi-Fi scan failed; adapter/firmware is not ready.\n");
+            else appendOutput("Wi-Fi scan failed; run `wifi status` and check USB enumeration.\n");
             return;
         }
         if (a[0]=='s' && a[1]=='t' && a[2]=='a' && a[3]=='t' && a[4]=='u' && a[5]=='s' && a[6]==0) {
@@ -276,10 +276,10 @@ if (cmd[0]=='w' && cmd[1]=='i' && cmd[2]=='f' && cmd[3]=='i' && (cmd[4]==0 || cm
             appendOutput("Connecting to "); appendOutput(ssid); appendOutput("...\n");
             int ret=wifi_connect(ssid,password); for(pi=0;pi<(int)sizeof(password);pi++)password[pi]=0;
             if(ret==0)appendOutput("Wi-Fi connected.\n");
-            else if(ret==-95)appendOutput("AP found, but WPA2 handshake/key installation is not implemented yet.\n");
+            else if(ret==-95)appendOutput("Associated with AP; WPA2 EAPOL handshake is pending.\n");
             else if(ret==-2)appendOutput("SSID not found.\n");
             else if(ret==-22)appendOutput("Invalid SSID or WPA2 password (8-63 characters).\n");
-            else appendOutput("Connection failed; adapter/firmware is not ready.\n");
+            else { appendOutput("Connection failed ret="); char errbuf[16]; decstr(ret, errbuf); appendOutput(errbuf); appendOutput(". Check Wi-Fi kernel log.\n"); }
             return;
         }
         appendOutput("Usage: wifi scan | wifi connect <ssid> <password> | wifi status | wifi disconnect\n"); return;

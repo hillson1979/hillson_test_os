@@ -266,8 +266,20 @@ int usb_init(void)
 
         int ret = xhci_install(&pci, bar);
         if (ret == 0) {
+            unsigned int port_polls;
+
+            /* xhci_install() starts rings; port enumeration must run before
+             * reporting USB ready and probing class drivers. */
+            g_usb_init_state = 3;
+            usb_printk("usb: synchronous xHCI controller ready; scanning ports\n");
+            for (port_polls = 0; port_polls < 5000; port_polls++) {
+                /* Drive slot/EP0 enumeration after xhci_install reset ports. */
+                xhci_poll();
+                tick_delay(1000);
+            }
             g_usb_init_state = 4;
-            usb_printk("usb: synchronous xHCI init complete\n");
+            usb_printk("usb: synchronous xHCI init complete ports=%u\n",
+                       port_polls);
             return 0;
         }
 

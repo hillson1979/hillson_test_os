@@ -9,7 +9,68 @@
 #include "string.h"
 #include "printf.h"
 
+static uint16_t ieee80211_get_le16(const uint8_t *data) {
+    return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+}
+
 // ==================== 辅助函数 ====================
+
+int ieee80211_parse_mgmt(const uint8_t *data, uint32_t len,
+                         struct ieee80211_mgmt_info *info) {
+    const ieee80211_mgmt_hdr_t *hdr;
+    uint16_t fc;
+    uint32_t pos;
+
+    if (!data || !info || len < 24)
+        return -1;
+    memset(info, 0, sizeof(*info));
+    hdr = (const ieee80211_mgmt_hdr_t *)data;
+    fc = hdr->frame_control;
+    if (((fc & IEEE80211_FCTL_FTYPE) >> 2) != IEEE80211_FTYPE_MGMT)
+        return -1;
+    info->frame_control = fc;
+    info->subtype = (uint8_t)((fc & IEEE80211_FCTL_STYPE) >> 4);
+    memcpy(info->addr1, hdr->addr1, ETH_ALEN);
+    memcpy(info->addr2, hdr->addr2, ETH_ALEN);
+    memcpy(info->addr3, hdr->addr3, ETH_ALEN);
+
+    if (info->subtype == IEEE80211_STYPE_AUTH) {
+        if (len < 30) return -1;
+        info->auth_algorithm = ieee80211_get_le16(data + 24);
+        info->auth_transaction = ieee80211_get_le16(data + 26);
+        info->status_code = ieee80211_get_le16(data + 28);
+        return 0;
+    }
+    if (info->subtype == IEEE80211_STYPE_ASSOC_RESP) {
+        if (len < 30) return -1;
+        info->status_code = ieee80211_get_le16(data + 26);
+        info->assoc_aid = ieee80211_get_le16(data + 28) & 0x3fff;
+        return 0;
+    }
+    if (info->subtype != IEEE80211_STYPE_BEACON &&
+        info->subtype != IEEE80211_STYPE_PROBE_RESP)
+        return 0;
+    if (len < 36) return -1;
+    info->privacy = (*(const uint16_t *)(data + 34) &
+                     IEEE80211_CAPINFO_PRIVACY) != 0;
+    pos = 36;
+    while (pos + 2 <= len) {
+        const ieee80211_elem_t *elem =
+            (const ieee80211_elem_t *)(data + pos);
+        if (pos + 2 + elem->len > len)
+            return -1;
+        if (elem->id == IEEE80211_ELEM_SSID) {
+            info->ssid_length = elem->len > 32 ? 32 : elem->len;
+            memcpy(info->ssid, data + pos + 2, info->ssid_length);
+        } else if (elem->id == IEEE80211_ELEM_DS_PARAMS && elem->len >= 1) {
+            info->channel = data[pos + 2];
+        } else if (elem->id == IEEE80211_ELEM_RSN) {
+            info->rsn = 1;
+        }
+        pos += 2 + elem->len;
+    }
+    return 0;
+}
 
 /**
  * @brief 从 802.11 帧中获取指定元素
@@ -112,6 +173,25 @@ int ieee80211_send_probe_req(net_device_t *dev) {
 /**
  * @brief 发送 Authentication 帧
  */
+int ieee80211_build_auth(uint8_t *frame, uint32_t capacity,
+                         const uint8_t *source, const uint8_t *bssid) {
+    ieee80211_mgmt_hdr_t *mgmt;
+
+    if (!frame || !source || !bssid || capacity < 30)
+        return -1;
+    memset(frame, 0, 30);
+    mgmt = (ieee80211_mgmt_hdr_t *)frame;
+    mgmt->frame_control = IEEE80211_FTYPE_MGMT << 2 |
+                          IEEE80211_STYPE_AUTH << 4;
+    memcpy(mgmt->addr1, bssid, ETH_ALEN);
+    memcpy(mgmt->addr2, source, ETH_ALEN);
+    memcpy(mgmt->addr3, bssid, ETH_ALEN);
+    frame[24] = 0; frame[25] = 0;
+    frame[26] = 1; frame[27] = 0;
+    frame[28] = 0; frame[29] = 0;
+    return 30;
+}
+
 int ieee80211_send_auth(net_device_t *dev, uint8_t *bssid) {
     if (!dev || !bssid) return -1;
 
@@ -132,8 +212,8 @@ int ieee80211_send_auth(net_device_t *dev, uint8_t *bssid) {
 
     // 添加认证信息
     ieee80211_auth_t *auth = (ieee80211_auth_t *)(frame + pos);
-    auth->auth_alg = htons(1);  // Open System
-    auth->auth_transaction = htons(1);  // 第 1 个事务
+    auth->auth_alg = 0;  // Open System, little-endian on the wire.
+    auth->auth_transaction = 1;  // Transaction 1, little-endian.
     auth->status_code = 0;
     pos += sizeof(ieee80211_auth_t);
 

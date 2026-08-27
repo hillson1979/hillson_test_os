@@ -33,5 +33,6 @@ int rtl8188eu_wifi_scan(void);
 int rtl8188eu_wifi_connect(const char *ssid, const char *password);
 int rtl8188eu_wifi_disconnect(void);
 int rtl8188eu_wifi_status(void);
+void rtl8188eu_wifi_poll(void);
 
 #endif
