@@ -1,6 +1,6 @@
 /**
  * @file usb_hcd.c
- * @brief USB HCD bridge â€?public API for Hillson OS
+ * @brief USB HCD bridge ï¿½?public API for Hillson OS
  *
  * Focus: EHCI controller bringup.
  */
@@ -106,7 +106,7 @@ void usb_init_poll(void)
     poll_busy = 1;
 
     if (g_usb_init_state == 3) {
-        xhci_init_ports_step();
+        xhci_poll();
         if (xhci_all_ports_enabled())
             g_usb_init_state = 4;
         poll_busy = 0;
@@ -222,7 +222,7 @@ char g_ehci_debug_buf[256] = {0};
 void uhci_irq_handler(void) {}
 
 /* ================================================================
- * usb_init(void) â€?scans PCI for USB HC, initializes each
+ * usb_init(void) ï¿½?scans PCI for USB HC, initializes each
  * ================================================================ */
 int usb_init(void)
 {
@@ -292,8 +292,7 @@ int usb_init(void)
     for (port_polls = 0;
          port_polls < 5000 && !xhci_all_ports_enabled();
          port_polls++) {
-        xhci_init_ports_step();
-        usb_poll_interrupts();
+        xhci_poll();
     }
     if (!xhci_all_ports_enabled()) {
         g_usb_init_state = -1;
@@ -326,19 +325,19 @@ int usb_interrupt_transfer(int cid, uint8_t addr, uint8_t ep,
 int usb_interrupt_poll(int cid) { (void)cid; return 0; }
 
 /* ================================================================
- * usb_mouse_periodic_init â€?The real interrupt transfer is set up
- * by init_hid() â†?usb_schedule_inttransfer().  Here we just record
+ * usb_mouse_periodic_init ï¿½?The real interrupt transfer is set up
+ * by init_hid() ï¿½?usb_schedule_inttransfer().  Here we just record
  * that the init was requested so usb_mouse_init() succeeds.
  * ================================================================ */
 int usb_mouse_periodic_init(int cid, uint8_t addr, uint8_t ep, int ls) {
     (void)cid; (void)addr; (void)ep; (void)ls;
     usb_printk("usb_mouse_periodic_init: ctrl=%d addr=%d ep=0x%02x ls=%d\n",
                cid, addr, ep, ls);
-    return 0;  /* OK â€?actual transfer set up by init_hid */
+    return 0;  /* OK ï¿½?actual transfer set up by init_hid */
 }
 
 /* ================================================================
- * usb_mouse_periodic_poll â€?Read latest mouse report from the HID
+ * usb_mouse_periodic_poll ï¿½?Read latest mouse report from the HID
  * device that was set up by init_hid().  The polling task
  * (usb_task_func) handles the actual EHCI transfer; we just read
  * the last-known-good data from g_first_mouse_hid->buf.
