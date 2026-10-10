@@ -3253,18 +3253,8 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
         return;
 
     case 19: { /* Wait for one Configure Endpoint command completion. */
-        struct xhci_trb_t event;
-        if (xhci_get_event(xhci, &event) > 0) {
-            uint8_t type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-            if (type == TRB_TYPE_CMD_COMP_EVENT) {
-                uint64_t completed = event.param & ~0xFULL;
-                if (completed != (xhci_last_cmd_phys & ~0xFULL)) {
-                    usb_printk("xhci: async Configure ignored cmd ptr=%x expect=%x\n",
-                               (uint32_t)completed,
-                               (uint32_t)xhci_last_cmd_phys);
-                    return;
-                }
-                uint8_t cc = (event.status >> 24) & 0xFF;
+        uint8_t cc, slot;
+        if (xhci_take_cmd_event(xhci, &cc, &slot)) {
                 if (cc != CC_SUCCESS) {
                     usb_printk("xhci: async Configure Endpoint failed cc=%d ep=%d\n",
                                cc, xhci->init_endpoint->addr);
@@ -3277,7 +3267,6 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
                 xhci->init_endpoint = xhci->init_endpoint->next;
                 xhci->init_port_phase = 18;
                 return;
-            }
         }
         if (xhci->init_cmd_wait) {
             xhci->init_cmd_wait--;
@@ -4028,7 +4017,17 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
                 }
             }
         }
-        if (xhci_get_event(xhci, &event) > 0) {
+        xhci_drain_events(xhci);
+        if (transfer->event_pending) {
+        A_memset(&event, 0, sizeof(event));
+        event.param = transfer->event_trb_phys;
+        event.status = ((uint32_t)transfer->event_cc << 24) |
+                       (xhci_transfer_requested_length(transfer) -
+                        transfer->actual_length);
+        event.control = TRB_TYPE(TRB_TYPE_TRANSFER_EVENT) |
+                       ((uint32_t)xhci_transfer_ep_id(transfer) << 16) |
+                       ((uint32_t)transfer->dev->num << 24);
+        transfer->event_pending = 0;
             uint8_t trb_type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
             if (trb_type == TRB_TYPE_TRANSFER_EVENT) {
                 uint8_t  cc    = (event.status >> 24) & 0xFF;
@@ -4389,7 +4388,17 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
             hid_wait_log++;
         }
     }
-    if (xhci_get_event(xhci, &event) > 0) {
+    xhci_drain_events(xhci);
+    if (transfer->event_pending) {
+    A_memset(&event, 0, sizeof(event));
+    event.param = transfer->event_trb_phys;
+    event.status = ((uint32_t)transfer->event_cc << 24) |
+                   (xhci_transfer_requested_length(transfer) -
+                    transfer->actual_length);
+    event.control = TRB_TYPE(TRB_TYPE_TRANSFER_EVENT) |
+                   ((uint32_t)xhci_transfer_ep_id(transfer) << 16) |
+                   ((uint32_t)transfer->dev->num << 24);
+    transfer->event_pending = 0;
         uint8_t trb_type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
         if (trb_type == TRB_TYPE_TRANSFER_EVENT) {
             uint8_t cc = (event.status >> 24) & 0xFF;
