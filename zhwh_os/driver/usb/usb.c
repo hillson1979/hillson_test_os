@@ -332,6 +332,8 @@ void usb_destroy_dev(struct usb_dev_t *dev)
         return;
     }
 
+    rtl8188eu_usb_remove(dev);
+
     // remove USB hub
     if(dev->class == 0x09)
     {
@@ -469,7 +471,7 @@ int usb_poll_transfer(struct usb_transfer_t *transfer)
                    (transfer->dev && transfer->dev->ops) ?
                        (void*)transfer->dev->ops->poll_transfer : NULL);
 
-    /* Bypass vtable for XHCI â€?linker sometimes corrupts the function pointer */
+    /* Bypass vtable for XHCI ï¿½?linker sometimes corrupts the function pointer */
     if (transfer->dev && transfer->dev->type == USB_TYPE_XHCI) {
         extern int xhci_poll_transfer(struct usb_transfer_t *transfer);
         if (cnt <= 3)
@@ -835,7 +837,7 @@ int usb_get_device_descriptor(struct usb_dev_t *dev, uint8_t len)
 
         /* Decode bMaxPacketSize0:
          *   USB 1.x / 2.0 (bcdUSB < 0x0300): literal value (8, 16, 32, 64)
-         *   USB 3.0  (bcdUSB >= 0x0300): exponent â€?real MPS = 2^exp (9 => 512)
+         *   USB 3.0  (bcdUSB >= 0x0300): exponent ï¿½?real MPS = 2^exp (9 => 512)
          */
         if (desc.bcd_usb >= 0x0300 && desc.mps >= 7 && desc.mps <= 12) {
             real_mps = 1u << desc.mps;   /* 9 -> 512, 10 -> 1024, etc. */
@@ -1210,7 +1212,8 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
     usb_printk("usb: addr=%d set\n", dev->num);
 
     // now get full 18-byte descriptor for all speeds
-    usb_get_device_descriptor(dev, 18);
+    if ((res = usb_get_device_descriptor(dev, 18)) < 0)
+        return res;
 
     if((res = usb_get_config_descriptor(dev)) < 0)
     {
@@ -1257,15 +1260,18 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
     if(dev->class == 0x09)
     {
         usb_printk("usb: setting up USB hub\n");
-        init_hub(dev);
+        if ((res = init_hub(dev)) < 0)
+            return res;
     }
     else
     {
         struct usb_interface_t *iface;
         int found = 0;
+        int class_error = 0;
 
         for(iface = dev->interfaces; iface != NULL; iface = iface->next)
         {
+            res = 0;
             if(rtl8188eu_usb_match(dev) &&
                iface->endpoint_in && iface->endpoint_out &&
                iface->endpoint_in->type == USB_ENDPOINT_BULK &&
@@ -1275,27 +1281,30 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
             {
                 found = 1;
                 usb_printk("usb: RTL8188EUS wireless adapter detected\n");
-                int wifi_probe_ret = rtl8188eu_usb_probe(iface);
-                if(wifi_probe_ret < 0)
-                    usb_printk("usb: RTL8188EUS probe failed ret=%d id=%04x%04x\n",
-                               wifi_probe_ret, dev->vendor, dev->product);
-                break;
+                res = rtl8188eu_usb_probe(iface);
             }
             else if(iface->desc.class == 0x08 && iface->desc.subclass == 0x06)   // MSD
             {
                 found = 1;
                 usb_printk("usb: setting up Mass Storage Device (MSD)\n");
                 kernel_usb_msc_status_line("usb class", "mass storage detected");
-                init_msd(iface);
+                res = init_msd(iface);
             }
             else if(iface->desc.class == 0x03)
             {
                 found = 1;
                 usb_printk("usb: HID device detected, initializing...\n");
                 kernel_usb_status_line("usb class", "HID device detected");
-                init_hid(iface);
+                res = init_hid(iface);
+            }
+            if (res < 0) {
+                class_error = res;
+                usb_printk("usb: interface %u class=0x%x initialization failed (%d)\n",
+                           iface->desc.interfacenum, iface->desc.class, res);
             }
         }
+        if (class_error < 0)
+            return class_error;
 
         if(!found)
         {
@@ -1349,13 +1358,13 @@ void usb_process_deferred_clears(void)
      * xhci_poll_transfer (see "STALL recovery" block).
      * The HC driver writes CLEAR_FEATURE to EP0 and waits
      * for its completion inline, THEN re-arms EP3.
-     * No deferred processing needed â€?the flag is cleared
+     * No deferred processing needed ï¿½?the flag is cleared
      * inside the recovery function itself. */
 }
 
 /*
- * Poll interrupt transfers â€?called from xhci_poll() in the main
- * scheduler idle loop (via usb_periodic_poll_callback â†?usb_hcd_poll_hotplug).
+ * Poll interrupt transfers ï¿½?called from xhci_poll() in the main
+ * scheduler idle loop (via usb_periodic_poll_callback ï¿½?usb_hcd_poll_hotplug).
  * Each HC driver's poll() handles event-ring completions and
  * re-queues interrupt TRBs.
  */
@@ -1363,6 +1372,11 @@ void usb_poll_interrupts(void)
 {
     volatile struct usb_transfer_t *t;
     static int call_cnt = 0;
+    static int poll_busy = 0;
+
+    if (poll_busy)
+        return;
+    poll_busy = 1;
 
     if (++call_cnt <= 5)
         usb_printk("usb_poll_intr: call #%d head=%p\n",
@@ -1387,6 +1401,7 @@ void usb_poll_interrupts(void)
             t->callback(t->callback_arg);
         }
     }
+    poll_busy = 0;
 }
 
 static inline char *usbtype(uint8_t prog_if)

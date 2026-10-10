@@ -226,6 +226,10 @@ void uhci_irq_handler(void) {}
  * ================================================================ */
 int usb_init(void)
 {
+    unsigned int controller_count = 0;
+    unsigned int port_polls;
+    int last_error = 0;
+
     if (g_usb_init_state == 4)
         return 0;
     if (g_usb_init_state > 0 && g_usb_init_state < 4)
@@ -254,10 +258,10 @@ int usb_init(void)
         }
 
         if (!bar) {
-            usb_printk("usb: xHCI %02x:%02x.%x has no MMIO BAR\n",
+            usb_printk("usb: xHCI %02x:%02x.%x has no MMIO BAR; continuing\n",
                        dev->bus_id, dev->dev_id, dev->fn_id);
-            g_usb_init_state = -1;
-            return -1;
+            last_error = -ENODEV;
+            continue;
         }
 
         g_usb_init_state = 2;
@@ -266,31 +270,41 @@ int usb_init(void)
 
         int ret = xhci_install(&pci, bar);
         if (ret == 0) {
-            unsigned int port_polls;
-
-            /* xhci_install() starts rings; port enumeration must run before
-             * reporting USB ready and probing class drivers. */
-            g_usb_init_state = 3;
-            usb_printk("usb: synchronous xHCI controller ready; scanning ports\n");
-            for (port_polls = 0; port_polls < 5000; port_polls++) {
-                /* Drive slot/EP0 enumeration after xhci_install reset ports. */
-                xhci_poll();
-                tick_delay(1000);
-            }
-            g_usb_init_state = 4;
-            usb_printk("usb: synchronous xHCI init complete ports=%u\n",
-                       port_polls);
-            return 0;
+            controller_count++;
+        } else {
+            last_error = ret;
+            usb_printk("usb: synchronous xHCI init failed (%d); continuing\n", ret);
         }
-
-        g_usb_init_state = -1;
-        usb_printk("usb: synchronous xHCI init failed (%d)\n", ret);
-        return ret;
     }
 
-    g_usb_init_state = -1;
-    usb_printk("usb: no xHCI controller in cached PCI table\n");
-    return -1;
+    if (controller_count == 0) {
+        if (last_error < 0) {
+            g_usb_init_state = -1;
+            return last_error;
+        }
+        g_usb_init_state = 4;
+        usb_printk("usb: no xHCI controller present; continuing boot\n");
+        return 0;
+    }
+
+    g_usb_init_state = 3;
+    usb_printk("usb: xHCI controllers ready; initializing all connected devices\n");
+    for (port_polls = 0;
+         port_polls < 5000 && !xhci_all_ports_enabled();
+         port_polls++) {
+        xhci_init_ports_step();
+        usb_poll_interrupts();
+    }
+    if (!xhci_all_ports_enabled()) {
+        g_usb_init_state = -1;
+        usb_printk("usb: synchronous xHCI port scan timed out polls=%u\n",
+                   port_polls);
+        return -ETIMEDOUT;
+    }
+    g_usb_init_state = 4;
+    usb_printk("usb: synchronous xHCI init complete controllers=%u polls=%u\n",
+               controller_count, port_polls);
+    return 0;
 }
 
 /* ================================================================

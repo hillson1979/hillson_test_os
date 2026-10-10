@@ -499,6 +499,52 @@ static uint32_t xhci_event_ready_count(volatile struct xhci_dev_t *xhci)
     return count;
 }
 
+static uint32_t xhci_transfer_requested_length(struct usb_transfer_t *transfer)
+{
+    volatile struct usb_transaction_t *tr;
+    uint32_t total = 0;
+    if (!transfer) return 0;
+    for (tr = transfer->trans_head; tr; tr = tr->next) {
+        if (0xFFFFFFFFU - total < tr->len)
+            return 0xFFFFFFFFU;
+        total += tr->len;
+    }
+    return total;
+}
+
+static void xhci_drain_events(volatile struct xhci_dev_t *xhci)
+{
+    struct xhci_trb_t event;
+    while (xhci_get_event(xhci, &event) > 0) {
+        uint8_t type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
+        if (type == TRB_TYPE_CMD_COMP_EVENT) {
+            xhci->cmd_event_trb_phys = event.param & ~0xFULL;
+            xhci->cmd_event_cc = (uint8_t)(event.status >> 24);
+            xhci->cmd_event_slot = (uint8_t)((event.control >> 24) & 0xFF);
+            xhci->cmd_event_pending = 1;
+            continue;
+        }
+        if (type == TRB_TYPE_TRANSFER_EVENT) {
+            uint8_t slot = (uint8_t)((event.control >> 24) & 0xFF);
+            uint8_t ep = (uint8_t)((event.control >> 16) & 0x1F);
+            struct usb_transfer_t *transfer = NULL;
+            if (slot && slot <= xhci->max_slots && xhci->slots[slot].transfers)
+                transfer = xhci->slots[slot].transfers[ep];
+            if (transfer && transfer->dev &&
+                slot == transfer->dev->num &&
+                ep == (uint8_t)xhci_transfer_ep_id(transfer)) {
+                uint32_t requested = xhci_transfer_requested_length(transfer);
+                uint32_t residual = event.status & 0x00FFFFFFU;
+                uint32_t actual = residual <= requested ? requested - residual : 0;
+                transfer->event_pending = 1;
+                transfer->event_cc = (uint8_t)(event.status >> 24);
+                transfer->event_trb_phys = event.param & ~0xFULL;
+                transfer->actual_length = actual > 0xFFFFU ? 0xFFFFU : (uint16_t)actual;
+                transfer->trb_released = 1;
+            }
+        }
+    }
+}
 /* Wait for command completion, return completion code */
 static int xhci_wait_cmd(volatile struct xhci_dev_t *xhci, int timeout_ms)
 {
