@@ -4,7 +4,7 @@
  *
  * Implements the usb_ops_t vtable for the XHCI controller.
  * Based on eXtensible Host Controller Interface spec rev 1.2.
- * 32-bit only �?upper 32 bits of 64-bit registers are always 0.
+ * 32-bit only 閿?upper 32 bits of 64-bit registers are always 0.
  */
 #include <kernel/errno.h>
 #include <kernel/pciio.h>
@@ -408,7 +408,7 @@ static int xhci_ring_init(struct xhci_ring_t *ring, uint32_t num_trbs)
 
     /* Pre-fill permanent Link TRB at ring[size-1].
      * TRB_TC is CRITICAL: tells HC to toggle its internal cycle state
-     * when following the link. Without it, HC cycle �?our ccs �?HC skips
+     * when following the link. Without it, HC cycle 閿?our ccs 閿?HC skips
      * all TRBs after the first wrap. */
     {
         struct xhci_trb_t *link = &ring->ring[num_trbs - 1];
@@ -422,7 +422,7 @@ static int xhci_ring_init(struct xhci_ring_t *ring, uint32_t num_trbs)
     return 0;
 }
 /* Enqueue a TRB onto a producer ring. Returns index, or -1 if full.
- * The last slot (ring[size-1]) is a permanent Link TRB �?never overwrite it. */
+ * The last slot (ring[size-1]) is a permanent Link TRB 閿?never overwrite it. */
 static int ring_enqueue(struct xhci_ring_t *ring, struct xhci_trb_t *trb)
 {
     /* If we're at the Link TRB slot, wrap to beginning and toggle cycle */
@@ -732,7 +732,7 @@ static int xhci_reset_bak(volatile struct xhci_dev_t *xhci)
     return 0;
 }
 
-/* 统一�?64 �?MMIO 读取函数 */
+/* 缂佺喍绔撮敓?64 閿?MMIO 鐠囪褰囬崙鑺ユ殶 */
 static inline uint64_t mmio_read64_op(volatile struct xhci_dev_t *xhci, uint32_t relative_op_offset) {
     uintptr_t addr = xhci->op_base + relative_op_offset;
     
@@ -744,17 +744,17 @@ static inline uint64_t mmio_read64_op(volatile struct xhci_dev_t *xhci, uint32_t
 
 static int xhci_reset(volatile struct xhci_dev_t *xhci)
 {
-    uint32_t dword;  // 移除 volatile
-    int timeout;     // 移除 volatile
+    uint32_t dword;  // 缁夊娅?volatile
+    int timeout;     // 缁夊娅?volatile
 
-    /* 确保 R/S (Run/Stop) �?0 */
+    /* 绾喕绻?R/S (Run/Stop) 閿?0 */
     uint32_t cmd = mmio_read32(xhci->op_base + XHCI_OP_USBCMD);
     if (cmd & USBCMD_RS) {
         cmd &= ~USBCMD_RS;
         mmio_write32(xhci->op_base + XHCI_OP_USBCMD, cmd);
         xhci_mmio_barrier();
 
-        /* 等待 USBSTS_HCH (Host Controller Halted) 变为 1 */
+        /* 缁涘绶?USBSTS_HCH (Host Controller Halted) 閸欐ü璐?1 */
         timeout = 10000;
         while (!(mmio_read32(xhci->op_base + XHCI_OP_USBSTS) & USBSTS_HCH) && --timeout) {
             tick_delay(1000);
@@ -805,29 +805,29 @@ static int xhci_reset(volatile struct xhci_dev_t *xhci)
     xhci_status_regs("xhci: ", "after Clear RW1C bits ,USBCMD_HCRST=%x USBSTS_CNR1=%x USBSTS_HCH=%x",
                     mmio_read32(xhci->op_base + XHCI_OP_USBCMD),(mmio_read32(xhci->op_base + XHCI_OP_USBSTS)& USBSTS_CNR), (mmio_read32(xhci->op_base + XHCI_OP_USBSTS)& USBSTS_HCH));
 
-    // /* 1. 确保控制器停�?*/
+    // /* 1. 绾喕绻氶幒褍鍩楅崳銊ヤ粻閿?*/
     // dword = mmio_read32(xhci->op_base + XHCI_OP_USBCMD);
     // dword &= ~USBCMD_RS;
     // mmio_write32(xhci->op_base + XHCI_OP_USBCMD, dword);
     
-    // timeout = 1000; // 假设 tick_delay(1) �?1ms，给�?1 秒时�?
+    // timeout = 1000; // 閸嬪洩顔?tick_delay(1) 閿?1ms閿涘瞼绮伴敓?1 缁夋帗妞傞敓?
     // while (timeout--) {
     //     dword = mmio_read32(xhci->op_base + XHCI_OP_USBSTS);
-    //     // 如果读取�?0xFFFFFFFF，说�?PCIe 设备已经掉线/故障
+    //     // 婵″倹鐏夌拠璇插絿閿?0xFFFFFFFF閿涘矁顕╅敓?PCIe 鐠佹儳顦鑼病閹哄鍤?閺佸懘娈?
     //     if (dword == 0xFFFFFFFF) {
     //         kernel_usb_status_line("xhci",": Fatal error, hardware disconnected (0xFFFFFFFF)\n");
     //         return -ENODEV;
     //     }
     //     if (dword & USBSTS_HCH) break;
-    //     tick_delay(1000); // 等待 1ms
+    //     tick_delay(1000); // 缁涘绶?1ms
     // }
     // if (timeout <= 0) return -ETIMEDOUT;
 
-    // /* 2. 复位控制�?*/
+    // /* 2. 婢跺秳缍呴幒褍鍩楅敓?*/
     // mmio_write32(xhci->op_base + XHCI_OP_USBCMD, USBCMD_HCRST);
     // xhci_mmio_barrier();
     
-    // // 复位最长可能需�?1 秒，不要设得太短
+    // // 婢跺秳缍呴張鈧梹鍨讲閼充粙娓堕敓?1 缁夋帪绱濇稉宥堫洣鐠佹儳绶辨径顏嗙叚
     // timeout = 1000; 
     // while (timeout--) {
     //     dword = mmio_read32(xhci->op_base + XHCI_OP_USBCMD);
@@ -836,7 +836,7 @@ static int xhci_reset(volatile struct xhci_dev_t *xhci)
     // }
     // if (timeout <= 0) return -ETIMEDOUT;
 
-    // /* 3. 等待 CNR (Controller Not Ready) 清零 */
+    // /* 3. 缁涘绶?CNR (Controller Not Ready) 濞撳懘娴?*/
     // timeout = 1000000;
     // while (timeout--) {
     //     dword = mmio_read32(xhci->op_base + XHCI_OP_USBSTS);
@@ -845,7 +845,7 @@ static int xhci_reset(volatile struct xhci_dev_t *xhci)
     // }
     // if (timeout <= 0) return -ETIMEDOUT;
 
-    // /* 4. 清理 RW1C 状态位 (这一步代码本身写得很完美) */
+    // /* 4. 濞撳懐鎮?RW1C 閻樿埖鈧椒缍?(鏉╂瑤绔村銉ゅ敩閻焦婀伴煬顐㈠晸瀵版绶㈢€瑰瞼绶? */
     // mmio_write32(xhci->op_base + XHCI_OP_USBSTS,
     //              USBSTS_HSE | USBSTS_EINT | USBSTS_PCD);
     // xhci_mmio_barrier();
@@ -877,14 +877,14 @@ static int xhci_reset(volatile struct xhci_dev_t *xhci)
     return 0;
 }
 
-/* 统一�?64 �?MMIO 写入函数 */
+/* 缂佺喍绔撮敓?64 閿?MMIO 閸愭瑥鍙嗛崙鑺ユ殶 */
 static inline void mmio_write64_op(volatile struct xhci_dev_t *xhci, uint32_t relative_op_offset, uint64_t val) {
     uintptr_t addr = xhci->op_base + relative_op_offset;
     
     uint32_t lo = (uint32_t)(val & 0xFFFFFFFFULL);
     uint32_t hi = (uint32_t)(val >> 32);
 
-    /* Intel xHCI 必须先写 Low 32位，后写 High 32�?*/
+    /* Intel xHCI 韫囧懘銆忛崗鍫濆晸 Low 32娴ｅ稄绱濋崥搴″晸 High 32閿?*/
     mmio_write32(addr, lo);
     xhci_mmio_barrier();
     mmio_write32(addr + 4, hi);
@@ -976,7 +976,7 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
     xhci->port_count  = HCSPARAMS1_MAXPORTS(hcsparams1);
     /* USB2/USB3 port split is in xECP, not HCSPARAMS1.
      * HCSPARAMS1[7:0] is MaxSlots, not USB2 ports!
-     * For now, treat all ports as capable �?use PORTSC speed to determine type. */
+     * For now, treat all ports as capable 閿?use PORTSC speed to determine type. */
     xhci_parse_supported_protocols(xhci, hccparams1);
     if (!xhci->usb2_ports && !xhci->usb3_ports) {
         xhci->usb2_port_start = 0;
@@ -1020,7 +1020,7 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
                      HCCPARAMS1_CSZ(hccparams1), xhci->context_size,
                      hccparams1);
 
-    /* Warn if 64-bit addressing �?we only support 32-bit */
+    /* Warn if 64-bit addressing 閿?we only support 32-bit */
     if (HCCPARAMS1_AC64(hccparams1))
         usb_printk("%s: HC supports 64-bit, using 32-bit mode\n", "xhci");
 
@@ -1058,7 +1058,7 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
     /* Allocate DCBAA (max_slots + 1 entries of 8 bytes, 64-byte aligned) */
     /* 1. Allocate DCBAA (max_slots + 1 entries of 8 bytes, 64-byte aligned) */
     {
-        // 修正：使�?dma_addr_t 防止 64 位地址截断
+        // 娣囶喗顒滈敍姘▏閿?dma_addr_t 闂冨弶顒?64 娴ｅ秴婀撮崸鈧幋顏呮焽
         uint32_t dcbaa_phys32;
         uint64_t dcbaa_phys;
         uint32_t dcbaa_size = (xhci->max_slots + 1) * sizeof(uint64_t);
@@ -1069,22 +1069,22 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
             goto err; 
         }
 
-        // 检�?64 字节对齐
+        // 濡偓閿?64 鐎涙濡€靛綊缍?
         dcbaa_phys = (uint64_t)dcbaa_phys32;
         if (dcbaa_phys & 0x3F) {
             kernel_usb_status_line("xhci"," error, DCBAA address is not 64-byte aligned!\n");
-            // 进行释放或对齐处�?..
+            // 鏉╂稖顢戦柌濠冩杹閹存牕顕鎰槱閿?..
         }
 
-        // DCBAA 必须全零初始�?(Slot 0 �?Scratchpad，Slot 1..N �?NULL)
+        // DCBAA 韫囧懘銆忛崗銊╂祩閸掓繂顫愰敓?(Slot 0 閿?Scratchpad閿涘lot 1..N 閿?NULL)
         A_memset(dcbaa_virt, 0, dcbaa_size);
 
         xhci->dcbaa = (uint64_t *)dcbaa_virt;
         xhci->dcbaa_phys = (uint64_t)dcbaa_phys;
 
-        /* 注意：不要在这里循环为每�?Slot 预分�?dev_ctx 并填�?xhci->dcbaa[i]�?
-         * 正确的做法是：当�?USB 设备插入，调�?Enable Slot 拿到 slot_id 后，
-         * 再分�?dev_ctx 并写�?xhci->dcbaa[slot_id]�?
+        /* 濞夈劍鍓伴敍姘瑝鐟曚礁婀潻娆撳櫡瀵邦亞骞嗘稉鐑樼槨閿?Slot 妫板嫬鍨庨敓?dev_ctx 楠炶泛锝為敓?xhci->dcbaa[i]閿?
+         * 濮濓絿鈥橀惃鍕粵濞夋洘妲搁敍姘秼閿?USB 鐠佹儳顦幓鎺戝弳閿涘矁鐨熼敓?Enable Slot 閹峰灝鍩?slot_id 閸氬函绱?
+         * 閸愬秴鍨庨敓?dev_ctx 楠炶泛鍟撻敓?xhci->dcbaa[slot_id]閿?
          */
     }
 
@@ -1096,20 +1096,20 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
     #define HCSPARAMS2_MAXSCRPBUF_HI(p)  (((p) >> 21) & 0x1F)
     #define HCSPARAMS2_MAXSCRPBUF(p)     ((HCSPARAMS2_MAXSCRPBUF_HI(p) << 5) | HCSPARAMS2_MAXSCRPBUF_LO(p))
     {
-        /* 1. 确保宏提取出�?sp_count 是正确的 */
+        /* 1. 绾喕绻氱€瑰繑褰侀崣鏍у毉閿?sp_count 閺勵垱顒滅涵顔炬畱 */
         uint32_t sp_count = HCSPARAMS2_MAXSCRPBUF(hcsparams2);
         xhci->scratchpad_count = sp_count;
         
         if (sp_count > 0) {
             uint32_t sp_arr_size = sp_count * sizeof(uint64_t);
-            uint64_t sp_arr_phys; // 修正类型，防�?32 位截�?
+            uint64_t sp_arr_phys; // 娣囶喗顒滅猾璇茬€烽敍宀勬Щ閿?32 娴ｅ秵鍩呴敓?
             
-            /* 分配 Array 物理指针�?*/
+            /* 閸掑棝鍘?Array 閻椻晝鎮婇幐鍥嫛閿?*/
             sp_arr_phys = 0;
             void *sp_arr_virt = dma_alloc_coherent(sp_arr_size, (uint32_t *)&sp_arr_phys);
             if (!sp_arr_virt) { res = -ENOMEM; goto err; }
             
-            // 校验：Scratchpad Array 地址必须 64 字节对齐
+            // 閺嶏繝鐛欓敍姝媍ratchpad Array 閸︽澘娼冭箛鍛淬€?64 鐎涙濡€靛綊缍?
             if (sp_arr_phys & 0x3F) {
                 usb_printk("xhci: FATAL - Scratchpad array not 64-byte aligned! phys=%lx\n", (unsigned long)sp_arr_phys);
             }
@@ -1118,14 +1118,14 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
             xhci->sp_array = (uint64_t *)sp_arr_virt;
             xhci->sp_array_phys = sp_arr_phys;
 
-            /* 2. 为每一�?Scratchpad 分配实际 Page */
+            /* 2. 娑撶儤鐦℃稉鈧敓?Scratchpad 閸掑棝鍘ょ€圭偤妾?Page */
             for (i = 0; i < (int)sp_count; i++) {
                 uint64_t sp_phys;
                 sp_phys = 0;
                 void *sp_virt = dma_alloc_coherent(xhci->page_size, (uint32_t *)&sp_phys);
                 if (!sp_virt) { res = -ENOMEM; goto err; }
 
-                // 校验：Page 地址必须�?xhci->page_size 对齐
+                // 閺嶏繝鐛欓敍姝卆ge 閸︽澘娼冭箛鍛淬€忛敓?xhci->page_size 鐎靛綊缍?
                 if (sp_phys & (xhci->page_size - 1)) {
                     usb_printk("xhci: FATAL - Scratchpad buffer not page aligned!\n");
                 }
@@ -1133,11 +1133,11 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
                 xhci->sp_array[i] = sp_phys;
             }
             
-            /* 3. �?Scratchpad 数组基地址填入 DCBAA[0] */
+            /* 3. 閿?Scratchpad 閺佹壆绮嶉崺鍝勬勾閸р偓婵夘偄鍙?DCBAA[0] */
             xhci->dcbaa[0] = xhci->sp_array_phys;
         }
 
-        //* 【核心修复】：分配完成后，强行清空 USBSTS 中被硬件触发�?PCD (0x10) 状态位�?/
+        //* 閵嗘劖鐗宠箛鍐ф叏婢跺秲鈧埊绱伴崚鍡涘帳鐎瑰本鍨氶崥搴礉瀵缚顢戝〒鍛敄 USBSTS 娑擃叀顫︾涵顑挎鐟欙箑褰傞敓?PCD (0x10) 閻樿埖鈧椒缍呴敓?/
         mmio_write32(xhci->op_base + XHCI_OP_USBSTS, USBSTS_PCD | USBSTS_EINT);
         xhci_mmio_barrier();
     }
@@ -1184,15 +1184,15 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
     {
         uint64_t crcr_base = xhci->cmd_ring.phys & ~0x3FULL;
         
-        /* Bit 0 �?RCS (Ring Cycle State) 初始设为 1 */
+        /* Bit 0 閿?RCS (Ring Cycle State) 閸掓繂顫愮拋鍙ヨ礋 1 */
         uint64_t crcr_want = crcr_base | XHCI_CRCR_RCS;
 
       
-        /* 等待控制器准备好 */
+        /* 缁涘绶熼幒褍鍩楅崳銊ュ櫙婢跺洤銈?*/
         uint32_t sts;
         uint32_t cmd;
 
-        /* 等待控制�?Not Ready 清零 */
+        /* 缁涘绶熼幒褍鍩楅敓?Not Ready 濞撳懘娴?*/
         kernel_usb_status_line("xhci", ":testing USBSTS_CNR.");
         int ready_timeout = 1000;
         do {
@@ -1258,7 +1258,7 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
         /* Program while halted: low dword, barrier, high dword, barrier. */
         uint64_t crcr_got = xhci_program_crcr(xhci, crcr_want);
 
-        /* 读回 CRCR 进行校验 */
+        /* 鐠囪娲?CRCR 鏉╂稖顢戦弽锟犵崣 */
         // xhci_status_regs("xhci", ": CRCR want=0x%x got=0x%x sts=0x%x\n",
         //                  (uint32_t)crcr_want, (uint32_t)crcr_got,
         //                  mmio_read32(xhci->op_base + 0x04));
@@ -1293,13 +1293,13 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
     
     // /* Program CRCR (Command Ring Control Register) */
     // {
-    //     /* 1. 物理�?Intel芯片必备：写 CRCR 前清�?PCD/EINT 等挂起状�?*/
+    //     /* 1. 閻椻晝鎮婇敓?Intel閼侯垳澧栬箛鍛槵閿涙艾鍟?CRCR 閸撳秵绔婚敓?PCD/EINT 缁涘瀵曠挧椋庡Ц閿?*/
     //     mmio_write32(xhci->op_base + XHCI_OP_USBSTS, USBSTS_PCD | USBSTS_EINT | USBSTS_HSE);
     //     xhci_mmio_barrier();
 
     //     uint64_t crcr_base = xhci->cmd_ring.phys & ~0x3FULL;
         
-    //     /* 2. 修正：必须是 Bit 0 (RCS=1)，而不�?Bit 3 (CRR)�?*/
+    //     /* 2. 娣囶喗顒滈敍姘箑妞ょ粯妲?Bit 0 (RCS=1)閿涘矁鈧奔绗夐敓?Bit 3 (CRR)閿?*/
     //     uint64_t crcr = crcr_base | 1ULL; 
     //     uint64_t crcr_readback;
 
@@ -1309,7 +1309,7 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
     //                (unsigned long)crcr, (unsigned long)crcr_readback,
     //                mmio_read32(xhci->op_base + XHCI_OP_USBSTS));
 
-    //     // 校验时掩码掉�?6 �?(因为读回的低 6 位包含硬件状态标�?
+    //     // 閺嶏繝鐛欓弮鑸靛负閻焦甯€閿?6 閿?(閸ョ姳璐熺拠璇叉礀閻ㄥ嫪缍?6 娴ｅ秴瀵橀崥顐も€栨禒鍓佸Ц閹焦鐖ｉ敓?
     //     if ((crcr_readback & ~0x3FULL) != crcr_base) {
     //         kernel_usb_status_line("xhci",": CRCR did not latch! Refusing to start RS.\n");
     //         res = -EIO;
@@ -1344,7 +1344,7 @@ static int xhci_start(volatile struct xhci_dev_t *xhci)
         iman &= ~IMAN_IE;  /* Disable interrupt */
         mmio_write32(xhci->mmio_base + XHCI_RT_IMAN(rt_off), iman);
 
-        /* IMOD: set to 0 (no interrupt moderation �?we poll anyway) */
+        /* IMOD: set to 0 (no interrupt moderation 閿?we poll anyway) */
         mmio_write32(xhci->mmio_base + XHCI_RT_IMOD(rt_off), 0);
     }
 
@@ -1533,7 +1533,7 @@ static int xhci_port_is_usb3(volatile struct xhci_dev_t *xhci, uint32_t port)
 
 /* Determine port speed from PORTSC [13:10].
  * XHCI speed IDs: 1=Full, 2=Low, 3=High, 4=SuperSpeed.
- * Trust the PORTSC speed field �?the HC knows the actual link speed. */
+ * Trust the PORTSC speed field 閿?the HC knows the actual link speed. */
 static uint8_t xhci_port_speed(uint32_t portsc, int is_usb3)
 {
     UNUSED(is_usb3);
@@ -1565,7 +1565,7 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
 
     /* Power on port if needed.
      * CRITICAL: always mask out PED in writes.  PED is write-1-to-disable
-     * in xHCI �?writing 1 disables the port instead of enabling it. */
+     * in xHCI 閿?writing 1 disables the port instead of enabling it. */
     if (!(portsc & XHCI_PORT_PP)) {
         portsc = (portsc & ~XHCI_PORT_PED) | XHCI_PORT_PP;
         mmio_write32(reg, portsc);
@@ -1604,14 +1604,14 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
             xhci_status_regs("xhci port connected", "port=%x portsc=%x speed=%x",
                              port, portsc, speed);
             kernel_usb_status_line("port", "enabled, enumerating device");
-            /* Clear CSC �?mask PED to avoid disabling the port */
+            /* Clear CSC 閿?mask PED to avoid disabling the port */
             mmio_write32(reg, (portsc & ~XHCI_PORT_PED) | XHCI_PORT_CSC);
 
             /* Setup device using XHCI flow:
-             * 1. Enable slot �?get slot_id
+             * 1. Enable slot 閿?get slot_id
              * 2. Set dev->num = slot_id (usb_setup_device preserves for XHCI)
-             * 3. Address device �?assigns USB address
-             * 4. usb_setup_device �?enumerates with control transfers */
+             * 3. Address device 閿?assigns USB address
+             * 4. usb_setup_device 閿?enumerates with control transfers */
             struct usb_dev_t *usb;
             int slot_id;
 
@@ -1629,7 +1629,7 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
 
             /* DMA coherency test: write magic pattern to ALL output contexts.
              * After Enable Slot, HC should overwrite the assigned slot's context.
-             * If magic persists �?HC didn't write. If zeros �?cache coherency issue. */
+             * If magic persists 閿?HC didn't write. If zeros 閿?cache coherency issue. */
             /* Enable slot on the HC */
             slot_id = xhci_enable_slot(xhci);
             if (slot_id < 0) {
@@ -1670,7 +1670,7 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
             printf("C: dcbaa[%d]=%x\n", slot_id,
                 (uint32_t)xhci->dcbaa[slot_id]);
 
-            /* Step 1: Address Device �?validate context, enable slot/EP0.
+            /* Step 1: Address Device 閿?validate context, enable slot/EP0.
              * BSR=0: full address assignment (BSR=1 is context-only test). */
             if (xhci_address_device(xhci, slot_id, port, speed, 0) < 0) {
                 usb_printk("%s: Address Device failed for slot %d\n", "xhci", slot_id);
@@ -1684,8 +1684,8 @@ static void xhci_reset_port(volatile struct xhci_dev_t *xhci, uint32_t port)
 
             /* Step 2: Enumerate (GetDescriptor at address 0 through TRB ring).
              * usb_setup_device will:
-             *   a) Read 8-byte device descriptor at addr 0 �?learn real MPS
-             *   b) Call usb_set_device_addr (SET_ADDRESS) �?for XHCI this
+             *   a) Read 8-byte device descriptor at addr 0 閿?learn real MPS
+             *   b) Call usb_set_device_addr (SET_ADDRESS) 閿?for XHCI this
              *      is intercepted: we do Address Device BSR=0 instead.
              *   c) Read full descriptor + config at new address */
             if (usb_setup_device(usb, slot_id) < 0) {
@@ -1757,13 +1757,13 @@ static void xhci_enable_ports(volatile struct xhci_dev_t *xhci)
         xhci_status_regs("port connected", "port=%x portsc=%x speedid=%x",
                          i, portsc, speed_id);
 
-        /* Power on port �?mask PED to avoid disabling */
+        /* Power on port 閿?mask PED to avoid disabling */
         if (!(portsc & XHCI_PORT_PP)) {
             mmio_write32(reg, (portsc & ~XHCI_PORT_PED) | XHCI_PORT_PP);
             tick_delay(10000);
         }
 
-        /* Clear CSC (write-1-to-clear) �?mask PED */
+        /* Clear CSC (write-1-to-clear) 閿?mask PED */
         if (portsc & XHCI_PORT_CSC) {
             mmio_write32(reg, (portsc & ~XHCI_PORT_PED) | XHCI_PORT_CSC);
         }
@@ -1801,8 +1801,8 @@ static void xhci_enable_ports(volatile struct xhci_dev_t *xhci)
 
 /* Returns a device context pointer.
  * xHCI spec: each context is 32 bytes, packed contiguously.
- * Input Context: InputCtrl (32B) + Slot (32B) + EP0..EP31 (32 �?32B)
- * = 34 �?32 = 1088 bytes. Allocate with 64-byte alignment for base. */
+ * Input Context: InputCtrl (32B) + Slot (32B) + EP0..EP31 (32 閿?32B)
+ * = 34 閿?32 = 1088 bytes. Allocate with 64-byte alignment for base. */
 static void *xhci_alloc_dev_ctx(volatile struct xhci_dev_t *xhci, uint64_t *phys_out)
 {
     uint32_t phys;
@@ -1886,7 +1886,7 @@ static int xhci_stop_and_rebase_endpoint(volatile struct xhci_dev_t *xhci,
     return cc == CC_SUCCESS ? 0 : -EIO;
 }
 
-/* Enable Slot �?returns slot_id (positive) or negative error */
+/* Enable Slot 閿?returns slot_id (positive) or negative error */
 static int xhci_enable_slot(volatile struct xhci_dev_t *xhci)
 {
     struct xhci_trb_t cmd;
@@ -1949,7 +1949,7 @@ void dump_trb_raw(struct xhci_trb_t *trb)
     printf(" DW3=%08x\n", p[3]);
 }
 
-/* Address Device �?assign USB address, set slot context + EP0 context
+/* Address Device 閿?assign USB address, set slot context + EP0 context
  * dev_ctx + DCBAA[slot_id] are pre-allocated in xhci_start. */
 static int xhci_address_device(volatile struct xhci_dev_t *xhci,
                                int slot_id, uint8_t port, uint8_t speed,
@@ -1971,7 +1971,7 @@ static int xhci_address_device(volatile struct xhci_dev_t *xhci,
     }
 
     /* Flat dword array: each context is 32 bytes = 8 dwords.
-     * Input Context layout (xHCI spec rev 1.2 �?.2.5.1):
+     * Input Context layout (xHCI spec rev 1.2 閿?.2.5.1):
      *   ctx[0..7]   = Input Control Context (offset 0x00)
      *   ctx[8..15]  = Slot Context           (offset 0x20)
      *   ctx[16..23] = EP0 Context            (offset 0x40)
@@ -2015,7 +2015,7 @@ static int xhci_address_device(volatile struct xhci_dev_t *xhci,
     /* ---- Slot Context (ctx[8..15]) ----
      * dw0: Route String[19:0]=0 | Speed[23:20] | Context Entries[31:27]
      * dw1: Root Hub Port Number[15:8]
-     * dw2: TT/Hub �?0 for root-hub devices
+     * dw2: TT/Hub 閿?0 for root-hub devices
      * dw3: Interrupter Target[21:10]=0
      */
     slot_ctx[0] = (1 << 27) | (speed_code << 20);
@@ -2062,7 +2062,7 @@ static int xhci_address_device(volatile struct xhci_dev_t *xhci,
         // ctx[19] = 0;  /* 32-bit system: TR dequeue hi = 0 */
 
         uint64_t tr = xhci->slots[slot_id].ep_rings[1].phys;
-        tr &= ~0xF;   // 寮哄�?16 瀛楄妭瀵归�?
+        tr &= ~0xF;   // 鐎殿喖鎼敓?16 閻庢稒顨夋俊顓犫偓闈涚秺閿?
         tr |= 1;      // DCS = 1
 
         ep0_ctx[2] = (uint32_t)(tr & 0xFFFFFFFF);
@@ -2076,7 +2076,7 @@ static int xhci_address_device(volatile struct xhci_dev_t *xhci,
     for (int i = 0; i < 24; i++)
         printf("ctx[%02d] = %08x\n", i, ctx[i]);
 
-    /* Prepare Address Device command (BSR=0 �?full address assignment) */
+    /* Prepare Address Device command (BSR=0 閿?full address assignment) */
     A_memset(&cmd, 0, sizeof(cmd));
     cmd.param  = xhci->slots[slot_id].input_ctx_phys;
     cmd.control = TRB_TYPE(TRB_TYPE_ADDRESS_DEVICE) |
@@ -2258,7 +2258,7 @@ static int xhci_setup_transaction(struct usb_transaction_t *transaction)
     }
 
     /* Build Setup Stage TRB with IDT=1 (immediate data).
-     * Per xHCI spec �?.6.10.1, the 8-byte setup packet is embedded
+     * Per xHCI spec 閿?.6.10.1, the 8-byte setup packet is embedded
      * directly in the TRB Parameter field, NOT in a separate buffer. */
     struct xhci_trb_t setup_trb;
     struct usb_request_t req;
@@ -2273,7 +2273,7 @@ static int xhci_setup_transaction(struct usb_transaction_t *transaction)
 
     A_memset(&setup_trb, 0, sizeof(setup_trb));
     /* IDT=1: embed setup packet in param in USB wire order.
-     * req struct has hival/loval at swapped positions �?build manually. */
+     * req struct has hival/loval at swapped positions 閿?build manually. */
     {
         uint8_t *b = (uint8_t *)&setup_trb.param;
         b[0] = req.type;              /* bmRequestType */
@@ -2404,7 +2404,7 @@ static void xhci_in_transaction(struct usb_transaction_t *transaction)
         if (is_ctrl) {
             data_trb.control = TRB_TYPE(TRB_TYPE_STATUS_STAGE) | TRB_DIR_IN | TRB_IO;
         } else {
-            /* Interrupt/Bulk with no data �?nothing to do */
+            /* Interrupt/Bulk with no data 閿?nothing to do */
             return;
         }
     }
@@ -3639,7 +3639,7 @@ static void xhci_out_transaction(struct usb_transaction_t *transaction)
         if (is_ctrl) {
             out_trb.control = TRB_TYPE(TRB_TYPE_STATUS_STAGE) | TRB_IO;
         } else {
-            return;  /* Interrupt/Bulk zero-length �?nothing to do */
+            return;  /* Interrupt/Bulk zero-length 閿?nothing to do */
         }
     }
 
@@ -3653,10 +3653,10 @@ static void xhci_out_transaction(struct usb_transaction_t *transaction)
 }
 
 /* ================================================================
- * Configure Endpoint �?internal helpers
+ * Configure Endpoint 閿?internal helpers
  * ================================================================ */
 
-/* USB bEndpointAddress �?xHCI DCI */
+/* USB bEndpointAddress 閿?xHCI DCI */
 static inline int xhci_ep_addr_to_dci(uint8_t ep_addr)
 {
     int ep_num = ep_addr & 0x0F;
@@ -3850,7 +3850,7 @@ static void xhci_setup_transfer(struct usb_transfer_t *transfer)
                 ep_addr |= 0x80;
             usb_printk("xhci: SETUP_TRANSFER resetting ep=0x%02x (was state=%d)\n",
                 ep_addr, ep_state);
-            /* Reset ring 鈥斺�?HC already processed old TRBs, start fresh */
+            /* Reset ring 闁炽儲鏌￠敓?HC already processed old TRBs, start fresh */
             xhci_reset_endpoint_ring(xhci, slot_id, ep_id);
         }
     }
@@ -3868,11 +3868,12 @@ static void xhci_setup_transfer(struct usb_transfer_t *transfer)
 static void xhci_schedule_transfer(struct usb_transfer_t *transfer)
 {
     struct xhci_dev_t *xhci = (struct xhci_dev_t *)transfer->dev->priv;
+    transfer->trb_released = 0;
     int slot_id = transfer->dev->num;
 
     /* Check if SET_ADDRESS was already handled via Address Device command */
     if (transfer->trans_head && transfer->trans_head->data == (void *)0x1) {
-        return;  /* Already done �?no TRBs to queue */
+        return;  /* Already done 閿?no TRBs to queue */
     }
 
     /* Ring doorbell for the slot's EP0 (endpoint 1)
@@ -3880,7 +3881,7 @@ static void xhci_schedule_transfer(struct usb_transfer_t *transfer)
      * DB register value = slot_id | (endpoint_id << 0)?
      * Actually: DB target = endpoint_id (1 for EP0), DB stream = 0
      *
-     * Wait �?the doorbell format is:
+     * Wait 閿?the doorbell format is:
      *   DB[slot_id] = endpoint_id | (stream_id << 16)
      * For EP0, endpoint_id = 1, stream_id = 0
      */
@@ -3945,7 +3946,7 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
 {
     struct xhci_dev_t *xhci = (struct xhci_dev_t *)transfer->dev->priv;
 
-    /* SET_ADDRESS already handled via Address Device command �?instant success */
+    /* SET_ADDRESS already handled via Address Device command 閿?instant success */
     if (transfer->trans_head && transfer->trans_head->data == (void *)0x1) {
         transfer->success = 1;
         usb_printk("xhci: SET_ADDRESS already done via AddrDevice, success\n");
@@ -3966,31 +3967,6 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
     while (timeout--) {
         /* Keep HID interrupt pipes serviced while synchronous transfers wait. */
         usb_poll_interrupts();
-        /* The event ring is shared with already-registered HID transfers.
-         * Do not consume a foreign mouse event and then discard it while a
-         * synchronous MSC/control transfer is waiting.  Let the normal HID
-         * poller consume and re-arm its own event first. */
-        {
-            struct xhci_trb_t *pending =
-                &xhci->event_ring.ring[xhci->event_ring.dequeue];
-            if ((pending->control & 0x1) == xhci->event_ring.ccs) {
-                uint8_t pending_type =
-                    (pending->control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-                if (pending_type == TRB_TYPE_TRANSFER_EVENT) {
-                    uint8_t pending_slot = (pending->control >> 24) & 0xFF;
-                    uint8_t pending_ep = (pending->control >> 16) & 0x1F;
-                    if (pending_slot != (uint8_t)transfer->dev->num ||
-                        pending_ep != (uint8_t)my_ep) {
-                        uint32_t before = xhci->event_ring.dequeue;
-                        usb_poll_interrupts();
-                        if (xhci->event_ring.dequeue != before) {
-                            tick_delay(1);
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
         xhci_drain_events(xhci);
         if (transfer->event_pending) {
         A_memset(&event, 0, sizeof(event));
@@ -4010,7 +3986,7 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
                 uint32_t residual = event.status & 0x00FFFFFF;
                 (void)event_slot;
                 (void)residual;
-                /* Ignore events for other endpoints �?they belong to a
+                /* Ignore events for other endpoints 閿?they belong to a
                  * different (or leftover) transfer.  Do NOT return
                  * success/failure; just keep waiting.                    */
                 if (ep_id != (uint8_t)my_ep ||
@@ -4158,7 +4134,7 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
                 transfer->success = 0;
                 return;
             } else if (trb_type == TRB_TYPE_CMD_COMP_EVENT) {
-                /* Command completions during transfer �?ignore */
+                /* Command completions during transfer 閿?ignore */
             } else if (trb_type == TRB_TYPE_PORT_STATUS_EVENT) {
                 usb_printk("xhci: port status event during transfer\n");
             }
@@ -4170,17 +4146,14 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
                     (uint32_t)transfer->dev->num, (uint32_t)my_ep,
                     (uint32_t)(xhci->event_ring.phys +
                         xhci->event_ring.dequeue * sizeof(struct xhci_trb_t)));
-    /* A timed-out EP0 TD must not poison the next vendor-register request.
-     * Recover it here so the caller can retry within the same WiFi command. */
-    if (my_ep == 1) {
-        int reset_res = xhci_reset_endpoint_ring(
-            xhci, transfer->dev->num, 1);
-        if (reset_res < 0)
-            xhci_error_regs("xhci EP0 timeout recovery failed",
-                            "slot=%x res=%x state=%x",
-                            (uint32_t)transfer->dev->num,
-                            (uint32_t)reset_res, 0);
-    }
+    /* A timeout does not prove that the controller released the TD. */
+    transfer->trb_released = 0;
+    if (xhci_stop_and_rebase_endpoint(xhci, transfer->dev->num, my_ep) == 0)
+        transfer->trb_released = 1;
+    else
+        xhci_error_regs("xhci timeout endpoint recovery failed",
+                        "slot=%x ep=%x", (uint32_t)transfer->dev->num,
+                        (uint32_t)my_ep);
     transfer->success = 0;
 }
 
@@ -4232,37 +4205,7 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                 mmio_write32(xhci->db_base + (slot_id * 4), 1);
                 mmio_read32(xhci->db_base + (slot_id * 4));
 
-                /* Wait for EP0 Transfer Event �?minimal loop, no printf spam */
-                {
-                    volatile int to = 500000;
-                    while (to--) {
-                        struct xhci_trb_t *trb =
-                            &xhci->event_ring.ring[xhci->event_ring.dequeue];
-                        if ((trb->control & 0x1) != xhci->event_ring.ccs) {
-                            tick_delay(1);
-                            continue;
-                        }
-                        uint8_t typ = (trb->control >> 10) & 0x3F;
-                        uint8_t cc2 = (trb->status >> 24) & 0xFF;
-                        uint8_t ep2 = (trb->control >> 16) & 0x1F;
-                        /* Advance dequeue */
-                        xhci->event_ring.dequeue++;
-                        if (xhci->event_ring.dequeue >= xhci->event_ring.size)
-                            { xhci->event_ring.dequeue = 0; xhci->event_ring.ccs ^= 1; }
-                        uint64_t erdp = xhci->event_ring.phys +
-                            xhci->event_ring.dequeue * sizeof(struct xhci_trb_t);
-                        xhci_write64(xhci, XHCI_RT_ERDP_LO(xhci->rt_base - xhci->mmio_base), erdp | (1<<3));
-                        if (typ == 32 && ep2 == 1) {
-                            usb_printk("xhci: CLEAR_FEATURE done cc=%d\n", cc2);
-                            break;
-                        }
-                        /* else: other event (CmdComp etc.) �?consumed, ignore */
-                        tick_delay(1);
-                    }
-                }
-            }
-        }
-
+                xhci_drain_events(xhci);
         /* ---- Phase 2: re-arm after CLEAR_FEATURE (HC side) ---- */
         usb_printk("xhci: EP 0x%02x re-arm after CLEAR_FEATURE\n", ep_addr);
         struct xhci_ring_t *tr = &xhci->slots[slot_id].ep_rings[ep_val];
@@ -4298,70 +4241,6 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
 
     struct xhci_trb_t event;
 
-    /* The event ring is shared by every transfer on this controller, while
-     * usb_poll_interrupts() visits transfers one at a time. Do not consume a
-     * Transfer Event until the owning transfer is being polled; otherwise an
-     * earlier list entry can steal the mouse event from the EP3 transfer. */
-    {
-        struct xhci_trb_t *pending =
-            &xhci->event_ring.ring[xhci->event_ring.dequeue];
-        uint8_t cycle = pending->control & 0x1;
-
-        if (cycle == xhci->event_ring.ccs) {
-            uint8_t type =
-                (pending->control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-
-            if (type == TRB_TYPE_TRANSFER_EVENT) {
-                uint8_t event_slot = (pending->control >> 24) & 0xFF;
-                uint8_t event_ep = (pending->control >> 16) & 0x1F;
-                uint8_t transfer_ep = 1;
-                volatile struct usb_transaction_t *trans =
-                    transfer->trans_head;
-                static uint32_t runtime_event_lines;
-
-                if (transfer->endpoint && transfer->endpoint->addr != 0) {
-                    transfer_ep = transfer->endpoint->addr * 2;
-                    if (transfer->endpoint->direction == USB_ENDPOINT_IN)
-                        transfer_ep |= 1;
-                }
-
-                if ((((pending->status >> 24) & 0xFF) != 1 &&
-                     ((pending->status >> 24) & 0xFF) != 13) ||
-                    runtime_event_lines < 4) {
-                    xhci_status_regs("xhci runtime event",
-                                     "slot=%x ep=%x cc=%x",
-                                     event_slot, event_ep,
-                                     (pending->status >> 24) & 0xFF);
-                    runtime_event_lines++;
-                }
-
-                if (event_slot != (uint8_t)transfer->dev->num ||
-                    event_ep != transfer_ep ||
-                    (transfer->type == USB_TRANSFER_CTRL &&
-                     pending->param && trans && trans->hc_trb_phys &&
-                     (pending->param & ~0xFULL) !=
-                     ((uint64_t)trans->hc_trb_phys & ~0xFULL))) {
-                    return 0;
-                }
-            }
-        }
-    }
-
-    if (transfer->type == USB_TRANSFER_INTERRUPT) {
-        static uint32_t hid_wait_log;
-        struct xhci_trb_t *head =
-            &xhci->event_ring.ring[xhci->event_ring.dequeue];
-        if (hid_wait_log < 16 &&
-            (head->control & TRB_CYCLE) != xhci->event_ring.ccs) {
-            struct xhci_ring_t *hid_ring =
-                &xhci->slots[transfer->dev->num].ep_rings[3];
-            usb_printk("xhci: HID wait slot=%d evctrl=%x ccs=%d enq=%d deq=%d\n",
-                       transfer->dev->num, head->control,
-                       xhci->event_ring.ccs, hid_ring->enqueue,
-                       hid_ring->dequeue);
-            hid_wait_log++;
-        }
-    }
     xhci_drain_events(xhci);
     if (transfer->event_pending) {
     A_memset(&event, 0, sizeof(event));
@@ -4391,9 +4270,9 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
 
             if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET ||
                 cc == CC_STALL_ERROR || cc == CC_ENDPOINT_NOT_ENABLED) {
-                /* For interrupt transfers: copy DMA鈫抲ser buffer (on success),
+                /* For interrupt transfers: copy DMA闁愁偅濮磗er buffer (on success),
                  * then re-submit the TRB for the next poll interval.
-                 * CC_STALL_ERROR = device NAK'd or STALL'd �?re-submit anyway
+                 * CC_STALL_ERROR = device NAK'd or STALL'd 閿?re-submit anyway
                  * to keep the polling pipe alive. */
                 if (transfer->type == USB_TRANSFER_INTERRUPT &&
                     transfer->trans_head && transfer->endpoint) {
@@ -4470,7 +4349,7 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                      *   need_clear_halt: 0=normal, 1=need CLEAR_FEATURE,
                      *   2=need HC re-arm (set by deferred handler).
                      * We CANNOT call CLEAR_FEATURE synchronously from
-                     * here �?it would nest a full control transfer inside
+                     * here 閿?it would nest a full control transfer inside
                      * the event-poll context and overflow the 7 KB stack.
                      * Instead we set a flag and return; the actual
                      * CLEAR_FEATURE is done by usb_process_deferred_clears()
@@ -4688,7 +4567,7 @@ static void xhci_delete_transfer(struct usb_transfer_t *transfer)
 static void xhci_free_transaction_data(volatile struct usb_transaction_t *transaction)
 {
     /* Copy IN data from DMA buffer to user buffer ONLY on success.
-     * On STALL / error the DMA buffer may contain stale data �?
+     * On STALL / error the DMA buffer may contain stale data 閿?
      * copying it would pass garbage as valid payload. */
     struct usb_transfer_t *transfer = (struct usb_transfer_t *)transaction->transfer;
     if (transfer && transfer->success &&
@@ -4923,7 +4802,7 @@ void xhci_poll(void)
 
             /* Connect Status Change */
             if (portsc & XHCI_PORT_CSC) {
-                /* Clear CSC �?mask PED */
+                /* Clear CSC 閿?mask PED */
                 mmio_write32(reg, (portsc & ~XHCI_PORT_PED) | XHCI_PORT_CSC);
 
                 if (portsc & XHCI_PORT_CCS) {
@@ -4971,11 +4850,11 @@ int xhci_all_ports_enabled(void)
  * and rings the doorbell WITHOUT waiting for completion.
  *
  * This avoids the full synchronous control-transfer call chain
- * (usb_ctrl_set �?�?�?xhci_wait_transfer), which overflows the
+ * (usb_ctrl_set 閿?閿?閿?xhci_wait_transfer), which overflows the
  * 7 KB kernel stack when called from the polling path.
  *
  * The Transfer Event for this control transfer will be consumed
- * naturally by the next xhci_poll() �?xhci_poll_transfer cycle.
+ * naturally by the next xhci_poll() 閿?xhci_poll_transfer cycle.
  * ================================================================ */
 void xhci_clear_feature_halt_async(struct usb_dev_t *dev,
                                    struct usb_endpoint_t *ep)
@@ -4985,11 +4864,11 @@ void xhci_clear_feature_halt_async(struct usb_dev_t *dev,
     struct xhci_ring_t *ep0 = &xhci->slots[slot_id].ep_rings[1];
 
     if (!ep0->ring) {
-        usb_printk("xhci: CLEAR_FEATURE async �?no EP0 ring!\n");
+        usb_printk("xhci: CLEAR_FEATURE async 閿?no EP0 ring!\n");
         return;
     }
 
-    /* EP address with direction bit (IN �?bit 7 set) */
+    /* EP address with direction bit (IN 閿?bit 7 set) */
     uint16_t ep_addr = ep->addr;
     if (ep->direction == USB_ENDPOINT_IN)
         ep_addr |= 0x80;
@@ -5025,7 +4904,7 @@ void xhci_clear_feature_halt_async(struct usb_dev_t *dev,
     ring_enqueue(ep0, &setup);
     ring_enqueue(ep0, &status);
 
-    /* Ring EP0 doorbell �?HC will process immediately */
+    /* Ring EP0 doorbell 閿?HC will process immediately */
     mmio_write32(xhci->db_base + (slot_id * 4), 1);
     mmio_read32(xhci->db_base + (slot_id * 4));
 }
