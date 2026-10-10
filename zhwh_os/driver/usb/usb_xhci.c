@@ -1898,36 +1898,10 @@ static int xhci_enable_slot(volatile struct xhci_dev_t *xhci)
     if (xhci_post_cmd(xhci, &cmd) < 0)
         return -ENOMEM;
 
-    while (timeout--) {
-        if (xhci_get_event(xhci, &event) > 0) {
-            uint8_t trb_type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-            if (trb_type == TRB_TYPE_CMD_COMP_EVENT) {
-                uint64_t completed = event.param & ~0xFULL;
-                if (completed != (xhci_last_cmd_phys & ~0xFULL)) {
-                    usb_printk("xhci: Enable Slot stale completion ptr=%x expected=%x\n",
-                               (uint32_t)completed,
-                               (uint32_t)xhci_last_cmd_phys);
-                    continue;
-                }
-                uint8_t cc = (event.status >> 24) & 0xFF;
-                uint8_t sid = (event.control >> 24) & 0xFF;
-                xhci_last_completion_phys = completed;
-                xhci_last_completion_slot = sid;
-                if (cc == CC_SUCCESS && sid > 0) {
-                    xhci_status_regs("xhci Enable Slot", "cc=%x slot=%x CRCR=%x",
-                                     cc, sid,
-                                     mmio_read32(xhci->op_base + XHCI_OP_CRCR_LO));
-                    return (int)sid;
-                }
-                usb_printk("%s: Enable Slot failed, cc=%d\n", "xhci", cc);
-                xhci_status_regs("xhci Enable Slot failed", "cc=%x slot=%x CRCR=%x",
-                                 cc, sid,
-                                 mmio_read32(xhci->op_base + XHCI_OP_CRCR_LO));
-                return -EIO;
-            }
-        }
-        tick_delay(1);
-    }
+    int cc = xhci_wait_cmd(xhci, 1000);
+    if (cc == CC_SUCCESS && xhci_last_completion_slot > 0)
+        return (int)xhci_last_completion_slot;
+    usb_printk("%s: Enable Slot failed, cc=%d\n", "xhci", cc);
     usb_printk("%s: Enable Slot timeout\n", "xhci");
     xhci_status_regs("xhci Enable Slot timeout", "CRCR=%x sts=%x ERDP=%x",
                      mmio_read32(xhci->op_base + XHCI_OP_CRCR_LO),
@@ -4966,27 +4940,10 @@ void xhci_poll(void)
             }
         }
 
-        /* Drain Port Status Change events only (leave Transfer events
-         * for xhci_poll_transfer / xhci_wait_transfer to consume). */
-        {
-            struct xhci_trb_t event;
-            int peek = 0;
-            while (peek < 16) {
-                /* Non-destructive check: peek at next event without consuming */
-                struct xhci_trb_t *trb = &xhci->event_ring.ring[xhci->event_ring.dequeue];
-                uint8_t trb_cycle = trb->control & 0x1;
-                if (trb_cycle != xhci->event_ring.ccs) break;
-                uint8_t trb_type = (trb->control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-                if (trb_type != TRB_TYPE_PORT_STATUS_EVENT) {
-                    break;  /* Leave it for the proper handler */
-                }
-                /* Consume only port status events */
-                xhci_get_event(xhci, &event);
-                uint32_t port_id = (event.param >> 24) & 0xFF;
-                usb_printk("xhci: port %d status change event\n", port_id);
-                peek++;
-            }
-        }
+        /* Dispatch all pending events. Port changes are handled from
+         * PORTSC above; transfer and command events are latched for their
+         * respective consumers. */
+        xhci_drain_events(xhci);
 
         /* Poll interrupt transfers (replaces usb_task_func which
          * never runs because start_kernel_task is a stub). */
