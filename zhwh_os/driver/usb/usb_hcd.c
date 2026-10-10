@@ -295,10 +295,13 @@ int usb_init(void)
         xhci_poll();
     }
     if (!xhci_all_ports_enabled()) {
-        g_usb_init_state = -1;
-        usb_printk("usb: synchronous xHCI port scan timed out polls=%u\n",
-                   port_polls);
-        return -ETIMEDOUT;
+        /* Controller startup must not fail because a device is slow or was
+         * removed while its root-port state machine was running.  The normal
+         * xhci_poll() path continues enumeration after USB init returns. */
+        g_usb_init_state = 4;
+        usb_printk("usb: xHCI controller ready; port enumeration continues "
+                   "asynchronously after polls=%u\n", port_polls);
+        return 0;
     }
     g_usb_init_state = 4;
     usb_printk("usb: synchronous xHCI init complete controllers=%u polls=%u\n",
