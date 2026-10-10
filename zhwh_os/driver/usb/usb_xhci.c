@@ -576,6 +576,22 @@ static int xhci_wait_cmd(volatile struct xhci_dev_t *xhci, int timeout_ms)
 /* Post a command TRB to the Command Ring, ring doorbell.
  * ring_enqueue() handles Link TRB wrapping internally (toggle ccs on wrap).
  * Completion is polled separately by the caller. */
+/* Return one latched command completion, or 0 if none is ready. */
+static int xhci_take_cmd_event(volatile struct xhci_dev_t *xhci,
+                                uint8_t *cc, uint8_t *slot)
+{
+    xhci_drain_events(xhci);
+    if (!xhci->cmd_event_pending ||
+        xhci->cmd_event_trb_phys != (xhci_last_cmd_phys & ~0xFULL))
+        return 0;
+    *cc = xhci->cmd_event_cc;
+    *slot = xhci->cmd_event_slot;
+    xhci->cmd_event_pending = 0;
+    xhci_last_completion_phys = xhci->cmd_event_trb_phys;
+    xhci_last_completion_slot = *slot;
+    return 1;
+}
+
 static int xhci_post_cmd(volatile struct xhci_dev_t *xhci, struct xhci_trb_t *cmd)
 {
     int idx = ring_enqueue(&xhci->cmd_ring, cmd);
@@ -2966,12 +2982,8 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
     }
 
     case 6: { /* Consume at most one event while waiting for Enable Slot. */
-        struct xhci_trb_t event;
-        if (xhci_get_event(xhci, &event) > 0) {
-            uint8_t type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-            if (type == TRB_TYPE_CMD_COMP_EVENT) {
-                uint8_t cc = (event.status >> 24) & 0xFF;
-                uint8_t slot = (event.control >> 24) & 0xFF;
+        uint8_t cc, slot;
+        if (xhci_take_cmd_event(xhci, &cc, &slot)) {
                 if (cc != CC_SUCCESS || !slot || slot > xhci->max_slots) {
                     usb_printk("xhci: async Enable Slot failed cc=%d slot=%d\n",
                                cc, slot);
@@ -3006,7 +3018,6 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
                 xhci->init_port_phase = 7;
                 usb_printk("xhci: async slot %d enabled for port %d\n", slot, i);
                 return;
-            }
         }
         if (xhci->init_cmd_wait) {
             xhci->init_cmd_wait--;
@@ -3037,18 +3048,8 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
         return;
 
     case 8: { /* Consume at most one Address Device completion event. */
-        struct xhci_trb_t event;
-        if (xhci_get_event(xhci, &event) > 0) {
-            uint8_t type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-            if (type == TRB_TYPE_CMD_COMP_EVENT) {
-                uint64_t completed = event.param & ~0xFULL;
-                if (completed != (xhci_last_cmd_phys & ~0xFULL)) {
-                    usb_printk("xhci: async Address ignored cmd ptr=%x expect=%x\n",
-                               (uint32_t)completed,
-                               (uint32_t)xhci_last_cmd_phys);
-                    return;
-                }
-                uint8_t cc = (event.status >> 24) & 0xFF;
+        uint8_t cc, slot;
+        if (xhci_take_cmd_event(xhci, &cc, &slot)) {
                 if (cc != CC_SUCCESS) {
                     usb_printk("xhci: async Address Device failed cc=%d slot=%d\n",
                                cc, xhci->init_slot_id);
@@ -3072,7 +3073,6 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
                                  ((uint32_t *)xhci->slots[
                                      xhci->init_slot_id].dev_ctx)[3] >> 27);
                 return;
-            }
         }
         if (xhci->init_cmd_wait) {
             xhci->init_cmd_wait--;
