@@ -4841,6 +4841,8 @@ int xhci_all_ports_enabled(void)
     if (!xhci) return 0;
     while (xhci) {
         if (!(xhci->flags & XHCI_FLAG_PORTSENABLED)) return 0;
+        if (xhci->init_port_cursor < xhci->port_count) return 0;
+        if (xhci->init_port_phase != 0 || xhci->init_usb) return 0;
         xhci = xhci->next;
     }
     return 1;
