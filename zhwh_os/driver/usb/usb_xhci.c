@@ -530,6 +530,14 @@ static void xhci_drain_events(volatile struct xhci_dev_t *xhci)
             struct usb_transfer_t *transfer = NULL;
             if (slot && slot <= xhci->max_slots && xhci->slots[slot].transfers)
                 transfer = xhci->slots[slot].transfers[ep];
+            if (xhci->init_ctrl_trb_phys &&
+                (event.param & ~0xFULL) ==
+                ((uint64_t)xhci->init_ctrl_trb_phys & ~0xFULL)) {
+                xhci->init_event_pending = 1;
+                xhci->init_event_cc = (uint8_t)(event.status >> 24);
+                xhci->init_event_trb_phys = (uint32_t)(event.param & ~0xFULL);
+                continue;
+            }
             if (transfer && transfer->dev &&
                 slot == transfer->dev->num &&
                 ep == (uint8_t)xhci_transfer_ep_id(transfer)) {
@@ -549,26 +557,15 @@ static void xhci_drain_events(volatile struct xhci_dev_t *xhci)
 static int xhci_wait_cmd(volatile struct xhci_dev_t *xhci, int timeout_ms)
 {
     volatile int timeout = timeout_ms * 1000;  /* Convert to tick_delay units */
-    struct xhci_trb_t event;
 
     while (timeout--) {
-        if (xhci_get_event(xhci, &event) > 0) {
-            uint8_t trb_type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-            if (trb_type == TRB_TYPE_CMD_COMP_EVENT) {
-                uint64_t completed = event.param & ~0xFULL;
-                if (completed != (xhci_last_cmd_phys & ~0xFULL)) {
-                    usb_printk("xhci: ignoring stale command completion ptr=%x expected=%x\n",
-                               (uint32_t)completed,
-                               (uint32_t)xhci_last_cmd_phys);
-                    continue;
-                }
-                xhci_last_completion_phys = completed;
-                xhci_last_completion_slot =
-                    (uint8_t)((event.control >> 24) & 0xFF);
-                uint8_t cc = (event.status >> 24) & 0xFF;
-                return cc;
-            }
-            /* Other events (transfer, port status) �?ignore for now */
+        xhci_drain_events(xhci);
+        if (xhci->cmd_event_pending &&
+            xhci->cmd_event_trb_phys == (xhci_last_cmd_phys & ~0xFULL)) {
+            xhci->cmd_event_pending = 0;
+            xhci_last_completion_phys = xhci->cmd_event_trb_phys;
+            xhci_last_completion_slot = xhci->cmd_event_slot;
+            return xhci->cmd_event_cc;
         }
         tick_delay(1);
     }
@@ -589,6 +586,7 @@ static int xhci_post_cmd(volatile struct xhci_dev_t *xhci, struct xhci_trb_t *cm
         (uint64_t)idx * sizeof(struct xhci_trb_t);
     xhci_last_cmd_control =
         xhci->cmd_ring.ring[idx].control;
+    xhci->cmd_event_pending = 0;
     xhci_mmio_barrier();
 
     /* Ring Command Doorbell (DB offset 0, target 0) */
@@ -2541,19 +2539,14 @@ static int xhci_submit_get_descriptor_async(volatile struct xhci_dev_t *xhci,
 /* Returns 1 complete, 0 pending, or a negative error. */
 static int xhci_poll_init_transfer(volatile struct xhci_dev_t *xhci)
 {
-    struct xhci_trb_t event;
-    if (xhci_get_event(xhci, &event) > 0) {
-        uint8_t type = (event.control >> TRB_TRB_TYPE_SHIFT) & 0x3F;
-        if (type == TRB_TYPE_TRANSFER_EVENT) {
-            uint8_t cc = (event.status >> 24) & 0xFF;
-            uint32_t ptr = (uint32_t)event.param;
-            if (ptr != xhci->init_ctrl_trb_phys)
-                return 0;
-            if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET)
-                return 1;
-            usb_printk("xhci: async descriptor transfer failed cc=%d\n", cc);
-            return -EIO;
-        }
+    xhci_drain_events(xhci);
+    if (xhci->init_event_pending) {
+        uint8_t cc = xhci->init_event_cc;
+        xhci->init_event_pending = 0;
+        if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET)
+            return 1;
+        usb_printk("xhci: async descriptor transfer failed cc=%d\n", cc);
+        return -EIO;
     }
     if (xhci->init_cmd_wait) {
         xhci->init_cmd_wait--;

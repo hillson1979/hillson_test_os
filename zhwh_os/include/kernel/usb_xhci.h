@@ -492,6 +492,9 @@ struct xhci_dev_t {
     struct usb_endpoint_t *init_endpoint;
     struct usb_interface_t *init_iface;
     struct usb_transfer_t *init_transfer;
+    uint8_t             init_event_pending;
+    uint8_t             init_event_cc;
+    uint32_t            init_event_trb_phys;
     uint8_t             cmd_event_pending;
     uint8_t             cmd_event_cc;
     uint8_t             cmd_event_slot;
