@@ -229,8 +229,7 @@ int wpa2_prf512(const uint8_t *key, size_t key_length,
     for (size_t i = 0; i < data_length; i++)
         input[label_length + 1 + i] = data[i];
     while (copied < 64) {
-        counter++;
-        input[label_length + 1 + data_length] = counter;
+        input[label_length + 1 + data_length] = counter++;
         wpa2_hmac_sha1(key, key_length, input, input_length, digest);
         for (size_t i = 0; i < sizeof(digest) && copied < 64; i++)
             output[copied++] = digest[i];
@@ -445,6 +444,8 @@ int wpa2_aes128_unwrap(const uint8_t key[16], const uint8_t *input,
     if (!key || !input || !output || input_length < 16 ||
         (input_length & 7u) || output_capacity < input_length - 8)
         return -EINVAL;
+    if (output_length)
+        *output_length = 0;
     n = input_length / 8 - 1;
     for (unsigned int i = 0; i < 8; i++)
         a[i] = input[i];
@@ -452,7 +453,7 @@ int wpa2_aes128_unwrap(const uint8_t key[16], const uint8_t *input,
         output[i] = input[8 + i];
     for (int j = 5; j >= 0; j--) {
         for (size_t i = n; i > 0; i--) {
-            uint32_t t = (uint32_t)(n * (unsigned int)j + i);
+            uint64_t t = (uint64_t)n * (unsigned int)j + i;
             for (unsigned int k = 0; k < 8; k++)
                 block[k] = a[k] ^ (uint8_t)(t >> (56 - k * 8));
             for (unsigned int k = 0; k < 8; k++)
@@ -465,8 +466,11 @@ int wpa2_aes128_unwrap(const uint8_t key[16], const uint8_t *input,
         }
     }
     for (unsigned int i = 0; i < 8; i++)
-        if (a[i] != 0xa6)
+        if (a[i] != 0xa6) {
+            for (size_t j = 0; j < n * 8; j++)
+                output[j] = 0;
             return -EIO;
+        }
     if (output_length)
         *output_length = n * 8;
     return 0;

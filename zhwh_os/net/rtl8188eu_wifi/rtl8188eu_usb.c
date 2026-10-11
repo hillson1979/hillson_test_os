@@ -191,6 +191,23 @@ static const char *const rtl8188eu_sample_ssids[] = {
 #define RTL8188EU_SECCFG_TX             (1u << 0)
 #define RTL8188EU_SECCFG_RX             (1u << 1)
 #define RTL8188EU_SECCFG_TX_USE_SW_SEC (1u << 5)
+#define RTL8188EU_EAPOL_KEY_INFO_ENCR   0x1000
+#define RTL8188EU_EAPOL_KEY_INFO_KEYID  0x0003
+#define RTL8188EU_DHCP_CLIENT_PORT      68
+#define RTL8188EU_DHCP_SERVER_PORT      67
+#define RTL8188EU_DHCP_MAGIC            0x63825363u
+#define RTL8188EU_DHCP_DISCOVER         1
+#define RTL8188EU_DHCP_OFFER            2
+#define RTL8188EU_DHCP_REQUEST          3
+#define RTL8188EU_DHCP_ACK              5
+#define RTL8188EU_DHCP_OPTION_PAD       0
+#define RTL8188EU_DHCP_OPTION_SUBNET    1
+#define RTL8188EU_DHCP_OPTION_ROUTER    3
+#define RTL8188EU_DHCP_OPTION_DNS       6
+#define RTL8188EU_DHCP_OPTION_MESSAGE   53
+#define RTL8188EU_DHCP_OPTION_SERVER    54
+#define RTL8188EU_DHCP_OPTION_REQUESTED 50
+#define RTL8188EU_DHCP_OPTION_END       255
 
 extern const uint8_t rtl8188eufw[];
 extern const uint32_t rtl8188eufw_size;
@@ -264,6 +281,7 @@ static uint8_t rtl8188eu_ptk[64];
 static int rtl8188eu_ptk_ready;
 static volatile unsigned int rtl8188eu_eapol_msg3_ready;
 static volatile unsigned int rtl8188eu_eapol_mic_valid;
+static uint32_t rtl8188eu_dhcp_xid;
 static uint16_t rtl8188eu_tx_sequence;
 static net_device_t rtl8188eu_netdev;
 /* Synchronous Wi-Fi commands pause the normal USB idle poll. Keep HID
@@ -381,6 +399,9 @@ static int rtl8188eu_read32(struct usb_dev_t *usb, uint16_t reg,
                             uint32_t *value);
 static int rtl8188eu_write32(struct usb_dev_t *usb, uint16_t reg,
                              uint32_t value);
+static int rtl8188eu_bulk_out(struct rtl8188eu_device *dev,
+                              struct usb_endpoint_t *endpoint,
+                              uint8_t *buffer, size_t length);
 
 static void rtl8188eu_put_le32(uint8_t *p, uint32_t value)
 {
@@ -651,6 +672,88 @@ static int rtl8188eu_write_cam_key(unsigned int entry, const uint8_t mac[6],
     return 0;
 }
 
+static int rtl8188eu_eapol_mic_matches(const uint8_t *eapol,
+                                        unsigned int total_length,
+                                        const uint8_t expected[16])
+{
+    uint8_t copy[4 + 95 + 256];
+    uint8_t digest[20];
+    unsigned int i;
+
+    if (!eapol || !expected || !rtl8188eu_ptk_ready ||
+        total_length < 4 + 95 || total_length > sizeof(copy))
+        return 0;
+    for (i = 0; i < total_length; i++)
+        copy[i] = eapol[i];
+    for (i = 0; i < 16; i++)
+        copy[4 + 77 + i] = 0;
+    wpa2_hmac_sha1(rtl8188eu_ptk, 16, copy, total_length, digest);
+    for (i = 0; i < 16; i++)
+        if (digest[i] != expected[i])
+            return 0;
+    return 1;
+}
+
+static int rtl8188eu_install_group_key(const uint8_t *key_data,
+                                       unsigned int key_data_length)
+{
+    uint8_t plain[256];
+    uint8_t broadcast[6];
+    size_t plain_length;
+    unsigned int pos;
+    unsigned int i;
+
+    if (!key_data || !key_data_length || key_data_length > sizeof(plain) ||
+        !rtl8188eu_ptk_ready)
+        return -EINVAL;
+    if (rtl8188eu_eapol_key_info & RTL8188EU_EAPOL_KEY_INFO_ENCR) {
+        if (wpa2_aes128_unwrap(rtl8188eu_ptk + 16, key_data,
+                               key_data_length, plain, sizeof(plain),
+                               &plain_length) < 0)
+            return -EIO;
+    } else {
+        plain_length = key_data_length;
+        for (i = 0; i < key_data_length; i++)
+            plain[i] = key_data[i];
+    }
+
+    for (i = 0; i < sizeof(broadcast); i++)
+        broadcast[i] = 0xff;
+    pos = 0;
+    while (pos + 2 <= plain_length) {
+        uint8_t element_id = plain[pos];
+        unsigned int element_length = plain[pos + 1];
+        const uint8_t *element;
+        unsigned int gtk_length;
+        unsigned int key_id;
+
+        pos += 2;
+        if (element_id == RTL8188EU_DHCP_OPTION_PAD)
+            continue;
+        if (element_id == RTL8188EU_DHCP_OPTION_END)
+            break;
+        if (pos + element_length > plain_length)
+            return -EIO;
+        element = plain + pos;
+        if (element_id == 0xdd && element_length >= 22 &&
+            element[0] == 0x00 && element[1] == 0x0f &&
+            element[2] == 0xac && element[3] == 0x01) {
+            key_id = (element[4] >> 2) & RTL8188EU_EAPOL_KEY_INFO_KEYID;
+            gtk_length = element_length - 6;
+            if (gtk_length < 16)
+                return -EIO;
+            if (rtl8188eu_write_cam_key(1 + key_id, broadcast, key_id,
+                                         element + 6) < 0)
+                return -EIO;
+            usb_printk("rtl8188eu: installed GTK keyid=%u length=%u\n",
+                       key_id, gtk_length);
+            return 0;
+        }
+        pos += element_length;
+    }
+    usb_printk("rtl8188eu: WPA2 M3 contained no GTK KDE\n");
+    return -ENOENT;
+}
 static size_t rtl8188eu_wrap_data_frame(uint8_t *packet, size_t capacity,
                                         const uint8_t *destination,
                                         uint16_t ethertype,
@@ -695,6 +798,363 @@ static size_t rtl8188eu_wrap_data_frame(uint8_t *packet, size_t capacity,
     return RTL8188EU_TX_DESC_SIZE + frame_length;
 }
 
+static int rtl8188eu_net_send(net_device_t *dev, uint8_t *data,
+                              uint32_t length)
+{
+    uint8_t packet[RTL8188EU_TX_DESC_SIZE + 24 + 8 + ETH_MTU];
+    uint16_t ethertype;
+    size_t packet_length;
+
+    if (!dev || dev != &rtl8188eu_netdev || !data ||
+        length < ETH_HDR_LEN || length > ETH_MAX_FRAME ||
+        !rtl8188eu_connection_binding_valid() ||
+        rtl8188eu.wifi_state != RTL8188EU_WIFI_CONNECTED)
+        return -ENODEV;
+    ethertype = ((uint16_t)data[12] << 8) | data[13];
+    packet_length = rtl8188eu_wrap_data_frame(
+        packet, sizeof(packet), data, ethertype,
+        data + ETH_HDR_LEN, length - ETH_HDR_LEN, 1);
+    if (!packet_length)
+        return -EINVAL;
+    return rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out,
+                              packet, packet_length);
+}
+
+static void rtl8188eu_deliver_data_frame(const uint8_t *frame,
+                                         unsigned int length)
+{
+    uint16_t frame_control;
+    unsigned int header_length;
+    unsigned int payload_length;
+    uint16_t ethertype;
+    uint8_t ethernet[ETH_MAX_FRAME];
+    unsigned int i;
+
+    if (!frame || length < 24)
+        return;
+    frame_control = rtl8188eu_get_le16(frame);
+    if ((frame_control & RTL8188EU_IEEE80211_FCTL_TYPE_MASK) !=
+        RTL8188EU_IEEE80211_FTYPE_DATA)
+        return;
+    if ((frame_control & 0x0100) || !(frame_control & 0x0200))
+        return;
+    if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid))
+        return;
+    header_length = 24;
+    if (((frame_control >> 4) & 0x0f) >= 8)
+        header_length += 2;
+    if (frame_control & 0x8000)
+        header_length += 4;
+    if (length < header_length + 8 ||
+        frame[header_length] != 0xaa ||
+        frame[header_length + 1] != 0xaa ||
+        frame[header_length + 2] != 0x03 ||
+        frame[header_length + 3] != 0x00 ||
+        frame[header_length + 4] != 0x00 ||
+        frame[header_length + 5] != 0x00)
+        return;
+    ethertype = ((uint16_t)frame[header_length + 6] << 8) |
+                frame[header_length + 7];
+    if (ethertype == 0x888e) {
+        rtl8188eu_handle_eapol(frame, length);
+        return;
+    }
+    payload_length = length - header_length - 8;
+    if (ETH_HDR_LEN + payload_length > sizeof(ethernet))
+        return;
+    for (i = 0; i < ETH_ALEN; i++) {
+        ethernet[i] = frame[4 + i];
+        ethernet[ETH_ALEN + i] = frame[16 + i];
+    }
+    ethernet[12] = (uint8_t)(ethertype >> 8);
+    ethernet[13] = (uint8_t)ethertype;
+    for (i = 0; i < payload_length; i++)
+        ethernet[ETH_HDR_LEN + i] = frame[header_length + 8 + i];
+    net_rx_packet(&rtl8188eu_netdev, ethernet,
+                  ETH_HDR_LEN + payload_length);
+}
+
+static int rtl8188eu_register_netdev(void)
+{
+    unsigned int i;
+
+    if (rtl8188eu.net_registered)
+        return 0;
+    A_memset(&rtl8188eu_netdev, 0, sizeof(rtl8188eu_netdev));
+    rtl8188eu_netdev.name[0] = 'w';
+    rtl8188eu_netdev.name[1] = 'l';
+    rtl8188eu_netdev.name[2] = 'a';
+    rtl8188eu_netdev.name[3] = 'n';
+    rtl8188eu_netdev.name[4] = '0';
+    for (i = 0; i < ETH_ALEN; i++) {
+        rtl8188eu_netdev.mac_addr[i] = rtl8188eu.mac_addr[i];
+        local_mac[i] = rtl8188eu.mac_addr[i];
+    }
+    rtl8188eu_netdev.priv = &rtl8188eu;
+    rtl8188eu_netdev.send = rtl8188eu_net_send;
+    if (net_device_register(&rtl8188eu_netdev) < 0) {
+        usb_printk("rtl8188eu: network device registration failed\n");
+        return -EIO;
+    }
+    rtl8188eu.net_registered = 1;
+    usb_printk("rtl8188eu: registered network device wlan0\n");
+    return 0;
+}
+
+static void rtl8188eu_dhcp_put_be32(uint8_t *data, uint32_t value)
+{
+    data[0] = (uint8_t)(value >> 24);
+    data[1] = (uint8_t)(value >> 16);
+    data[2] = (uint8_t)(value >> 8);
+    data[3] = (uint8_t)value;
+}
+
+static size_t rtl8188eu_build_dhcp_frame(uint8_t *frame, size_t capacity,
+                                         uint8_t message_type,
+                                         uint32_t requested_ip,
+                                         uint32_t server_ip)
+{
+    uint8_t *ip;
+    uint8_t *udp;
+    uint8_t *dhcp;
+    size_t option_length;
+    size_t dhcp_length;
+    size_t ip_length;
+    unsigned int i;
+
+    if (!frame || capacity < ETH_HDR_LEN + IP_HDR_LEN + UDP_HDR_LEN + 300)
+        return 0;
+    A_memset(frame, 0, capacity);
+    for (i = 0; i < ETH_ALEN; i++) {
+        frame[i] = 0xff;
+        frame[ETH_ALEN + i] = rtl8188eu.mac_addr[i];
+    }
+    frame[12] = (uint8_t)(ETH_P_IP >> 8);
+    frame[13] = (uint8_t)ETH_P_IP;
+    ip = frame + ETH_HDR_LEN;
+    udp = ip + IP_HDR_LEN;
+    dhcp = udp + UDP_HDR_LEN;
+    A_memset(dhcp, 0, 300);
+    dhcp[0] = 1;
+    dhcp[1] = 1;
+    dhcp[2] = 6;
+    rtl8188eu_dhcp_put_be32(dhcp + 4, rtl8188eu_dhcp_xid);
+    dhcp[10] = 0x80;
+    for (i = 0; i < ETH_ALEN; i++)
+        dhcp[28 + i] = rtl8188eu.mac_addr[i];
+    rtl8188eu_dhcp_put_be32(dhcp + 236, RTL8188EU_DHCP_MAGIC);
+    option_length = 0;
+    dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_MESSAGE;
+    dhcp[240 + option_length++] = 1;
+    dhcp[240 + option_length++] = message_type;
+    if (message_type == RTL8188EU_DHCP_REQUEST) {
+        dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_REQUESTED;
+        dhcp[240 + option_length++] = 4;
+        rtl8188eu_dhcp_put_be32(dhcp + 240 + option_length,
+                                requested_ip);
+        option_length += 4;
+        dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_SERVER;
+        dhcp[240 + option_length++] = 4;
+        rtl8188eu_dhcp_put_be32(dhcp + 240 + option_length, server_ip);
+        option_length += 4;
+    }
+    dhcp[240 + option_length++] = 55;
+    dhcp[240 + option_length++] = 3;
+    dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_SUBNET;
+    dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_ROUTER;
+    dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_DNS;
+    dhcp[240 + option_length++] = RTL8188EU_DHCP_OPTION_END;
+    dhcp_length = 240 + option_length;
+    ip_length = IP_HDR_LEN + UDP_HDR_LEN + dhcp_length;
+    ip[0] = 0x45;
+    ip[2] = (uint8_t)(ip_length >> 8);
+    ip[3] = (uint8_t)ip_length;
+    ip[8] = IP_TTL;
+    ip[9] = IPPROTO_UDP;
+    rtl8188eu_dhcp_put_be32(ip + 12, 0);
+    rtl8188eu_dhcp_put_be32(ip + 16, 0xffffffffu);
+    *(uint16_t *)(ip + 10) = 0;
+    *(uint16_t *)(ip + 10) = internet_checksum((uint16_t *)ip,
+                                                 IP_HDR_LEN);
+    udp[0] = 0;
+    udp[1] = RTL8188EU_DHCP_CLIENT_PORT;
+    udp[2] = 0;
+    udp[3] = RTL8188EU_DHCP_SERVER_PORT;
+    udp[4] = (uint8_t)((UDP_HDR_LEN + dhcp_length) >> 8);
+    udp[5] = (uint8_t)(UDP_HDR_LEN + dhcp_length);
+    udp[6] = 0;
+    udp[7] = 0;
+    return ETH_HDR_LEN + ip_length;
+}
+
+static int rtl8188eu_dhcp_option(const uint8_t *packet, unsigned int length,
+                                 uint8_t wanted, uint8_t *value,
+                                 unsigned int capacity, unsigned int *value_length)
+{
+    unsigned int pos = 240;
+
+    if (!packet || length < 240 ||
+        packet[236] != 0x63 || packet[237] != 0x82 ||
+        packet[238] != 0x53 || packet[239] != 0x63)
+        return -EINVAL;
+    while (pos < length) {
+        uint8_t id = packet[pos++];
+        uint8_t option_length;
+        if (id == RTL8188EU_DHCP_OPTION_PAD)
+            continue;
+        if (id == RTL8188EU_DHCP_OPTION_END)
+            break;
+        if (pos >= length)
+            return -EIO;
+        option_length = packet[pos++];
+        if (pos + option_length > length)
+            return -EIO;
+        if (id == wanted) {
+            if (option_length > capacity || !value)
+                return -EINVAL;
+            for (unsigned int i = 0; i < option_length; i++)
+                value[i] = packet[pos + i];
+            if (value_length)
+                *value_length = option_length;
+            return 0;
+        }
+        pos += option_length;
+    }
+    return -ENOENT;
+}
+
+static int rtl8188eu_dhcp_read_packet(uint8_t *packet, unsigned int capacity,
+                                      uint32_t xid, uint8_t wanted_type,
+                                      uint32_t *yiaddr, uint32_t *server_ip,
+                                      uint32_t *netmask, uint32_t *gateway)
+{
+    int source_port;
+    int length;
+    uint8_t option[4];
+    unsigned int option_length;
+    uint8_t message_type;
+    uint32_t packet_xid;
+
+    length = net_recv_udp_internal((char *)packet, capacity, &source_port);
+    if (length < 240 || source_port != RTL8188EU_DHCP_SERVER_PORT)
+        return -EAGAIN;
+    packet_xid = ((uint32_t)packet[4] << 24) |
+                 ((uint32_t)packet[5] << 16) |
+                 ((uint32_t)packet[6] << 8) | packet[7];
+    if (packet_xid != xid || packet[0] != 2 || packet[1] != 1 ||
+        packet[2] != 6)
+        return -EAGAIN;
+    if (rtl8188eu_dhcp_option(packet, (unsigned int)length,
+                              RTL8188EU_DHCP_OPTION_MESSAGE, &message_type,
+                              1, &option_length) < 0 ||
+        message_type != wanted_type)
+        return -EAGAIN;
+    if (yiaddr)
+        *yiaddr = ((uint32_t)packet[16] << 24) |
+                  ((uint32_t)packet[17] << 16) |
+                  ((uint32_t)packet[18] << 8) | packet[19];
+    if (server_ip && rtl8188eu_dhcp_option(packet, (unsigned int)length,
+                                            RTL8188EU_DHCP_OPTION_SERVER,
+                                            option, sizeof(option),
+                                            &option_length) == 0 &&
+        option_length == 4)
+        *server_ip = ((uint32_t)option[0] << 24) |
+                     ((uint32_t)option[1] << 16) |
+                     ((uint32_t)option[2] << 8) | option[3];
+    if (netmask && rtl8188eu_dhcp_option(packet, (unsigned int)length,
+                                         RTL8188EU_DHCP_OPTION_SUBNET,
+                                         option, sizeof(option),
+                                         &option_length) == 0 &&
+        option_length == 4)
+        *netmask = ((uint32_t)option[0] << 24) |
+                  ((uint32_t)option[1] << 16) |
+                  ((uint32_t)option[2] << 8) | option[3];
+    if (gateway && rtl8188eu_dhcp_option(packet, (unsigned int)length,
+                                         RTL8188EU_DHCP_OPTION_ROUTER,
+                                         option, sizeof(option),
+                                         &option_length) == 0 &&
+        option_length >= 4)
+        *gateway = ((uint32_t)option[0] << 24) |
+                  ((uint32_t)option[1] << 16) |
+                  ((uint32_t)option[2] << 8) | option[3];
+    return 0;
+}
+
+static int rtl8188eu_dhcp_configure(void)
+{
+    uint8_t frame[ETH_MAX_FRAME];
+    uint8_t packet[600];
+    size_t frame_length;
+    uint32_t offered_ip = 0;
+    uint32_t server_ip = 0;
+    uint32_t mask = 0;
+    uint32_t gateway = 0;
+    unsigned int poll;
+    int got_offer = 0;
+
+    if (!rtl8188eu.net_registered)
+        return -ENODEV;
+    extern uint32_t ticks;
+    rtl8188eu_dhcp_xid = ticks ^ ((uint32_t)rtl8188eu_tx_sequence << 16) ^
+                          0x8188e000u;
+    net_set_ipaddr(0);
+    rtl8188eu_netdev.ip_addr = 0;
+    net_bind_udp_port(RTL8188EU_DHCP_CLIENT_PORT);
+    frame_length = rtl8188eu_build_dhcp_frame(
+        frame, sizeof(frame), RTL8188EU_DHCP_DISCOVER, 0, 0);
+    if (!frame_length || rtl8188eu_net_send(&rtl8188eu_netdev, frame,
+                                             (uint32_t)frame_length) < 0)
+        return -EIO;
+    usb_printk("rtl8188eu: DHCP discover sent xid=%08x\n",
+               rtl8188eu_dhcp_xid);
+    for (poll = 0; poll < 5000; poll++) {
+        usb_poll_interrupts();
+        if ((poll % 10u) == 0 &&
+            rtl8188eu_dhcp_read_packet(packet, sizeof(packet),
+                                       rtl8188eu_dhcp_xid,
+                                       RTL8188EU_DHCP_OFFER, &offered_ip,
+                                       &server_ip, &mask, &gateway) == 0) {
+            got_offer = 1;
+            break;
+        }
+        tick_delay(2000);
+    }
+    if (!got_offer || !offered_ip || !server_ip)
+        return -ETIMEDOUT;
+    frame_length = rtl8188eu_build_dhcp_frame(
+        frame, sizeof(frame), RTL8188EU_DHCP_REQUEST, offered_ip,
+        server_ip);
+    if (!frame_length || rtl8188eu_net_send(&rtl8188eu_netdev, frame,
+                                             (uint32_t)frame_length) < 0)
+        return -EIO;
+    usb_printk("rtl8188eu: DHCP request sent address=%u.%u.%u.%u\n",
+               (offered_ip >> 24) & 0xff, (offered_ip >> 16) & 0xff,
+               (offered_ip >> 8) & 0xff, offered_ip & 0xff);
+    for (poll = 0; poll < 5000; poll++) {
+        usb_poll_interrupts();
+        if ((poll % 10u) == 0 &&
+            rtl8188eu_dhcp_read_packet(packet, sizeof(packet),
+                                       rtl8188eu_dhcp_xid,
+                                       RTL8188EU_DHCP_ACK, &offered_ip,
+                                       &server_ip, &mask, &gateway) == 0)
+            break;
+        tick_delay(2000);
+    }
+    if (poll == 5000 || !offered_ip || !mask || !gateway)
+        return -ETIMEDOUT;
+    net_set_ipaddr(offered_ip);
+    net_set_netmask(mask);
+    net_set_gateway(gateway);
+    rtl8188eu_netdev.ip_addr = offered_ip;
+    usb_printk("rtl8188eu: DHCP configured IP=%u.%u.%u.%u mask=%u.%u.%u.%u gateway=%u.%u.%u.%u\n",
+               (offered_ip >> 24) & 0xff, (offered_ip >> 16) & 0xff,
+               (offered_ip >> 8) & 0xff, offered_ip & 0xff,
+               (mask >> 24) & 0xff, (mask >> 16) & 0xff,
+               (mask >> 8) & 0xff, mask & 0xff,
+               (gateway >> 24) & 0xff, (gateway >> 16) & 0xff,
+               (gateway >> 8) & 0xff, gateway & 0xff);
+    return 0;
+}
 static int rtl8188eu_send_eapol_response(uint16_t key_info,
                                          const uint8_t nonce[32],
                                          const uint8_t replay[8],
@@ -729,7 +1189,7 @@ static int rtl8188eu_send_eapol_response(uint16_t key_info,
     for (i = 0; i < 16; i++)
         eapol[81 + i] = mic[i];
     packet_length = rtl8188eu_wrap_data_frame(
-        packet, sizeof(packet), rtl8188eu.connect_bssid, 0x888e,
+        packet, sizeof(packet), rtl8188eu_connect_bssid, 0x888e,
         eapol, 4 + eapol_length, 0);
     if (!packet_length || rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out,
                                               packet, packet_length) < 0)
@@ -776,7 +1236,7 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
               rtl8188eu_bssid_equal(frame + 4, rtl8188eu.mac_addr);
     if (!from_ap && !(rtl8188eu_bssid_equal(frame + 10, rtl8188eu.mac_addr) &&
                       rtl8188eu_bssid_equal(frame + 4,
-                                            rtl8188eu.connect_bssid)))
+                                            rtl8188eu_connect_bssid)))
         return;
     llc = hdr_len;
     if (frame[llc] != 0xaa || frame[llc + 1] != 0xaa ||
@@ -800,6 +1260,7 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
     if (descriptor_type != 2)
         return;
     key_info = ((uint16_t)frame[body + 1] << 8) | frame[body + 2];
+    rtl8188eu_eapol_key_info = key_info;
     rtl8188eu_eapol_key_length = ((uint16_t)frame[body + 3] << 8) |
                                  frame[body + 4];
     key_data_length = ((uint16_t)frame[body + 93] << 8) |
@@ -857,7 +1318,7 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
         for (i = 0; i < 16; i++)
             expected_mic[i] = frame[body + 77 + i];
         rtl8188eu_eapol_mic_valid = rtl8188eu_eapol_mic_matches(
-            frame + eapol, key_frame_length, expected_mic);
+            frame + eapol, 4 + key_frame_length, expected_mic);
         if (!rtl8188eu_eapol_mic_valid) {
             usb_printk("rtl8188eu: WPA2 M3 MIC verification failed\n");
             rtl8188eu.last_error = -EIO;
@@ -872,12 +1333,15 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
         }
         rtl8188eu_eapol_msg3_ready = 1;
         rtl8188eu_eapol_msg3_seen = 1;
-        if (rtl8188eu_send_eapol_response(0x030a,
-                                          rtl8188eu_eapol_snonce,
-                                          rtl8188eu_eapol_replay_counter,
-                                          NULL, 0) < 0) {
-            rtl8188eu.last_error = -EIO;
-            return;
+        {
+            uint8_t zero_nonce[32];
+            A_memset(zero_nonce, 0, sizeof(zero_nonce));
+            if (rtl8188eu_send_eapol_response(
+                    0x030a, zero_nonce,
+                    rtl8188eu_eapol_replay_counter, NULL, 0) < 0) {
+                rtl8188eu.last_error = -EIO;
+                return;
+            }
         }
         rtl8188eu_eapol_msg4_seen = 1;
         rtl8188eu.wifi_state = RTL8188EU_WIFI_CONNECTED;
@@ -1216,7 +1680,7 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
         if (frame_type == RTL8188EU_IEEE80211_FTYPE_MGMT)
             rtl8188eu_parse_management_ies(frame, packet_length);
         else if (frame_type == RTL8188EU_IEEE80211_FTYPE_DATA)
-            rtl8188eu_handle_eapol(frame, packet_length);
+            rtl8188eu_deliver_data_frame(frame, packet_length);
     }
     return frame_offset + packet_length;
 }
@@ -3151,7 +3615,7 @@ int rtl8188eu_wifi_scan(void)
         if (rtl8188eu.scan_result_count > 0)
             break;
 #endif
-        if (channel == 255) break; /* 闃叉�?uint8_t 寰幆婧㈠嚭 */
+        if (channel == 255) break; /* é—ƒå‰î„?uint8_t å¯°î†å¹†å©§ãˆ åš­ */
     }
 
     rtl8188eu_stop_rx();
@@ -3177,11 +3641,11 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
     if (!ssid || !password)
         return -EINVAL;
 
-    /* 瀹夊叏璁＄畻闀垮害锛岄槻姝?NULL 缁撳熬瓒婄晫 */
+    /* ç€¹å¤Šåç’ï¼„ç•»é—€åž®å®³é”›å²„æ§»å§?NULL ç¼æ’³ç†¬ç“’å©„æ™« */
     while (ssid_length < RTL8188EU_MAX_SSID_LEN && ssid[ssid_length] != '\0')
         ssid_length++;
     if (ssid[ssid_length] != '\0' && ssid_length == RTL8188EU_MAX_SSID_LEN) {
-        /* SSID 瓒呰繃鏈€澶ч暱搴﹂檺�?*/
+        /* SSID ç“’å‘°ç¹ƒéˆâ‚¬æ¾¶Ñ‡æš±æ´ï¹‚æªºé?*/
         return -EINVAL; 
     }
 
@@ -3215,7 +3679,7 @@ retry_results:
                 goto connect_failed;
             }
 
-            /* 閿欒澶勭悊鐨勭粺涓€娓呯悊鍏ュ�?*/
+            /* é–¿æ¬’î‡¤æ¾¶å‹­æ‚Šé¨å‹­ç²ºæ¶“â‚¬å¨“å‘¯æ‚Šéãƒ¥å½?*/
             if (rtl8188eu_write8(rtl8188eu.usb,
                                   RTL8188EU_REG_TXPAUSE, 0x00) < 0 ||
                 rtl8188eu_read8(rtl8188eu.usb,
@@ -3263,7 +3727,7 @@ retry_results:
             tick_delay(1000);
             rtl8188eu_log_tx_state(rtl8188eu.usb, "after-auth-usb");
 
-            /* 浼樺寲杞鏈哄埗锛岀缉鐭棿闅旀彁鍗囧搷搴斿苟闄嶄綆 CPU 寮€閿€ */
+            /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
             for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
                 usb_poll_interrupts();
                 if (poll && (poll % 1000u) == 0 &&
@@ -3326,7 +3790,7 @@ retry_results:
             rtl8188eu.associated = 1;
             usb_printk("rtl8188eu: associated AID=%u; WPA2 EAPOL Handshake required\n", rtl8188eu_assoc_aid);
 
-            /* FIXME: 闇€琛ュ�?WPA2 4-Way Handshake 閫昏緫浠ュ疄鐜板姞瀵嗚繛鎺?*/
+            /* FIXME: é—‡â‚¬ç›ãƒ¥åŽ?WPA2 4-Way Handshake é–«æ˜ç·«æµ ãƒ¥ç–„éœæ¿å§žç€µå—šç¹›éŽº?*/
             /* Keep RX armed long enough to observe the AP's first EAPOL-Key.
              * Cryptographic response generation is the next phase; this
              * window verifies that the associated data path is alive. */
@@ -3964,7 +4428,7 @@ static int rtl8188eu_start_mcu(struct usb_dev_t *usb)
     unsigned int attempt;
     int ret;
 
-    /* 1. 璁剧�?MCU Ready 浣嶏紝娓呴櫎 CPU Reset ??*/
+    /* 1. ç’å‰§ç–?MCU Ready æµ£å¶ç´å¨“å‘´æ«Ž CPU Reset ??*/
     ret = rtl8188eu_read32(usb, RTL8188EU_REG_MCUFWDL, &mcu_fwdl32);
     if (ret < 0)
         return ret;
@@ -3980,15 +4444,15 @@ static int rtl8188eu_start_mcu(struct usb_dev_t *usb)
         return ret;
     usb_printk("rtl8188eu: MCU handoff readback MCUFWDL=%08x (RDY set)\n", mcu_fwdl32);
 
-    /* 2. 瑙﹀�?MCU 鑷�??*/
+    /* 2. ç‘™ï¹€å½?MCU é‘·î„î˜??*/
     ret = rtl8188eu_firmware_self_reset(usb);
     if (ret < 0)
         return ret;
 
-    /* 3. 鍏抽敭淇敼锛氬浣嶅悗缁欎�?MCU 瓒冲鐨勫垵濮嬪寲鍚姩鏃堕�?(5~10ms) */
+    /* 3. éæŠ½æ•­æ·‡î†½æ•¼é”›æ°¬î˜²æµ£å¶…æ‚—ç¼æ¬Žç°?MCU ç“’å†²î™„é¨å‹«åžµæ¿®å¬ªå¯²éšîˆšå§©éƒå •æ£?(5~10ms) */
     tick_delay(10000); 
 
-    /* 4. 杞�?MCU 灏辩华鐘舵€侊細鎬荤瓑寰呮椂闂存彁楂樿嚦 ~100ms (1000 * 100us) */
+    /* 4. æžî†¿î‡?MCU çè¾©åŽé˜èˆµâ‚¬ä¾Šç´°éŽ¬è¤ç“‘å¯°å‘®æ¤‚é—‚å­˜å½æ¥‚æ¨¿åš¦ ~100ms (1000 * 100us) */
     for (attempt = 0; attempt < 1000; attempt++) {
         ret = rtl8188eu_read32(usb, RTL8188EU_REG_MCUFWDL, &mcu_fwdl32);
         if (ret < 0)
@@ -4000,7 +4464,7 @@ static int rtl8188eu_start_mcu(struct usb_dev_t *usb)
             previous = mcu_fwdl32;
         }
 
-        /* 妫€??WINTINI_RDY ??(0x20000000) 鏄�??MCU ??1 */
+        /* å¦«â‚¬??WINTINI_RDY ??(0x20000000) é„îˆšæƒ??MCU ??1 */
         /* WINTINI_RDY is BIT6 in the low byte: 0x06 -> 0xC6. */
         if (mcu_fwdl32 & RTL8188EU_WINTINI_RDY) {
             usb_printk("rtl8188eu: MCU start MCUFWDL=%08x ready=yes polls=%u\n",
@@ -4008,7 +4472,7 @@ static int rtl8188eu_start_mcu(struct usb_dev_t *usb)
             return 0;
         }
 
-        /* 灏嗗崟娆¤疆璇㈠欢鏃朵�?5us 澧炲�??100us */
+        /* çå——å´Ÿå¨†Â¤ç–†ç’‡ãˆ æ¬¢éƒæœµç²?5us æ¾§ç‚²å§??100us */
         tick_delay(100);
     }
 
