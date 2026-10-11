@@ -73,6 +73,7 @@ C_SOURCES += net/wifi/intel_fw_parser.c  # 添加 Intel 固件解析器
 C_SOURCES += net/wifi/dma.c  # 添加 DMA 管理
 C_SOURCES += net/wifi/firmware.c  # 添加固件加载
 C_SOURCES += net/rtl8188eu_wifi/rtl8188eu_usb.c  # RTL8188EUS USB WiFi
+C_SOURCES += net/rtl8188eu_wifi/wpa2_crypto.c # WPA2-PSK crypto primitives
 C_SOURCES += net/rtl8188eu_wifi/rtl8188eufw.c  # RTL8188EUS firmware
 C_SOURCES += net/rtl8188eu_wifi/rtl8188eu_tables.c # RTL8188E PHY/AGC/RF tables
 C_SOURCES += net/wifi/ieee80211.c  # 添加 802.11 帧处理

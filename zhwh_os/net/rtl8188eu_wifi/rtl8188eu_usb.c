@@ -4,6 +4,7 @@
 #include <kernel/hillsonos.h>
 #include <kernel/usb.h>
 #include <kernel/rtl8188eu_wifi.h>
+#include <kernel/wpa2_crypto.h>
 #include <net.h>
 #include <usb_log.h>
 #include "rtl8188eu_tables.h"
@@ -44,6 +45,9 @@
 #define RTL8188EU_REG_HISRE           0x00bc
 #define RTL8188EU_REG_RCR       0x0608
 #define RTL8188EU_REG_BSSID     0x0618
+#define RTL8188EU_REG_CAMCMD    0x0670
+#define RTL8188EU_REG_CAMWRITE  0x0674
+#define RTL8188EU_REG_SECCFG    0x0680
 #define RTL8188EU_REG_DATA_SC   0x0483
 #define RTL8188EU_REG_RX_DRVINFO_SZ 0x060f
 #define RTL8188EU_REG_RXFLTMAP0 0x06a0
@@ -179,6 +183,14 @@ static const char *const rtl8188eu_sample_ssids[] = {
 #define RTL8188EU_TXDW1_QSEL_MGNT      (0x12u << 8)
 #define RTL8188EU_TXDW1_RATE_ID_11G    (5u << 16)
 #define RTL8188EU_DESC_RATE_1M         0
+#define RTL8188EU_TXDW2_SEC_TYPE_AES   (3u << 22)
+#define RTL8188EU_CAM_POLLING          (1u << 31)
+#define RTL8188EU_CAM_WRITE             (1u << 16)
+#define RTL8188EU_CAM_VALID             (1u << 15)
+#define RTL8188EU_CAM_ALGO_AES          4u
+#define RTL8188EU_SECCFG_TX             (1u << 0)
+#define RTL8188EU_SECCFG_RX             (1u << 1)
+#define RTL8188EU_SECCFG_TX_USE_SW_SEC (1u << 5)
 
 extern const uint8_t rtl8188eufw[];
 extern const uint32_t rtl8188eufw_size;
@@ -205,6 +217,7 @@ struct rtl8188eu_device {
     int last_error;
     int selected_result;
     unsigned int scan_result_count;
+    uint8_t net_registered;
 };
 
 struct rtl8188eu_scan_result {
@@ -239,6 +252,20 @@ static volatile unsigned int rtl8188eu_eapol_msg3_seen;
 static volatile unsigned int rtl8188eu_eapol_msg4_seen;
 static uint8_t rtl8188eu_eapol_replay_counter[8];
 static uint8_t rtl8188eu_eapol_anonce[32];
+static uint8_t rtl8188eu_eapol_snonce[32];
+static uint8_t rtl8188eu_eapol_key_data[256];
+static unsigned int rtl8188eu_eapol_key_data_length;
+static uint16_t rtl8188eu_eapol_key_info;
+static uint16_t rtl8188eu_eapol_key_length;
+static uint8_t rtl8188eu_wifi_password[64];
+static size_t rtl8188eu_wifi_password_length;
+static uint8_t rtl8188eu_pmk[32];
+static uint8_t rtl8188eu_ptk[64];
+static int rtl8188eu_ptk_ready;
+static volatile unsigned int rtl8188eu_eapol_msg3_ready;
+static volatile unsigned int rtl8188eu_eapol_mic_valid;
+static uint16_t rtl8188eu_tx_sequence;
+static net_device_t rtl8188eu_netdev;
 /* Synchronous Wi-Fi commands pause the normal USB idle poll. Keep HID
  * interrupt transfers serviced while a Wi-Fi transfer awaits completion. */
 static int rtl8188eu_wait_transfer(struct usb_transfer_t *transfer,
@@ -484,8 +511,242 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
     }
 }
 
+static void rtl8188eu_put_be16(uint8_t *data, uint16_t value)
+{
+    data[0] = (uint8_t)(value >> 8);
+    data[1] = (uint8_t)value;
+}
+
+static int rtl8188eu_mac_less(const uint8_t *a, const uint8_t *b)
+{
+    unsigned int i;
+    for (i = 0; i < 6; i++) {
+        if (a[i] < b[i])
+            return 1;
+        if (a[i] > b[i])
+            return 0;
+    }
+    return 0;
+}
+
+static void rtl8188eu_make_snonce(void)
+{
+    struct wpa2_sha1_ctx sha;
+    uint8_t digest[20];
+    uint32_t seed;
+    unsigned int i;
+
+    extern uint32_t ticks;
+    seed = ticks ^ ((uint32_t)rtl8188eu_tx_sequence << 16);
+    wpa2_sha1_init(&sha);
+    wpa2_sha1_update(&sha, rtl8188eu.mac_addr, 6);
+    wpa2_sha1_update(&sha, rtl8188eu_connect_bssid, 6);
+    wpa2_sha1_update(&sha, rtl8188eu_eapol_anonce,
+                     sizeof(rtl8188eu_eapol_anonce));
+    wpa2_sha1_update(&sha, (const uint8_t *)&seed, sizeof(seed));
+    wpa2_sha1_final(&sha, digest);
+    for (i = 0; i < sizeof(digest); i++)
+        rtl8188eu_eapol_snonce[i] = digest[i];
+    seed++;
+    wpa2_sha1_init(&sha);
+    wpa2_sha1_update(&sha, digest, sizeof(digest));
+    wpa2_sha1_update(&sha, (const uint8_t *)&seed, sizeof(seed));
+    wpa2_sha1_final(&sha, digest);
+    for (i = 0; i < sizeof(rtl8188eu_eapol_snonce) - sizeof(digest); i++)
+        rtl8188eu_eapol_snonce[sizeof(digest) + i] = digest[i];
+}
+
+static int rtl8188eu_derive_ptk(void)
+{
+    uint8_t data[76];
+    uint8_t digest[20];
+    unsigned int i;
+    const uint8_t *mac_first;
+    const uint8_t *mac_second;
+    const uint8_t *nonce_first;
+    const uint8_t *nonce_second;
+
+    if (!rtl8188eu_wifi_password_length)
+        return -EINVAL;
+    if (wpa2_pbkdf2_sha1(rtl8188eu_wifi_password,
+                         rtl8188eu_wifi_password_length,
+                         rtl8188eu.connected_ssid,
+                         rtl8188eu.connected_ssid_length, 4096,
+                         rtl8188eu_pmk, sizeof(rtl8188eu_pmk)) < 0)
+        return -EIO;
+    if (rtl8188eu_mac_less(rtl8188eu.mac_addr, rtl8188eu_connect_bssid)) {
+        mac_first = rtl8188eu.mac_addr;
+        mac_second = rtl8188eu_connect_bssid;
+    } else {
+        mac_first = rtl8188eu_connect_bssid;
+        mac_second = rtl8188eu.mac_addr;
+    }
+    if (rtl8188eu_mac_less(rtl8188eu_eapol_anonce,
+                           rtl8188eu_eapol_snonce)) {
+        nonce_first = rtl8188eu_eapol_anonce;
+        nonce_second = rtl8188eu_eapol_snonce;
+    } else {
+        nonce_first = rtl8188eu_eapol_snonce;
+        nonce_second = rtl8188eu_eapol_anonce;
+    }
+    for (i = 0; i < 6; i++)
+        data[i] = mac_first[i];
+    for (i = 0; i < 6; i++)
+        data[6 + i] = mac_second[i];
+    for (i = 0; i < 32; i++)
+        data[12 + i] = nonce_first[i];
+    for (i = 0; i < 32; i++)
+        data[44 + i] = nonce_second[i];
+    if (wpa2_prf512(rtl8188eu_pmk, sizeof(rtl8188eu_pmk),
+                    "Pairwise key expansion", data, sizeof(data),
+                    rtl8188eu_ptk) < 0)
+        return -EIO;
+    rtl8188eu_ptk_ready = 1;
+    usb_printk("rtl8188eu: PMK/PTK derived for WPA2-PSK\n");
+    return 0;
+}
+
+static int rtl8188eu_write_cam_key(unsigned int entry, const uint8_t mac[6],
+                                   unsigned int key_id, const uint8_t key[16])
+{
+    uint32_t content;
+    unsigned int i;
+
+    if (!rtl8188eu.usb || !mac || !key || entry >= 4)
+        return -EINVAL;
+    content = (uint32_t)mac[0] | ((uint32_t)mac[1] << 8) |
+              ((uint32_t)mac[2] << 16) | ((uint32_t)mac[3] << 24);
+    if (rtl8188eu_write32(rtl8188eu.usb, RTL8188EU_REG_CAMWRITE,
+                          content) < 0 ||
+        rtl8188eu_write32(rtl8188eu.usb, RTL8188EU_REG_CAMCMD,
+                          RTL8188EU_CAM_POLLING | RTL8188EU_CAM_WRITE |
+                          entry * 6) < 0)
+        return -EIO;
+    content = (uint32_t)mac[4] | ((uint32_t)mac[5] << 8) |
+              ((key_id & 3u) << 16) |
+              (RTL8188EU_CAM_ALGO_AES << 2) | RTL8188EU_CAM_VALID;
+    if (rtl8188eu_write32(rtl8188eu.usb, RTL8188EU_REG_CAMWRITE,
+                          content) < 0 ||
+        rtl8188eu_write32(rtl8188eu.usb, RTL8188EU_REG_CAMCMD,
+                          RTL8188EU_CAM_POLLING | RTL8188EU_CAM_WRITE |
+                          entry * 6 + 1) < 0)
+        return -EIO;
+    for (i = 0; i < 4; i++) {
+        content = (uint32_t)key[i * 4] |
+                  ((uint32_t)key[i * 4 + 1] << 8) |
+                  ((uint32_t)key[i * 4 + 2] << 16) |
+                  ((uint32_t)key[i * 4 + 3] << 24);
+        if (rtl8188eu_write32(rtl8188eu.usb, RTL8188EU_REG_CAMWRITE,
+                              content) < 0 ||
+            rtl8188eu_write32(rtl8188eu.usb, RTL8188EU_REG_CAMCMD,
+                              RTL8188EU_CAM_POLLING | RTL8188EU_CAM_WRITE |
+                              entry * 6 + 2 + i) < 0)
+            return -EIO;
+    }
+    if (rtl8188eu_write8(rtl8188eu.usb, RTL8188EU_REG_SECCFG,
+                         RTL8188EU_SECCFG_TX | RTL8188EU_SECCFG_RX) < 0)
+        return -EIO;
+    usb_printk("rtl8188eu: installed AES CAM entry=%u keyid=%u\n",
+               entry, key_id);
+    return 0;
+}
+
+static size_t rtl8188eu_wrap_data_frame(uint8_t *packet, size_t capacity,
+                                        const uint8_t *destination,
+                                        uint16_t ethertype,
+                                        const uint8_t *payload,
+                                        size_t payload_length,
+                                        int encrypted)
+{
+    uint8_t *frame;
+    uint32_t txdw0;
+    uint32_t txdw1;
+    uint32_t txdw4;
+    size_t frame_length = 24 + 8 + payload_length;
+    size_t i;
+
+    if (!packet || !destination || (!payload && payload_length) ||
+        capacity < RTL8188EU_TX_DESC_SIZE + frame_length)
+        return 0;
+    A_memset(packet, 0, RTL8188EU_TX_DESC_SIZE + frame_length);
+    frame = packet + RTL8188EU_TX_DESC_SIZE;
+    frame[0] = encrypted ? 0x08 : 0x08;
+    frame[1] = encrypted ? 0x41 : 0x01;
+    for (i = 0; i < 6; i++) {
+        frame[4 + i] = rtl8188eu_connect_bssid[i];
+        frame[10 + i] = rtl8188eu.mac_addr[i];
+        frame[16 + i] = destination[i];
+    }
+    frame[24] = 0xaa; frame[25] = 0xaa; frame[26] = 0x03;
+    frame[27] = 0x00; frame[28] = 0x00; frame[29] = 0x00;
+    frame[30] = (uint8_t)(ethertype >> 8);
+    frame[31] = (uint8_t)ethertype;
+    for (i = 0; i < payload_length; i++)
+        frame[32 + i] = payload[i];
+    txdw0 = (uint32_t)frame_length | (RTL8188EU_TX_DESC_SIZE << 16) |
+            (1u << 26) | (1u << 27) | (1u << 31);
+    txdw1 = encrypted ? RTL8188EU_TXDW2_SEC_TYPE_AES : 0;
+    txdw4 = RTL8188EU_DESC_RATE_1M | RTL8188EU_TXDW4_HWSEQ_EN |
+            RTL8188EU_TXDW4_USE_RATE | RTL8188EU_TXDW4_DISDATAFB;
+    rtl8188eu_put_le32(packet, txdw0);
+    rtl8188eu_put_le32(packet + 4, txdw1);
+    rtl8188eu_put_le32(packet + 16, txdw4);
+    rtl8188eu_txdesc_checksum(packet);
+    return RTL8188EU_TX_DESC_SIZE + frame_length;
+}
+
+static int rtl8188eu_send_eapol_response(uint16_t key_info,
+                                         const uint8_t nonce[32],
+                                         const uint8_t replay[8],
+                                         const uint8_t *key_data,
+                                         unsigned int key_data_length)
+{
+    uint8_t eapol[4 + 95 + 256];
+    uint8_t packet[RTL8188EU_TX_DESC_SIZE + 24 + 8 + sizeof(eapol)];
+    uint8_t mic[20];
+    size_t packet_length;
+    unsigned int i;
+    unsigned int eapol_length = 95 + key_data_length;
+
+    if (!rtl8188eu_ptk_ready || !nonce || !replay ||
+        key_data_length > 256)
+        return -EINVAL;
+    A_memset(eapol, 0, sizeof(eapol));
+    eapol[0] = 2;
+    eapol[1] = 3;
+    rtl8188eu_put_be16(eapol + 2, (uint16_t)eapol_length);
+    eapol[4] = 2;
+    rtl8188eu_put_be16(eapol + 5, key_info);
+    rtl8188eu_put_be16(eapol + 7, 16);
+    for (i = 0; i < 8; i++)
+        eapol[9 + i] = replay[i];
+    for (i = 0; i < 32; i++)
+        eapol[17 + i] = nonce[i];
+    rtl8188eu_put_be16(eapol + 97, (uint16_t)key_data_length);
+    for (i = 0; i < key_data_length; i++)
+        eapol[99 + i] = key_data[i];
+    wpa2_hmac_sha1(rtl8188eu_ptk, 16, eapol, 4 + eapol_length, mic);
+    for (i = 0; i < 16; i++)
+        eapol[81 + i] = mic[i];
+    packet_length = rtl8188eu_wrap_data_frame(
+        packet, sizeof(packet), rtl8188eu.connect_bssid, 0x888e,
+        eapol, 4 + eapol_length, 0);
+    if (!packet_length || rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out,
+                                              packet, packet_length) < 0)
+        return -EIO;
+    usb_printk("rtl8188eu: sent EAPOL-Key response key_info=%04x data=%u\n",
+               key_info, key_data_length);
+    return 0;
+}
 static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
 {
+    static const uint8_t rsn_ie[] = {
+        0x30, 0x14, 0x01, 0x00,
+        0x00, 0x0f, 0xac, 0x04,
+        0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
+        0x01, 0x00, 0x00, 0x0f, 0xac, 0x02,
+        0x00, 0x00
+    };
     unsigned int hdr_len;
     unsigned int llc;
     unsigned int eapol;
@@ -504,10 +765,10 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
     int message;
     uint8_t eapol_type;
     uint16_t eapol_length;
+    uint8_t expected_mic[16];
 
     if (!frame || length < 24 || (frame[0] & 0x0c) != 0x08)
         return;
-    /* EAPOL can be carried in QoS data frames after association. */
     hdr_len = (frame[0] & 0x80) ? 26u : 24u;
     if (length < hdr_len + 12)
         return;
@@ -515,7 +776,7 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
               rtl8188eu_bssid_equal(frame + 4, rtl8188eu.mac_addr);
     if (!from_ap && !(rtl8188eu_bssid_equal(frame + 10, rtl8188eu.mac_addr) &&
                       rtl8188eu_bssid_equal(frame + 4,
-                                            rtl8188eu_connect_bssid)))
+                                            rtl8188eu.connect_bssid)))
         return;
     llc = hdr_len;
     if (frame[llc] != 0xaa || frame[llc + 1] != 0xaa ||
@@ -529,19 +790,22 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
     eapol_type = frame[eapol + 1];
     eapol_length = ((uint16_t)frame[eapol + 2] << 8) |
                    frame[eapol + 3];
-    if (eapol_type != 3)
+    if (eapol_type != 3 || eapol_length < 95 ||
+        eapol_length > 95 + sizeof(rtl8188eu_eapol_key_data) ||
+        length < eapol + 4 + eapol_length)
         return;
     key_frame_length = eapol_length;
-    if (key_frame_length < 95 || length < eapol + 4 + key_frame_length)
-        return;
     body = eapol + 4;
     descriptor_type = frame[body];
     if (descriptor_type != 2)
         return;
     key_info = ((uint16_t)frame[body + 1] << 8) | frame[body + 2];
+    rtl8188eu_eapol_key_length = ((uint16_t)frame[body + 3] << 8) |
+                                 frame[body + 4];
     key_data_length = ((uint16_t)frame[body + 93] << 8) |
                       frame[body + 94];
-    if (95u + key_data_length > key_frame_length)
+    if (95u + key_data_length > key_frame_length ||
+        key_data_length > sizeof(rtl8188eu_eapol_key_data))
         return;
 
     pairwise = !!(key_info & 0x0008);
@@ -562,31 +826,67 @@ static void rtl8188eu_handle_eapol(const uint8_t *frame, unsigned int length)
         return;
 
     rtl8188eu_eapol_messages++;
-    usb_printk("rtl8188eu: EAPOL-Key message=%u key_info=%04x "
-               "replay=", message, key_info);
+    usb_printk("rtl8188eu: EAPOL-Key message=%u key_info=%04x replay=",
+               message, key_info);
     for (i = 0; i < 8; i++) {
         rtl8188eu_eapol_replay_counter[i] = frame[body + 5 + i];
         usb_printk("%02x", rtl8188eu_eapol_replay_counter[i]);
     }
     usb_printk(" key_data=%u direction=%s\n", key_data_length,
                from_ap ? "AP->STA" : "STA->AP");
+    for (i = 0; i < key_data_length; i++)
+        rtl8188eu_eapol_key_data[i] = frame[body + 95 + i];
+    rtl8188eu_eapol_key_data_length = key_data_length;
     if (message == 1) {
         for (i = 0; i < sizeof(rtl8188eu_eapol_anonce); i++)
             rtl8188eu_eapol_anonce[i] = frame[body + 13 + i];
+        rtl8188eu_make_snonce();
+        if (rtl8188eu_derive_ptk() < 0 ||
+            rtl8188eu_send_eapol_response(0x010a,
+                                          rtl8188eu_eapol_snonce,
+                                          rtl8188eu_eapol_replay_counter,
+                                          rsn_ie, sizeof(rsn_ie)) < 0) {
+            rtl8188eu.last_error = -EIO;
+            return;
+        }
         rtl8188eu_eapol_msg1_seen = 1;
-        usb_printk("rtl8188eu: EAPOL ANonce=");
-        for (i = 0; i < sizeof(rtl8188eu_eapol_anonce); i++)
-            usb_printk("%02x", rtl8188eu_eapol_anonce[i]);
-        usb_printk("\n");
+        usb_printk("rtl8188eu: EAPOL M1 received; M2 sent\n");
     } else if (message == 2) {
         rtl8188eu_eapol_msg2_seen = 1;
     } else if (message == 3) {
+        for (i = 0; i < 16; i++)
+            expected_mic[i] = frame[body + 77 + i];
+        rtl8188eu_eapol_mic_valid = rtl8188eu_eapol_mic_matches(
+            frame + eapol, key_frame_length, expected_mic);
+        if (!rtl8188eu_eapol_mic_valid) {
+            usb_printk("rtl8188eu: WPA2 M3 MIC verification failed\n");
+            rtl8188eu.last_error = -EIO;
+            return;
+        }
+        if (rtl8188eu_write_cam_key(0, rtl8188eu_connect_bssid, 0,
+                                     rtl8188eu_ptk + 32) < 0 ||
+            rtl8188eu_install_group_key(rtl8188eu_eapol_key_data,
+                                        rtl8188eu_eapol_key_data_length) < 0) {
+            rtl8188eu.last_error = -EIO;
+            return;
+        }
+        rtl8188eu_eapol_msg3_ready = 1;
         rtl8188eu_eapol_msg3_seen = 1;
+        if (rtl8188eu_send_eapol_response(0x030a,
+                                          rtl8188eu_eapol_snonce,
+                                          rtl8188eu_eapol_replay_counter,
+                                          NULL, 0) < 0) {
+            rtl8188eu.last_error = -EIO;
+            return;
+        }
+        rtl8188eu_eapol_msg4_seen = 1;
+        rtl8188eu.wifi_state = RTL8188EU_WIFI_CONNECTED;
+        rtl8188eu.associated = 1;
+        usb_printk("rtl8188eu: WPA2 4-way handshake complete\n");
     } else {
         rtl8188eu_eapol_msg4_seen = 1;
     }
 }
-
 static void rtl8188eu_dump_bytes(const char *label, const uint8_t *data,
                                  unsigned int length)
 {
