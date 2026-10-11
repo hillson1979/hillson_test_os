@@ -3140,7 +3140,7 @@ static void rtl8188eu_log_efuse_sample(struct usb_dev_t *usb)
                macid_after[3], macid_after[4], macid_after[5]);
 }
 
-static void rtl8188eu_initialize_mac(struct usb_dev_t *usb)
+static int rtl8188eu_initialize_mac(struct usb_dev_t *usb)
 {
     uint32_t rf_chnlbw;
 
@@ -3187,6 +3187,12 @@ static void rtl8188eu_initialize_mac(struct usb_dev_t *usb)
                rtl8188eu.bulk_out2 ? rtl8188eu.bulk_out2->addr :
                                      rtl8188eu.bulk_out->addr,
                rtl8188eu.bulk_out2 ? "" : " (shared)");
+
+    /* The network stack must see a fully initialized MAC before DHCP or
+     * runtime RX delivery can use the device.  Keep this at the common
+     * firmware-ready exit so both preloaded and newly downloaded firmware
+     * follow the same registration path. */
+    return rtl8188eu_register_netdev();
 }
 
 
@@ -4618,7 +4624,11 @@ int rtl8188eu_usb_probe(struct usb_interface_t *iface)
                mcu_fwdl, rtl8188eu.firmware_loaded ? "no" : "yes");
     if (rtl8188eu.firmware_loaded) {
         rtl8188eu.wifi_state = RTL8188EU_WIFI_READY;
-        rtl8188eu_initialize_mac(usb);
+        if (rtl8188eu_initialize_mac(usb) < 0) {
+            rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
+            rtl8188eu.last_error = -EIO;
+            return -EIO;
+        }
         return 0;
     }
     if (!rtl8188eu.firmware_loaded) {
@@ -4879,7 +4889,11 @@ int rtl8188eu_load_firmware(const uint8_t *firmware, size_t length)
     rtl8188eu.firmware_loaded = 1;
     rtl8188eu.wifi_state = RTL8188EU_WIFI_READY;
     usb_printk("rtl8188eu: firmware initialized successfully\n");
-    rtl8188eu_initialize_mac(usb);
+    if (rtl8188eu_initialize_mac(usb) < 0) {
+        rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
+        rtl8188eu.last_error = -EIO;
+        return -EIO;
+    }
     return 0;
 }
 
