@@ -316,6 +316,22 @@ static int rtl8188eu_binding_valid(void)
 }
 
 static int rtl8188eu_bssid_equal(const uint8_t *a, const uint8_t *b);
+static void rtl8188eu_handle_eapol(const uint8_t *frame,
+                                   unsigned int length);
+
+static int rtl8188eu_is_own_probe_request(const uint8_t *frame,
+                                          unsigned int length)
+{
+    static const uint8_t broadcast[ETH_ALEN] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+    };
+
+    if (!frame || length < 24 || (frame[0] & 0xfc) != 0x40)
+        return 0;
+    return rtl8188eu_bssid_equal(frame + 4, broadcast) &&
+           rtl8188eu_bssid_equal(frame + 10, rtl8188eu.mac_addr) &&
+           rtl8188eu_bssid_equal(frame + 16, broadcast);
+}
 
 static void rtl8188eu_clear_connection_context(void)
 {
@@ -1433,7 +1449,8 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
     subtype = frame[0] & 0xf0;
     if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
         rtl8188eu_auth_tx_started && subtype != 0x80 && subtype != 0x50 &&
-        frame_length >= 24) {
+        frame_length >= 24 &&
+        !rtl8188eu_is_own_probe_request(frame, frame_length)) {
         usb_printk("rtl8188eu: auth RX mgmt fc=%02x%02x "
                    "DA=%02x:%02x:%02x:%02x:%02x:%02x "
                    "SA=%02x:%02x:%02x:%02x:%02x:%02x "
@@ -3684,6 +3701,17 @@ retry_results:
                 usb_printk("rtl8188eu: connect binding invalid before channel set\n");
                 goto connect_failed;
             }
+            usb_printk("rtl8188eu: auth target SSID=");
+            for (j = 0; j < rtl8188eu.connected_ssid_length; j++)
+                usb_printk("%c", rtl8188eu.connected_ssid[j]);
+            usb_printk(" BSSID=%02x:%02x:%02x:%02x:%02x:%02x channel=%u\n",
+                       rtl8188eu_connect_bssid[0],
+                       rtl8188eu_connect_bssid[1],
+                       rtl8188eu_connect_bssid[2],
+                       rtl8188eu_connect_bssid[3],
+                       rtl8188eu_connect_bssid[4],
+                       rtl8188eu_connect_bssid[5],
+                       rtl8188eu.current_channel);
 
             /* é–¿æ¬’î‡¤æ¾¶å‹­æ‚Šé¨å‹­ç²ºæ¶“â‚¬å¨“å‘¯æ‚Šéãƒ¥å½?*/
             if (rtl8188eu_write8(rtl8188eu.usb,
