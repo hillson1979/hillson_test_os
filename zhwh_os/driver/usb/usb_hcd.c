@@ -19,6 +19,7 @@
 #include <kernel/errno.h>
 #include <kernel/ata.h>
 #include <mm/kheap.h>
+#include <usb_mouse.h>
 
 #include <pci.h>
 #include <usb.h>
@@ -31,9 +32,12 @@ int g_usb_uhci_count   = 0;
 int g_usb_ehci_count   = 0;
 int g_usb_uhci2_count  = 0;
 int g_usb_mouse_count  = 0;
-/* 0 off, 1 PCI scan, 2 xHCI found/start pending, 3 controller ready,
- * 4 port scan complete, -1 no supported controller/failed. */
+/* 0 off, 1 PCI scan, 2 controller start or boot mouse wait, 3 controller
+ * ready, 4 port scan complete, -1 no supported controller/failed. */
 static int g_usb_init_state = 0;
+#define USB_BOOT_MOUSE_WAIT_POLL_LIMIT 18000U
+static unsigned g_usb_boot_init_polls;
+static int g_usb_boot_mouse_gate;
 static unsigned g_usb_scan_bus;
 static unsigned g_usb_scan_dev;
 static unsigned g_usb_xhci_bus;
@@ -46,8 +50,19 @@ void usb_init_poll(void);
 
 int usb_get_init_state(void)
 {
-    if (g_usb_init_state == 3 && xhci_all_ports_enabled())
-        g_usb_init_state = 4;
+    if (g_usb_init_state == 3) {
+        if (xhci_all_ports_enabled()) {
+            g_usb_init_state = 4;
+            g_usb_boot_mouse_gate = 0;
+        } else if (g_usb_boot_mouse_gate) {
+            if (usb_mouse_get_count() > 0 ||
+                g_usb_boot_init_polls >= USB_BOOT_MOUSE_WAIT_POLL_LIMIT) {
+                g_usb_boot_mouse_gate = 0;
+            } else {
+                return 2;
+            }
+        }
+    }
     return g_usb_init_state;
 }
 
@@ -88,6 +103,8 @@ int usb_request_init(void)
             return -1;
         }
 
+        g_usb_boot_init_polls = 0;
+        g_usb_boot_mouse_gate = 1;
         g_usb_init_state = 2;
         usb_printk("usb: cached xHCI at %02x:%02x.%x; async start pending\n",
                    dev->bus_id, dev->dev_id, dev->fn_id);
@@ -105,10 +122,16 @@ void usb_init_poll(void)
     if (poll_busy) return;
     poll_busy = 1;
 
+    if (g_usb_boot_mouse_gate &&
+        g_usb_boot_init_polls < USB_BOOT_MOUSE_WAIT_POLL_LIMIT)
+        g_usb_boot_init_polls++;
+
     if (g_usb_init_state == 3) {
         xhci_poll();
-        if (xhci_all_ports_enabled())
+        if (xhci_all_ports_enabled()) {
             g_usb_init_state = 4;
+            g_usb_boot_mouse_gate = 0;
+        }
         poll_busy = 0;
         return;
     }

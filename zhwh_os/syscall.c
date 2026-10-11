@@ -348,7 +348,9 @@ void syscall_dispatch(struct trapframe *tf) {
             tf->eax = 0;
             break;
         case SYS_YIELD: {
-            // CPU,
+            extern void usb_periodic_poll_callback(void);
+            usb_periodic_poll_callback();
+
             extern int need_resched;
             need_resched = 1;
             tf->eax = 0;
