@@ -3642,6 +3642,8 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
     }
 }
 
+}
+
 void xhci_init_ports_step(void)
 {
     volatile struct xhci_dev_t *xhci = first_xhci;
