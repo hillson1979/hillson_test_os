@@ -967,6 +967,15 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_WIFI_SCAN: {
+            extern int xhci_probe_deferred_wifi(void);
+            extern void usb_init_poll(void);
+            int wifi_polls;
+
+            for (wifi_polls = 0; wifi_polls < 2048; wifi_polls++) {
+                if (xhci_probe_deferred_wifi() == 0)
+                    break;
+                usb_init_poll();
+            }
             tf->eax = rtl8188eu_wifi_scan();
             break;
         }

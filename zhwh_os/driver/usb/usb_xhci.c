@@ -12,6 +12,7 @@
 #include <kernel/usb.h>
 #include <kernel/usb_hid.h>
 #include <kernel/usb_xhci.h>
+#include <kernel/rtl8188eu_wifi.h>
 
 #define XHCI_VERBOSE_TRACE 0
 #include <kernel/ata.h>
@@ -161,6 +162,7 @@ static void xhci_dump_trb(const char *stage, const struct xhci_trb_t *trb)
  * ================================================================ */
 static volatile struct xhci_dev_t *first_xhci = NULL;
 volatile int g_xhci_init_complete = 0;
+static struct usb_dev_t *xhci_wifi_probe_attempted;
 static uint64_t xhci_last_cmd_phys;
 static uint64_t xhci_last_completion_phys;
 static uint8_t xhci_last_completion_slot;
@@ -3679,6 +3681,8 @@ static void xhci_remove_port_device(volatile struct xhci_dev_t *xhci,
         return;
 
     usb = xhci->slots[slot].usb;
+    if (usb == xhci_wifi_probe_attempted)
+        xhci_wifi_probe_attempted = NULL;
     for (iface = usb ? usb->interfaces : NULL; iface; iface = iface->next)
         usb_hid_remove(iface);
 
@@ -3692,6 +3696,38 @@ static void xhci_remove_port_device(volatile struct xhci_dev_t *xhci,
     xhci->slots[slot].configured = 0;
     xhci->slots[slot].speed = 0;
     xhci->slots[slot].port = 0;
+}
+
+int xhci_probe_deferred_wifi(void)
+{
+    volatile struct xhci_dev_t *xhci = first_xhci;
+
+    if (xhci_wifi_probe_attempted)
+        return 0;
+
+    while (xhci) {
+        int slot;
+        for (slot = 1; slot <= (int)xhci->max_slots; slot++) {
+            struct usb_dev_t *usb = xhci->slots[slot].usb;
+            struct usb_interface_t *iface;
+
+            if (!usb || !rtl8188eu_usb_match(usb))
+                continue;
+            for (iface = usb->interfaces; iface; iface = iface->next) {
+                if (!iface->endpoint_in || !iface->endpoint_out ||
+                    iface->endpoint_in->type != USB_ENDPOINT_BULK ||
+                    iface->endpoint_out->type != USB_ENDPOINT_BULK ||
+                    iface->endpoint_in->direction != USB_ENDPOINT_IN ||
+                    iface->endpoint_out->direction != USB_ENDPOINT_OUT)
+                    continue;
+                xhci_wifi_probe_attempted = usb;
+                return rtl8188eu_usb_probe(iface);
+            }
+        }
+        xhci = xhci->next;
+    }
+
+    return -ENODEV;
 }
 
 static void xhci_schedule_port_enum(volatile struct xhci_dev_t *xhci,
@@ -3948,6 +3984,10 @@ static void xhci_setup_transfer(struct usb_transfer_t *transfer)
 
     /* For non-control endpoints, use the endpoint address */
     ep_id = xhci_transfer_ep_id(transfer);
+
+    if (slot_id > 0 && slot_id <= (int)xhci->max_slots &&
+        ep_id > 0 && ep_id < XHCI_MAX_ENDPOINTS)
+        xhci->slots[slot_id].transfers[ep_id] = transfer;
 
     /* Allocate transfer ring if needed; for non-EP0, also configure endpoint */
     if (!xhci->slots[slot_id].ep_rings[ep_id].ring) {
@@ -4697,6 +4737,20 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
 
 static void xhci_delete_transfer(struct usb_transfer_t *transfer)
 {
+    struct xhci_dev_t *xhci;
+    int slot_id;
+    int ep_id;
+
+    if (transfer && transfer->dev && transfer->dev->priv) {
+        xhci = (struct xhci_dev_t *)transfer->dev->priv;
+        slot_id = transfer->dev->num;
+        ep_id = xhci_transfer_ep_id(transfer);
+        if (slot_id > 0 && slot_id <= (int)xhci->max_slots &&
+            ep_id > 0 && ep_id < XHCI_MAX_ENDPOINTS &&
+            xhci->slots[slot_id].transfers[ep_id] == transfer)
+            xhci->slots[slot_id].transfers[ep_id] = NULL;
+    }
+
     /* For now: nothing to free. DMA pool is bump-allocated. */
     transfer->data = NULL;
 }
@@ -4977,6 +5031,8 @@ void xhci_poll(void)
 
     if (!g_xhci_init_complete)
         (void)xhci_all_ports_enabled();
+    if (g_xhci_init_complete)
+        (void)xhci_probe_deferred_wifi();
 }
 
 int xhci_controller_present(void)

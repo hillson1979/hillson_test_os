@@ -62,6 +62,8 @@ int usb_get_init_state(void)
                 return 2;
             }
         }
+        if (!g_usb_boot_mouse_gate && g_usb_init_state == 3)
+            return 4;
     }
     return g_usb_init_state;
 }

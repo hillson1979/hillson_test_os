@@ -418,13 +418,13 @@ void usb_schedule_inttransfer(struct usb_dev_t *usb, struct usb_endpoint_t *endp
     transfer->callback_arg = callback_arg;
     transfer->freq = freq;
 
-    usb_in_transaction(transfer, 0, buf, bufsz);
-    usb_schedule_transfer(transfer);
-
     kernel_mutex_lock(&inttransfer_list_lock);
     transfer->next_inttransfer = inttransfer_head.next_inttransfer;
     inttransfer_head.next_inttransfer = transfer;
     kernel_mutex_unlock(&inttransfer_list_lock);
+
+    usb_in_transaction(transfer, 0, buf, bufsz);
+    usb_schedule_transfer(transfer);
 }
 
 
