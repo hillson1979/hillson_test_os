@@ -404,16 +404,16 @@ static int kernel_usb_init_boot_wait(void)
                         printf("USB boot wait step=%d state=%d\n", i, state);
                         usb_boot_status_refresh();
                 }
-                if (state == 4 || state < 0)
+                if (state >= 3 || state < 0)
                         break;
                 usb_boot_delay(1000);
         }
 
         state = usb_get_init_state();
-        printf("USB boot wait finished, state=%d\n", state);
-        if (state != 4) {
-                usb_boot_status_screen("panic", "USB init did not complete in kernel");
-                panic("USB init did not complete in kernel boot");
+        printf("USB controller boot wait finished, state=%d; port enumeration deferred\n", state);
+        if (state < 3) {
+                usb_boot_status_screen("panic", "USB controller init did not complete in kernel");
+                panic("USB controller init did not complete in kernel boot");
         }
         return state;
 }
@@ -769,15 +769,19 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
 #if BOOT_AUTO_USB
         {
-            extern int usb_init(void);
             int usb_ret;
-            usb_boot_status_screen("sync", "kernel usb_init starting");
-            printf("Initializing USB synchronously in kernel...\n");
-            usb_ret = usb_init();
-            printf("Kernel USB synchronous init returned %d state=%d\n", usb_ret, usb_get_init_state());
+            usb_boot_status_screen("async", "kernel USB controller start");
+            printf("Initializing USB controller through kernel gateway...\n");
+            usb_ret = kernel_usb_init_start("kernel boot");
+            if (usb_ret < 0) {
+                printf("Kernel USB init request failed %d state=%d\n",
+                       usb_ret, usb_get_init_state());
+                panic("USB controller init request failed");
+            }
+            kernel_usb_init_boot_wait();
+            printf("Kernel USB controller ready state=%d; port enumeration deferred\n",
+                   usb_get_init_state());
             usb_boot_status_refresh();
-            if (usb_get_init_state() != 4)
-                panic("USB init did not complete in kernel usb_init");
         }
 #else
         printf("[usb] hardware initialization deferred; continuing without USB\n");

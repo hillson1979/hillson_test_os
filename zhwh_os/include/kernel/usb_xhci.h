@@ -523,6 +523,7 @@ int  xhci_async_reset_step(pci_compat_t *pci, struct pci_bar_t *bar);
 void xhci_poll(void);
 void xhci_init_ports_step(void);
 void xhci_mark_reset_complete(void);
+int  xhci_controller_present(void);
 int  xhci_all_ports_enabled(void);
 struct usb_dev_t *xhci_get_dev_struct(pci_compat_t *bus, uint8_t num);
 

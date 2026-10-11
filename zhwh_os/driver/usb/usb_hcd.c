@@ -227,10 +227,11 @@ void uhci_irq_handler(void) {}
 int usb_init(void)
 {
     unsigned int controller_count = 0;
-    unsigned int port_polls;
     int last_error = 0;
 
     if (g_usb_init_state == 4)
+        return 0;
+    if (g_usb_init_state == 3)
         return 0;
     if (g_usb_init_state > 0 && g_usb_init_state < 4)
         return g_usb_init_state;
@@ -271,6 +272,10 @@ int usb_init(void)
         int ret = xhci_install(&pci, bar);
         if (ret == 0) {
             controller_count++;
+            if (!xhci_controller_present()) {
+                usb_printk("usb: xHCI install returned success without a controller\n");
+                last_error = -EIO;
+            }
         } else {
             last_error = ret;
             usb_printk("usb: synchronous xHCI init failed (%d); continuing\n", ret);
@@ -288,24 +293,15 @@ int usb_init(void)
     }
 
     g_usb_init_state = 3;
-    usb_printk("usb: xHCI controllers ready; initializing all connected devices\n");
-    for (port_polls = 0;
-         port_polls < 5000 && !xhci_all_ports_enabled();
-         port_polls++) {
-        xhci_poll();
+    usb_printk("usb: xHCI controllers ready; root-port enumeration deferred "
+               "controllers=%u\n", controller_count);
+    if (!xhci_controller_present()) {
+        g_usb_init_state = -EIO;
+        usb_printk("usb: xHCI controller list is empty after install\n");
+        return -EIO;
     }
-    if (!xhci_all_ports_enabled()) {
-        /* Controller startup must not fail because a device is slow or was
-         * removed while its root-port state machine was running.  The normal
-         * xhci_poll() path continues enumeration after USB init returns. */
-        g_usb_init_state = 4;
-        usb_printk("usb: xHCI controller ready; port enumeration continues "
-                   "asynchronously after polls=%u\n", port_polls);
-        return 0;
-    }
-    g_usb_init_state = 4;
-    usb_printk("usb: synchronous xHCI init complete controllers=%u polls=%u\n",
-               controller_count, port_polls);
+    usb_printk("usb: xHCI controller initialization complete; "
+               "ports will be serviced asynchronously\n");
     return 0;
 }
 

@@ -110,6 +110,8 @@ static int xhci_alloc_transfer_ring(volatile struct xhci_dev_t *xhci, int slot_i
 static void *xhci_alloc_dev_ctx(volatile struct xhci_dev_t *xhci, uint64_t *phys_out);
 static int xhci_prepare_slot_context(volatile struct xhci_dev_t *xhci,
                                      int slot_id);
+static void xhci_free_addr(void *__xhci, unsigned int slot_id);
+static int xhci_cleanup_init_device(volatile struct xhci_dev_t *xhci);
 static inline int xhci_ep_addr_to_dci(uint8_t ep_addr);
 static uint8_t xhci_interval(uint32_t speed, uint8_t binterval);
 static int xhci_find_slot_by_port(volatile struct xhci_dev_t *xhci,
@@ -158,6 +160,7 @@ static void xhci_dump_trb(const char *stage, const struct xhci_trb_t *trb)
  * Global linked list
  * ================================================================ */
 static volatile struct xhci_dev_t *first_xhci = NULL;
+volatile int g_xhci_init_complete = 0;
 static uint64_t xhci_last_cmd_phys;
 static uint64_t xhci_last_completion_phys;
 static uint8_t xhci_last_completion_slot;
@@ -1886,6 +1889,101 @@ static int xhci_stop_and_rebase_endpoint(volatile struct xhci_dev_t *xhci,
     return cc == CC_SUCCESS ? 0 : -EIO;
 }
 
+static void xhci_release_init_ctrl_buffer(volatile struct xhci_dev_t *xhci)
+{
+    if (!xhci || !xhci->init_ctrl_buf)
+        return;
+    if (xhci->init_ctrl_len)
+        dma_free_coherent(xhci->init_ctrl_buf, xhci->init_ctrl_len);
+    xhci->init_ctrl_buf = NULL;
+    xhci->init_ctrl_phys = 0;
+    xhci->init_ctrl_len = 0;
+}
+
+static int xhci_cleanup_init_device(volatile struct xhci_dev_t *xhci)
+{
+    struct usb_transfer_t *transfer;
+    int slot_id;
+    int data_ep = 0;
+    int stop_failed = 0;
+    int disable_failed = 0;
+
+    if (!xhci)
+        return 0;
+
+    transfer = xhci->init_transfer;
+    slot_id = xhci->init_slot_id;
+    if (transfer)
+        data_ep = xhci_transfer_ep_id(transfer);
+
+    if (slot_id > 0 && slot_id <= (int)xhci->max_slots) {
+        if (xhci->slots[slot_id].addressed ||
+            xhci->init_ctrl_trb_phys || transfer) {
+            if (xhci->slots[slot_id].ep_rings[1].ring &&
+                xhci_stop_and_rebase_endpoint(xhci, slot_id, 1) < 0)
+                stop_failed = 1;
+        }
+
+        if (data_ep > 1 && data_ep < XHCI_MAX_ENDPOINTS &&
+            xhci->slots[slot_id].ep_rings[data_ep].ring &&
+            xhci_stop_and_rebase_endpoint(xhci, slot_id, data_ep) < 0)
+            stop_failed = 1;
+
+    }
+
+    if (stop_failed)
+        return -EAGAIN;
+
+    if (transfer) {
+        usb_delete_transfer(transfer);
+        kfree(transfer);
+        xhci->init_transfer = NULL;
+        if (slot_id > 0 && slot_id <= (int)xhci->max_slots &&
+            data_ep > 0 && data_ep < XHCI_MAX_ENDPOINTS)
+            xhci->slots[slot_id].transfers[data_ep] = NULL;
+    }
+
+    xhci_release_init_ctrl_buffer(xhci);
+
+    if (slot_id > 0 && slot_id <= (int)xhci->max_slots &&
+        (xhci->addr_bitmap[slot_id / 32] & (1U << (slot_id % 32)))) {
+        if (xhci_disable_slot(xhci, slot_id) < 0)
+            disable_failed = 1;
+        if (disable_failed)
+            return -EAGAIN;
+        xhci_free_addr((void *)xhci, slot_id);
+    }
+
+    if (xhci->init_usb) {
+        usb_destroy_dev(xhci->init_usb);
+        xhci->init_usb = NULL;
+    }
+
+    if (xhci->init_disk) {
+        kfree(xhci->init_disk);
+        xhci->init_disk = NULL;
+    }
+
+    xhci->init_iface = NULL;
+    xhci->init_endpoint = NULL;
+    xhci->init_slot_id = 0;
+    xhci->init_ctrl_phys = 0;
+    xhci->init_ctrl_trb_phys = 0;
+    xhci->init_ctrl_len = 0;
+    xhci->init_config_len = 0;
+    xhci->init_config_value = 0;
+    xhci->init_hid_report_len = 0;
+    xhci->init_event_pending = 0;
+    xhci->init_event_cc = 0;
+    xhci->init_event_trb_phys = 0;
+    xhci->init_cmd_wait = 0;
+
+    if (stop_failed || disable_failed)
+        usb_printk("xhci: init cleanup quarantined slot=%d stop=%d disable=%d\n",
+                   slot_id, stop_failed, disable_failed);
+    return 0;
+}
+
 /* Enable Slot 闁?returns slot_id (positive) or negative error */
 static int xhci_enable_slot(volatile struct xhci_dev_t *xhci)
 {
@@ -2480,6 +2578,7 @@ static int xhci_submit_get_descriptor_async(volatile struct xhci_dev_t *xhci,
     struct xhci_trb_t trb;
     int idx;
 
+    xhci_release_init_ctrl_buffer(xhci);
     xhci->init_ctrl_buf = dma_alloc_coherent(len, &xhci->init_ctrl_phys);
     if (!xhci->init_ctrl_buf)
         return -ENOMEM;
@@ -2678,6 +2777,7 @@ static int xhci_submit_set_config_async(volatile struct xhci_dev_t *xhci,
     struct xhci_trb_t trb;
     int idx;
 
+    xhci_release_init_ctrl_buffer(xhci);
     A_memset(&trb, 0, sizeof(trb));
     {
         uint8_t *b = (uint8_t *)&trb.param;
@@ -2847,6 +2947,11 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
 {
     uint32_t i = xhci->init_port_cursor;
     if (i >= xhci->port_count) {
+        if (xhci->init_usb || xhci->init_transfer || xhci->init_ctrl_buf ||
+            xhci->init_slot_id) {
+            if (xhci_cleanup_init_device(xhci) < 0)
+                return;
+        }
         xhci->flags |= XHCI_FLAG_PORTSENABLED;
         usb_printk("xhci: initial port scan complete\n");
         return;
@@ -2854,6 +2959,20 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
 
     uint32_t reg = xhci->op_base + xhci_port_offset(xhci, i);
     uint32_t portsc = mmio_read32(reg);
+
+    if (xhci->init_port_phase == 0 &&
+        (xhci->init_usb || xhci->init_transfer || xhci->init_ctrl_buf ||
+         xhci->init_slot_id) && xhci_cleanup_init_device(xhci) < 0)
+        return;
+
+    if (xhci->init_port_phase != 0 && !(portsc & XHCI_PORT_CCS)) {
+        usb_printk("xhci: port %d disconnected during async enumeration\n", i);
+        if (xhci_cleanup_init_device(xhci) < 0)
+            return;
+        xhci->init_port_phase = 0;
+        xhci->init_port_cursor++;
+        return;
+    }
 
     switch (xhci->init_port_phase) {
     case 0: /* Inspect one root port. */
@@ -3306,20 +3425,13 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
             return;
         }
         if (!g_usb_msc_runtime_enabled) {
-        /* Defer boot MSC traffic until a physical replug after desktop. */
-        usb_printk("xhci: boot MSC on port %d disabled until replug\n", i);
-        kernel_usb_msc_status_line("MSC", "boot port disabled; replug after desktop");
-        xhci_disable_slot(xhci, xhci->init_slot_id);
-        portsc = mmio_read32(reg);
-        mmio_write32(reg, portsc | XHCI_PORT_PED);
-        mmio_read32(reg);
-        usb_destroy_dev(xhci->init_usb);
-        xhci->init_usb = NULL;
-        xhci->init_iface = NULL;
-        xhci->init_endpoint = NULL;
-        xhci->init_port_phase = 0;
-        xhci->init_port_cursor++;
-        return;
+            usb_printk("xhci: boot MSC on port %d disabled until replug\n", i);
+            kernel_usb_msc_status_line("MSC", "boot port disabled; replug after desktop");
+            if (xhci_cleanup_init_device(xhci) < 0)
+                return;
+            xhci->init_port_phase = 0;
+            xhci->init_port_cursor++;
+            return;
         }
 
         if (!xhci->init_iface->endpoint_in || !xhci->init_iface->endpoint_out) {
@@ -3513,10 +3625,20 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
         xhci->init_usb = NULL;
         xhci->init_iface = NULL;
         xhci->init_endpoint = NULL;
+        xhci->init_slot_id = 0;
+        xhci_release_init_ctrl_buffer(xhci);
+        xhci->init_ctrl_trb_phys = 0;
+        xhci->init_event_pending = 0;
+        xhci->init_event_cc = 0;
+        xhci->init_event_trb_phys = 0;
+        xhci->init_cmd_wait = 0;
+        if (xhci->init_disk) {
+            kfree(xhci->init_disk);
+            xhci->init_disk = NULL;
+        }
         xhci->init_port_phase = 0;
         xhci->init_port_cursor++;
-            return;
-        }
+        return;
     }
 }
 
@@ -3573,8 +3695,19 @@ static void xhci_remove_port_device(volatile struct xhci_dev_t *xhci,
 static void xhci_schedule_port_enum(volatile struct xhci_dev_t *xhci,
                                     uint32_t port)
 {
-    if (xhci->init_usb && xhci->init_port_cursor == port)
+    if (xhci->init_port_phase != 0 || xhci->init_usb) {
+        if (xhci->init_port_cursor == port)
+            return;
+        usb_printk("xhci: port %d enum deferred while port %d is active\n",
+                   port, xhci->init_port_cursor);
         return;
+    }
+
+    if (port < 64 && (xhci->port_attempted & (1ULL << port))) {
+        usb_printk("xhci: port %d already attempted; ignore duplicate enum\n",
+                   port);
+        return;
+    }
 
     if (xhci_find_slot_by_port(xhci, port)) {
         usb_printk("xhci: port %d already has a device, skip enum\n", port);
@@ -3586,6 +3719,7 @@ static void xhci_schedule_port_enum(volatile struct xhci_dev_t *xhci,
     xhci->init_port_wait = 0;
     xhci->init_cmd_wait = 0;
     xhci->flags &= ~XHCI_FLAG_PORTSENABLED;
+    g_xhci_init_complete = 0;
     usb_printk("xhci: scheduled async enum for hotplug port %d\n", port);
 }
 
@@ -4758,6 +4892,7 @@ int xhci_install(pci_compat_t *pci, struct pci_bar_t *bar)
     xhci->init_port_phase = 0;
     xhci->init_usb = NULL;
     xhci->flags &= ~XHCI_FLAG_PORTSENABLED;
+    g_xhci_init_complete = 0;
 
     usb_printk("xhci: controller init OK; port enumeration deferred\n");
     kernel_usb_status_line("xhci", "controller ready; port enumeration deferred");
@@ -4810,9 +4945,13 @@ void xhci_poll(void)
 
                 if (portsc & XHCI_PORT_CCS) {
                     usb_printk("xhci: device connected on port %d\n", port);
-                    if (port < 64)
-                        xhci->port_attempted &= ~(1ULL << port);
-                    xhci_reset_port(xhci, port);
+                    if (port < 64 &&
+                        (xhci->port_attempted & (1ULL << port))) {
+                        usb_printk("xhci: duplicate connect change on "
+                                   "attempted port %d; keeping state\n", port);
+                    } else {
+                        xhci_schedule_port_enum(xhci, port);
+                    }
                 } else {
                     usb_printk("xhci: device removed from port %d\n", port);
                     xhci_remove_port_device(xhci, port);
@@ -4833,18 +4972,31 @@ void xhci_poll(void)
 
         xhci = xhci->next;
     }
+
+    if (!g_xhci_init_complete)
+        (void)xhci_all_ports_enabled();
+}
+
+int xhci_controller_present(void)
+{
+    return first_xhci != NULL;
 }
 
 int xhci_all_ports_enabled(void)
 {
     volatile struct xhci_dev_t *xhci = first_xhci;
+    if (g_xhci_init_complete)
+        return 1;
     if (!xhci) return 0;
     while (xhci) {
         if (!(xhci->flags & XHCI_FLAG_PORTSENABLED)) return 0;
         if (xhci->init_port_cursor < xhci->port_count) return 0;
-        if (xhci->init_port_phase != 0 || xhci->init_usb) return 0;
+        if (xhci->init_port_phase != 0 || xhci->init_usb ||
+            xhci->init_transfer || xhci->init_ctrl_buf ||
+            xhci->init_slot_id) return 0;
         xhci = xhci->next;
     }
+    g_xhci_init_complete = 1;
     return 1;
 }
 
