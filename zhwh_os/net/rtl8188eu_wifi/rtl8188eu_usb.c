@@ -177,6 +177,7 @@ static void rtl8188eu_log_reset_color(void)
 #define RTL8188EU_SCAN_POLL_DELAY_US  100
 #define RTL8188EU_MAX_SCAN_RESULTS    32
 #define RTL8188EU_MAX_SSID_LEN        32
+#define RTL8188EU_SCAN_HASH_BUCKETS   64
 #define RTL8188EU_BB_CCK_ENABLE       (1u << 24)
 #define RTL8188EU_BB_OFDM_ENABLE      (1u << 25)
 #define RTL8188EU_RXDMA_AGG_ENABLE    (1u << 2)
@@ -258,6 +259,9 @@ struct rtl8188eu_scan_result {
 static struct rtl8188eu_device rtl8188eu;
 static struct rtl8188eu_scan_result
     rtl8188eu_scan_results[RTL8188EU_MAX_SCAN_RESULTS];
+static int rtl8188eu_scan_hash_heads[RTL8188EU_SCAN_HASH_BUCKETS];
+static int rtl8188eu_scan_hash_next[RTL8188EU_MAX_SCAN_RESULTS];
+static int rtl8188eu_scan_hash_valid;
 static struct usb_transfer_t rtl8188eu_rx_transfer;
 static uint8_t rtl8188eu_rx_buffer[RTL8188EU_RX_TEST_SIZE];
 static int rtl8188eu_rx_armed;
@@ -359,6 +363,61 @@ static int rtl8188eu_binding_valid(void)
 static int rtl8188eu_bssid_equal(const uint8_t *a, const uint8_t *b);
 static void rtl8188eu_handle_eapol(const uint8_t *frame,
                                    unsigned int length);
+
+static unsigned int rtl8188eu_ssid_hash(const uint8_t *ssid,
+                                         unsigned int length)
+{
+    unsigned int hash = 2166136261u;
+    unsigned int i;
+
+    for (i = 0; i < length; i++) {
+        hash ^= ssid[i];
+        hash *= 16777619u;
+    }
+    return hash & (RTL8188EU_SCAN_HASH_BUCKETS - 1u);
+}
+
+static void rtl8188eu_build_scan_hash(void)
+{
+    unsigned int bucket;
+    unsigned int index;
+
+    for (bucket = 0; bucket < RTL8188EU_SCAN_HASH_BUCKETS; bucket++)
+        rtl8188eu_scan_hash_heads[bucket] = -1;
+    for (index = 0; index < RTL8188EU_MAX_SCAN_RESULTS; index++)
+        rtl8188eu_scan_hash_next[index] = -1;
+    for (index = 0; index < rtl8188eu.scan_result_count; index++) {
+        bucket = rtl8188eu_ssid_hash(rtl8188eu_scan_results[index].ssid,
+                                     rtl8188eu_scan_results[index].ssid_length);
+        rtl8188eu_scan_hash_next[index] = rtl8188eu_scan_hash_heads[bucket];
+        rtl8188eu_scan_hash_heads[bucket] = (int)index;
+    }
+    rtl8188eu_scan_hash_valid = 1;
+}
+
+static int rtl8188eu_find_scanned_ssid(const uint8_t *ssid,
+                                        unsigned int length)
+{
+    unsigned int bucket;
+    int index;
+
+    if (!rtl8188eu_scan_hash_valid || !ssid || !length)
+        return -1;
+    bucket = rtl8188eu_ssid_hash(ssid, length);
+    for (index = rtl8188eu_scan_hash_heads[bucket]; index >= 0;
+         index = rtl8188eu_scan_hash_next[index]) {
+        unsigned int byte;
+
+        if (rtl8188eu_scan_results[index].ssid_length != length)
+            continue;
+        for (byte = 0; byte < length; byte++)
+            if (rtl8188eu_scan_results[index].ssid[byte] != ssid[byte])
+                break;
+        if (byte == length)
+            return index;
+    }
+    return -1;
+}
 
 static int rtl8188eu_is_own_probe_request(const uint8_t *frame,
                                           unsigned int length)
@@ -1949,8 +2008,10 @@ static void rtl8188eu_quiesce_radio(void)
 
     if (!rtl8188eu.usb)
         return;
-    if (rtl8188eu_stop_rx() < 0)
-        return -EIO;
+    if (rtl8188eu_stop_rx() < 0) {
+        usb_printk("rtl8188eu: radio quiesce could not stop RX\n");
+        return;
+    }
     if (rtl8188eu_write8(rtl8188eu.usb, RTL8188EU_REG_TXPAUSE, 0xff) < 0 ||
         rtl8188eu_read16(rtl8188eu.usb, RTL8188EU_REG_CR, &cr_before) < 0) {
         usb_printk("rtl8188eu: radio quiesce register access failed\n");
@@ -3636,10 +3697,15 @@ int rtl8188eu_wifi_scan(void)
 
     if (!rtl8188eu.usb || !rtl8188eu.firmware_loaded)
         return -ENODEV;
-    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_SCANNING)
+    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_SCANNING ||
+        rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING ||
+        rtl8188eu.wifi_state == RTL8188EU_WIFI_ASSOCIATING ||
+        rtl8188eu.wifi_state == RTL8188EU_WIFI_WPA2_HANDSHAKE ||
+        rtl8188eu.wifi_state == RTL8188EU_WIFI_CONNECTED)
         return -EBUSY;
 
-    rtl8188eu_stop_rx();
+    if (rtl8188eu_stop_rx() < 0)
+        return -EIO;
     rtl8188eu_write8(rtl8188eu.usb, RTL8188EU_REG_TXPAUSE, 0x00);
     if (rtl8188eu_enable_mac_tx_rx(rtl8188eu.usb) < 0)
         return -EIO;
@@ -3657,6 +3723,7 @@ int rtl8188eu_wifi_scan(void)
     rx_packets_before = rtl8188eu_rx_packets;
     rtl8188eu.last_error = 0;
     rtl8188eu.scan_result_count = 0;
+    rtl8188eu_scan_hash_valid = 0;
     rtl8188eu_scan_channel = 0;
     A_memset(rtl8188eu_scan_results, 0, sizeof(rtl8188eu_scan_results));
 
@@ -3729,6 +3796,7 @@ int rtl8188eu_wifi_scan(void)
         return -EIO;
     }
     rtl8188eu_scan_channel = 0;
+    rtl8188eu_build_scan_hash();
     rtl8188eu.wifi_state = RTL8188EU_WIFI_READY;
     usb_printk("rtl8188eu: scan complete probes=%u rx_packets=%u networks=%u\n",
                probes, rtl8188eu_rx_packets - rx_packets_before,
