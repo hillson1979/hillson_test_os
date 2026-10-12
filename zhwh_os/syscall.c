@@ -77,6 +77,15 @@ static int usb_mouse_x = 512;
 static int usb_mouse_y = 384;
 static uint8_t usb_mouse_buttons = 0;
 static int mouse_last_x = -1, mouse_last_y = -1, mouse_last_buttons = -1;
+static int desktop_usb_runtime_started = 0;
+
+static void save_usb_log_snapshot_after_wifi(const char *operation)
+{
+    extern int fat32_save_log(void);
+    int ret = fat32_save_log();
+    printf("[WiFi] USB log snapshot after %s: %s\n",
+           operation, ret == 0 ? "saved" : "not saved");
+}
 
 // ???? ?????????????????????????????????????????????????????????????????????
 // ???? ?????????static?????????????????????????????????
@@ -977,6 +986,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 usb_init_poll();
             }
             tf->eax = rtl8188eu_wifi_scan();
+            save_usb_log_snapshot_after_wifi("scan");
             break;
         }
         case SYS_WIFI_CONNECT: {
@@ -1001,6 +1011,7 @@ void syscall_dispatch(struct trapframe *tf) {
             kpassword[i < 63 ? i : 63] = 0;
             tf->eax = rtl8188eu_wifi_connect(kssid, kpassword);
             for (i = 0; i < (int)sizeof(kpassword); i++) kpassword[i] = 0;
+            save_usb_log_snapshot_after_wifi("connect");
             break;
         }
         case SYS_WIFI_DISCONNECT: {
@@ -1977,6 +1988,15 @@ void syscall_dispatch(struct trapframe *tf) {
             if (copy_to_user(user_info, &info, sizeof(info)) != 0) {
                 tf->eax = -1;
                 break;
+            }
+
+            if (!desktop_usb_runtime_started) {
+                extern void usb_msc_enable_runtime(int enabled);
+                extern void xhci_request_msc_port_rescan(void);
+                desktop_usb_runtime_started = 1;
+                usb_msc_enable_runtime(1);
+                xhci_request_msc_port_rescan();
+                printf("[GUI] USB MSC runtime enabled; async port rescan requested\n");
             }
 
             tf->eax = 0;

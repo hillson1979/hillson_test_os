@@ -171,6 +171,7 @@ static uint32_t xhci_last_cmd_control;
 /* Physical-machine diagnostics: solve the low-speed HID device first. */
 #define XHCI_ENUM_SLOT_LIMIT 8
 static int g_usb_msc_runtime_enabled = 0;
+static volatile int g_xhci_msc_rescan_requested;
 
 void usb_msc_enable_runtime(int enabled)
 {
@@ -180,6 +181,12 @@ void usb_msc_enable_runtime(int enabled)
 int usb_msc_runtime_enabled(void)
 {
     return g_usb_msc_runtime_enabled;
+}
+
+void xhci_request_msc_port_rescan(void)
+{
+    /* Consumed later by the existing single-consumer xHCI poll path. */
+    g_xhci_msc_rescan_requested = 1;
 }
 
 #define XHCI_MOUSE_ONLY      0
@@ -4992,6 +4999,33 @@ void xhci_poll(void)
         if (!(xhci->flags & XHCI_FLAG_RUN)) {
             xhci = xhci->next;
             continue;
+        }
+
+        if (g_xhci_msc_rescan_requested &&
+            xhci->init_port_phase == 0 && !xhci->init_usb) {
+            int found = 0;
+
+            /* Do not disturb the mouse (or any other live device): only
+             * re-arm connected ports for which boot left no active slot. */
+            for (port = 0; port < xhci->port_count; port++) {
+                uint32_t reg = xhci->op_base + xhci_port_offset(xhci, port);
+                uint32_t portsc = mmio_read32(reg);
+                if ((portsc & XHCI_PORT_CCS) &&
+                    !xhci_find_slot_by_port(xhci, port)) {
+                    if (port < 64)
+                        xhci->port_attempted &= ~(1ULL << port);
+                    found = 1;
+                }
+            }
+            if (found) {
+                xhci->init_port_cursor = 0;
+                xhci->init_port_wait = 0;
+                xhci->init_cmd_wait = 0;
+                xhci->flags &= ~XHCI_FLAG_PORTSENABLED;
+                g_xhci_init_complete = 0;
+                usb_printk("xhci: runtime MSC rescan scheduled\n");
+            }
+            g_xhci_msc_rescan_requested = 0;
         }
 
         if (!(xhci->flags & XHCI_FLAG_PORTSENABLED)) {
