@@ -3708,6 +3708,7 @@ static int rtl8188eu_initialize_mac(struct usb_dev_t *usb)
 
 int rtl8188eu_wifi_scan(void)
 {
+    extern void usb_poll_hid_interrupts(void);
     uint8_t tx[RTL8188EU_TX_DESC_SIZE + 34];
     size_t tx_length;
     unsigned int probes = 0;
@@ -3786,6 +3787,7 @@ int rtl8188eu_wifi_scan(void)
         rtl8188eu_scan_channel = channel;
 
         tick_delay(2000);
+        usb_poll_hid_interrupts();
         rtl8188eu_clear_interrupt_status(rtl8188eu.usb);
 
         ret = rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out, tx, tx_length);
@@ -3809,6 +3811,7 @@ int rtl8188eu_wifi_scan(void)
                 rtl8188eu.last_error = ret;
                 return ret;
             }
+            usb_poll_hid_interrupts();
             tick_delay(RTL8188EU_SCAN_POLL_DELAY_US);
         }
         if ((uint32_t)(ticks - channel_start_tick) <

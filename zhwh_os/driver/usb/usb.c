@@ -1404,6 +1404,25 @@ void usb_poll_interrupts(void)
     poll_busy = 0;
 }
 
+/* Service interrupt pipes without entering the WiFi Bulk-IN poller.  Long
+ * synchronous WiFi operations use this to keep the mouse callback and TRB
+ * re-arm moving without recursively polling the RTL8188EU state machine. */
+void usb_poll_hid_interrupts(void)
+{
+    volatile struct usb_transfer_t *t;
+    static int hid_poll_busy;
+
+    if (hid_poll_busy)
+        return;
+    hid_poll_busy = 1;
+    for (t = inttransfer_head.next_inttransfer; t != NULL;
+         t = t->next_inttransfer) {
+        if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback)
+            t->callback(t->callback_arg);
+    }
+    hid_poll_busy = 0;
+}
+
 static inline char *usbtype(uint8_t prog_if)
 {
     switch(prog_if)

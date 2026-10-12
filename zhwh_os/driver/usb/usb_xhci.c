@@ -122,6 +122,7 @@ extern void kernel_usb_msc_status_line(const char *stage, const char *detail);
 extern void kernel_usb_error_line(const char *stage, const char *detail);
 extern int snprintf(char *str, unsigned int size, const char *fmt, ...);
 extern void usb_poll_interrupts(void);
+extern void usb_poll_hid_interrupts(void);
 
 /* Temporarily silence verbose xHCI status output; errors remain enabled. */
 #define XHCI_STATUS_LOG_ENABLED 0
@@ -4223,6 +4224,7 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
 
     struct xhci_trb_t event;
     volatile int timeout = 1000000;  /* 1 second */
+    unsigned int hid_service_div = 0;
 
     while (timeout--) {
         /* Drain and dispatch the shared event ring directly.  Calling the
@@ -4230,6 +4232,12 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
          * transfer waiter; xhci_drain_events() already latches completions
          * for every slot/DCI owner. */
         xhci_drain_events(xhci);
+        /* Control/Bulk waits can last up to a second.  Dispatch already
+         * latched HID completions periodically so the mouse callback can
+         * re-arm its interrupt TRB while WiFi owns this synchronous wait. */
+        if (transfer->type != USB_TRANSFER_INTERRUPT &&
+            (++hid_service_div & 0x3F) == 0)
+            usb_poll_hid_interrupts();
         if (transfer->event_pending) {
         A_memset(&event, 0, sizeof(event));
         event.param = transfer->event_trb_phys;
