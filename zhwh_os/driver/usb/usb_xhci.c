@@ -1891,6 +1891,31 @@ static int xhci_stop_and_rebase_endpoint(volatile struct xhci_dev_t *xhci,
     return cc == CC_SUCCESS ? 0 : -EIO;
 }
 
+/* Cancel one queued TD without entering the generic one-second transfer
+ * waiter.  Scan uses this to retire its final empty Bulk-IN request. */
+int xhci_cancel_transfer(struct usb_transfer_t *transfer)
+{
+    struct xhci_dev_t *xhci;
+    int ep_id;
+    int ret;
+
+    if (!transfer || !transfer->dev || !transfer->dev->priv)
+        return -EINVAL;
+    if (transfer->trb_released)
+        return 0;
+    xhci = (struct xhci_dev_t *)transfer->dev->priv;
+    ep_id = xhci_transfer_ep_id(transfer);
+    usb_printk("xhci: cancel transfer slot=%u ep=%d\n",
+               transfer->dev->num, ep_id);
+    ret = xhci_stop_and_rebase_endpoint(xhci, transfer->dev->num, ep_id);
+    if (ret == 0) {
+        transfer->event_pending = 0;
+        transfer->success = 0;
+        transfer->trb_released = 1;
+    }
+    return ret;
+}
+
 static void xhci_release_init_ctrl_buffer(volatile struct xhci_dev_t *xhci)
 {
     if (!xhci || !xhci->init_ctrl_buf)

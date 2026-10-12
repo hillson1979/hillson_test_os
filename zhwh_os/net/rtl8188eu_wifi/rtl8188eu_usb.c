@@ -173,8 +173,9 @@ static void rtl8188eu_log_reset_color(void)
 #define RTL8188EU_RF_CHANNEL_MASK     0x000003ffu
 #define RTL8188EU_SCAN_FIRST_CHANNEL  1
 #define RTL8188EU_SCAN_LAST_CHANNEL   13
-#define RTL8188EU_SCAN_DWELL_POLLS    5000
-#define RTL8188EU_SCAN_POLL_DELAY_US  100
+#define RTL8188EU_SCAN_DWELL_TICKS    10
+#define RTL8188EU_SCAN_MAX_POLLS      20000
+#define RTL8188EU_SCAN_POLL_DELAY_US  1
 #define RTL8188EU_MAX_SCAN_RESULTS    32
 #define RTL8188EU_MAX_SSID_LEN        32
 #define RTL8188EU_SCAN_HASH_BUCKETS   64
@@ -220,6 +221,8 @@ static void rtl8188eu_log_reset_color(void)
 
 extern const uint8_t rtl8188eufw[];
 extern const uint32_t rtl8188eufw_size;
+extern int xhci_cancel_transfer(struct usb_transfer_t *transfer);
+extern uint32_t ticks;
 
 struct rtl8188eu_device {
     struct usb_dev_t *usb;
@@ -1988,8 +1991,13 @@ static int rtl8188eu_stop_rx(void)
         return 0;
 
     rtl8188eu_rx_poll_busy = 1;
-    if (!rtl8188eu_rx_transfer.trb_released)
-        usb_wait_transfer(&rtl8188eu_rx_transfer);
+    usb_printk("rtl8188eu: RX stop begin released=%u\n",
+               rtl8188eu_rx_transfer.trb_released);
+    if (!rtl8188eu_rx_transfer.trb_released) {
+        if (rtl8188eu_rx_transfer.dev->type != USB_TYPE_XHCI ||
+            xhci_cancel_transfer(&rtl8188eu_rx_transfer) < 0)
+            usb_wait_transfer(&rtl8188eu_rx_transfer);
+    }
     if (!rtl8188eu_rx_transfer.trb_released) {
         usb_printk("rtl8188eu: RX stop failed; controller still owns TRB\n");
         rtl8188eu_rx_poll_busy = 0;
@@ -1998,6 +2006,7 @@ static int rtl8188eu_stop_rx(void)
     usb_delete_transfer(&rtl8188eu_rx_transfer);
     rtl8188eu_rx_armed = 0;
     rtl8188eu_rx_poll_busy = 0;
+    usb_printk("rtl8188eu: RX stop done\n");
     return 0;
 }
 
@@ -3739,8 +3748,9 @@ int rtl8188eu_wifi_scan(void)
     start_chan = RTL8188EU_SCAN_FIRST_CHANNEL;
     end_chan = RTL8188EU_SCAN_LAST_CHANNEL;
 
-    usb_printk("rtl8188eu: scan start channels=%u-%u dwell=%u us\n",
-               start_chan, end_chan, RTL8188EU_SCAN_DWELL_POLLS * RTL8188EU_SCAN_POLL_DELAY_US);
+    usb_printk("rtl8188eu: scan start channels=%u-%u dwell=%u ticks "
+               "poll_limit=%u\n", start_chan, end_chan,
+               RTL8188EU_SCAN_DWELL_TICKS, RTL8188EU_SCAN_MAX_POLLS);
 
     if (rtl8188eu_arm_rx() < 0) {
         rtl8188eu_quiesce_radio();
@@ -3751,11 +3761,13 @@ int rtl8188eu_wifi_scan(void)
 
     for (channel = start_chan; channel <= end_chan; channel++) {
         unsigned int poll;
+        uint32_t channel_start_tick;
         unsigned int completions = 0;
         unsigned int channel_rx_before = rtl8188eu_rx_packets;
         unsigned int networks_before = rtl8188eu.scan_result_count;
         int ret;
 
+        usb_printk("rtl8188eu: scan channel=%u begin\n", channel);
         ret = 0;
         ret = rtl8188eu_set_channel(rtl8188eu.usb, channel);
         if (ret < 0) {
@@ -3779,7 +3791,12 @@ int rtl8188eu_wifi_scan(void)
                    channel, ret == 0 ? "sent" : "failed",
                    rtl8188eu_rx_armed ? "yes" : "no");
 
-        for (poll = 0; poll < RTL8188EU_SCAN_DWELL_POLLS; poll++) {
+        channel_start_tick = ticks;
+        for (poll = 0;
+             poll < RTL8188EU_SCAN_MAX_POLLS &&
+             (uint32_t)(ticks - channel_start_tick) <
+                 RTL8188EU_SCAN_DWELL_TICKS;
+             poll++) {
             ret = rtl8188eu_scan_poll_rx(&completions);
             if (ret < 0) {
                 rtl8188eu_quiesce_radio();
@@ -3789,9 +3806,16 @@ int rtl8188eu_wifi_scan(void)
             }
             tick_delay(RTL8188EU_SCAN_POLL_DELAY_US);
         }
+        if ((uint32_t)(ticks - channel_start_tick) <
+            RTL8188EU_SCAN_DWELL_TICKS)
+            usb_printk("rtl8188eu: scan channel=%u poll watchdog "
+                       "elapsed_ticks=%u\n", channel,
+                       (uint32_t)(ticks - channel_start_tick));
         usb_printk("rtl8188eu: scan channel=%u done completions=%u "
-                   "rx_packets=%u new_networks=%u total_networks=%u\n",
-                   channel, completions,
+                   "polls=%u ticks=%u rx_packets=%u new_networks=%u "
+                   "total_networks=%u\n",
+                   channel, completions, poll,
+                   (uint32_t)(ticks - channel_start_tick),
                    rtl8188eu_rx_packets - channel_rx_before,
                    rtl8188eu.scan_result_count - networks_before,
                    rtl8188eu.scan_result_count);
