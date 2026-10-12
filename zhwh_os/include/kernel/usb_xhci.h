@@ -528,6 +528,7 @@ int  xhci_all_ports_enabled(void);
 int  xhci_probe_deferred_wifi(void);
 void usb_msc_enable_runtime(int enabled);
 void xhci_request_msc_port_rescan(void);
+int  xhci_service_deferred_msc_mount(void);
 struct usb_dev_t *xhci_get_dev_struct(pci_compat_t *bus, uint8_t num);
 
 #endif /* KERNEL_USB_XHCI_H */

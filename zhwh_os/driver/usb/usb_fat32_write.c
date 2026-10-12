@@ -228,7 +228,8 @@ int fat32_save_log(void)
         int ret = fat32_ensure_file("/usb/USB_AI.LOG", (uint32_t)len);
         if (ret < 0) {
             kernel_usb_error_line("fat32 save", "ensure failed");
-            usb_printk("fat32_save_log: ensure failed (%d bytes)\n", len);
+            usb_printk("fat32_save_log: ensure failed ret=%d len=%d\n",
+                       ret, len);
             kernel_usb_msc_status_line("fat32 save", "failed");
             kfree(snapshot);
             return ret;

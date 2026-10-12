@@ -172,6 +172,7 @@ static uint32_t xhci_last_cmd_control;
 #define XHCI_ENUM_SLOT_LIMIT 8
 static int g_usb_msc_runtime_enabled = 0;
 static volatile int g_xhci_msc_rescan_requested;
+static struct ata_dev_s *g_xhci_pending_msc_disk;
 
 void usb_msc_enable_runtime(int enabled)
 {
@@ -187,6 +188,40 @@ void xhci_request_msc_port_rescan(void)
 {
     /* Consumed later by the existing single-consumer xHCI poll path. */
     g_xhci_msc_rescan_requested = 1;
+}
+
+int xhci_service_deferred_msc_mount(void)
+{
+    struct ata_dev_s *dev = g_xhci_pending_msc_disk;
+    struct usb_interface_t *iface;
+
+    if (!dev)
+        return 0;
+    g_xhci_pending_msc_disk = NULL;
+    iface = (struct usb_interface_t *)dev->priv;
+    if (!iface || !iface->usb || !iface->endpoint_in ||
+        !iface->endpoint_out) {
+        usb_printk("xhci: deferred MSC mount has invalid interface\n");
+        kfree(dev);
+        return -1;
+    }
+
+    ahci_register_dev(dev, NULL, 0);
+    {
+        extern int usb_msc_init(uint8_t dev_addr, uint8_t ep_in,
+                                uint8_t ep_out);
+        extern void usb_msc_set_dev(void *dev);
+        usb_msc_init(iface->usb->num, iface->endpoint_in->addr,
+                     iface->endpoint_out->addr);
+        usb_msc_set_dev(dev);
+    }
+    {
+        extern int fat32_try_mount_dev(struct ata_dev_s *dev);
+        int ret = fat32_try_mount_dev(dev);
+        usb_printk("xhci: deferred FAT32 mount %s\n",
+                   ret == 0 ? "complete" : "failed");
+        return ret;
+    }
 }
 
 #define XHCI_MOUSE_ONLY      0
@@ -3667,7 +3702,13 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
         xhci->init_event_trb_phys = 0;
         xhci->init_cmd_wait = 0;
         if (xhci->init_disk) {
-            kfree(xhci->init_disk);
+            if (!g_xhci_pending_msc_disk) {
+                g_xhci_pending_msc_disk = xhci->init_disk;
+                usb_printk("xhci: queued MSC disk for deferred FAT32 mount\n");
+            } else {
+                usb_printk("xhci: deferred MSC mount queue busy\n");
+                kfree(xhci->init_disk);
+            }
             xhci->init_disk = NULL;
         }
         xhci->init_port_phase = 0;
