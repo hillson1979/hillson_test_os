@@ -146,19 +146,6 @@ static void rtl8188eu_log_reset_color(void)
 #define RTL8188EU_RX_TEST_SIZE     15360
 #define RTL8188EU_RX_RAW_DEBUG     0
 #define RTL8188EU_RX_DESCRIPTOR_DEBUG 0
-#define RTL8188EU_SAMPLE_SCAN_ONLY 0
-#define RTL8188EU_SAMPLE_SSID_COUNT 2
-
-/*
- * Optional scan allow-list.  Set RTL8188EU_SAMPLE_SSID_COUNT to 0 to keep
- * every discovered SSID.  The array is deliberately kept in one place so a
- * hardware test can change the sample networks without touching the parser.
- */
-static const char *const rtl8188eu_sample_ssids[] = {
-    "Y50",
-    "Y52"
-};
-#define RTL8188EU_SAMPLE_CHANNEL    2
 #define RTL8188EU_TX_TOTAL_PAGES   0xA9
 #define RTL8188EU_TX_HPQ_PAGES     0x0C
 #define RTL8188EU_TX_LPQ_PAGES     0x02
@@ -401,7 +388,7 @@ static void rtl8188eu_clear_connection_context(void)
 
 /* A connect attempt is pinned to one scan result and one physical USB
  * function.  This prevents stray Beacons from another channel/BSS from
- * changing the Y50 target while authentication is in progress. */
+ * changing the selected target while authentication is in progress. */
 static int rtl8188eu_connection_binding_valid(void)
 {
     if (!rtl8188eu_binding_valid() || !rtl8188eu.bulk_in ||
@@ -1518,7 +1505,7 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
     }
     /* Beacon/Probe Response IEs belong to scan results only.  During
      * connect/authentication other APs may still be visible in the RX ring;
-     * never let their advertised channel or SSID overwrite the selected Y50
+     * never let their advertised channel or SSID overwrite the selected
      * result. */
     if (rtl8188eu.wifi_state != RTL8188EU_WIFI_SCANNING)
         return;
@@ -1601,34 +1588,6 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
                    result.bssid[3], result.bssid[4], result.bssid[5],
                    result.channel);
         return;
-    }
-    {
-        unsigned int sample_name;
-        int sample_match = RTL8188EU_SAMPLE_SSID_COUNT == 0;
-
-        for (sample_name = 0;
-             sample_name < RTL8188EU_SAMPLE_SSID_COUNT;
-             sample_name++) {
-            const char *sample_ssid = rtl8188eu_sample_ssids[sample_name];
-            unsigned int sample_len = 0;
-            unsigned int sample_i;
-
-            while (sample_ssid[sample_len])
-                sample_len++;
-            if (result.ssid_length != sample_len)
-                continue;
-            sample_match = 1;
-            for (sample_i = 0; sample_i < sample_len; sample_i++) {
-                if (result.ssid[sample_i] != (uint8_t)sample_ssid[sample_i]) {
-                    sample_match = 0;
-                    break;
-                }
-            }
-            if (sample_match)
-                break;
-        }
-        if (!sample_match)
-            return;
     }
     if (rtl8188eu.scan_result_count < RTL8188EU_MAX_SCAN_RESULTS) {
         rtl8188eu_scan_results[rtl8188eu.scan_result_count++] = result;
@@ -3661,8 +3620,8 @@ int rtl8188eu_wifi_scan(void)
     rtl8188eu.scan_result_count = 0;
     A_memset(rtl8188eu_scan_results, 0, sizeof(rtl8188eu_scan_results));
 
-    start_chan = RTL8188EU_SAMPLE_SCAN_ONLY ? RTL8188EU_SAMPLE_CHANNEL : RTL8188EU_SCAN_FIRST_CHANNEL;
-    end_chan   = RTL8188EU_SAMPLE_SCAN_ONLY ? RTL8188EU_SAMPLE_CHANNEL : RTL8188EU_SCAN_LAST_CHANNEL;
+    start_chan = RTL8188EU_SCAN_FIRST_CHANNEL;
+    end_chan = RTL8188EU_SCAN_LAST_CHANNEL;
 
     usb_printk("rtl8188eu: scan start channels=%u-%u dwell=%u us\n",
                start_chan, end_chan, RTL8188EU_SCAN_DWELL_POLLS * RTL8188EU_SCAN_POLL_DELAY_US);
@@ -3680,10 +3639,6 @@ int rtl8188eu_wifi_scan(void)
 
         ret = 0;
         ret = rtl8188eu_set_channel(rtl8188eu.usb, channel);
-#if RTL8188EU_SAMPLE_SCAN_ONLY
-        usb_printk("rtl8188eu: sample scan tuned channel=%u\n",
-                   channel);
-#endif
         if (ret < 0) {
             /* A single EP0 channel-tune timeout must not erase results from
              * earlier channels or abort the whole scan.  EP0 recovery and the
