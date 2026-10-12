@@ -775,8 +775,9 @@ static int fat32_listdir(inode_t *dir, char *buf, int max)
     while (cluster >= 2 && cluster < FAT32_CLUSTER_EOC) {
         uint8_t *cl_buf = fat32_read_cluster(fs, cluster);
         if (!cl_buf) {
-            usb_printk("[fat32] listdir: directory cluster read failed "
-                       "cluster=%u\n", cluster);
+            usb_printk("[fat32] listdir: directory cluster read/allocation "
+                       "failed cluster=%u read_error=%d\n",
+                       cluster, g_fat32_read_failed);
             kernel_usb_error_line("fat32 listdir", "directory read failed");
             if (max > 0)
                 buf[0] = '\0';

@@ -519,6 +519,8 @@ int vfs_list_dir(const char *path, char *buf, int max) {
     }
 
     int ret = dir->i_op->listdir(dir, buf, max);
+    if (ret < 0)
+        printf("[vfs] list_dir: filesystem I/O failed path='%s'\n", path);
 
     /*
      * Mount points live in the VFS mount table.  They are not necessarily

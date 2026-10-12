@@ -245,6 +245,7 @@ static int send_scsi_cmd(struct usb_interface_t *iface,
     if(!transfer.success)
     {
         usb_printk("usb: CBW send failed (cmd=0x%x)\n", cmd);
+        reset_recovery(iface);
         kernel_mutex_unlock(&iface->usb->lock);
         return -EIO;
     }
@@ -265,6 +266,7 @@ static int send_scsi_cmd(struct usb_interface_t *iface,
         if(!transfer.success)
         {
             usb_printk("usb: data read failed (cmd=0x%x)\n", cmd);
+            reset_recovery(iface);
             kernel_mutex_unlock(&iface->usb->lock);
             return -EIO;
         }
@@ -281,6 +283,7 @@ static int send_scsi_cmd(struct usb_interface_t *iface,
     if(!transfer.success)
     {
         usb_printk("usb: CSW read failed (cmd=0x%x)\n", cmd);
+        reset_recovery(iface);
         kernel_mutex_unlock(&iface->usb->lock);
         return -EIO;
     }
@@ -493,7 +496,18 @@ long usb_msd_read(struct ata_dev_s *dev, size_t lba, int sectors, uintptr_t buf)
 
     if(sectors <= SECTORS_TO_DO)
     {
-        return send_scsi_cmd(iface, SCSI_CMD_READ, lba, sectors, (void *)buf, 0);
+        long ret = send_scsi_cmd(iface, SCSI_CMD_READ, lba, sectors,
+                                 (void *)buf, 0);
+        if (ret < 0) {
+            /* send_scsi_cmd() performed BOT reset recovery.  READ(10) is
+             * side-effect free, so retry it once to survive a transient TD
+             * failure without making the mounted filesystem disappear. */
+            usb_printk("usb-msd: retry READ(10) lba=%u sectors=%u\n",
+                       (uint32_t)lba, (uint32_t)sectors);
+            ret = send_scsi_cmd(iface, SCSI_CMD_READ, lba, sectors,
+                                (void *)buf, 0);
+        }
+        return ret;
     }
     else
     {
