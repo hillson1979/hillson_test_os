@@ -4078,6 +4078,14 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             else
                 usb_printk("rtl8188eu: WPA2 EAPOL message 1 timeout "
                            "messages=%u\n", rtl8188eu_eapol_messages);
+            /* Do not leave the long-lived WiFi RX Bulk-IN request armed
+             * while control returns to the shell.  MSC/FAT32 uses the same
+             * xHCI controller and its BOT CBW/DATA/CSW sequence must not
+             * compete with a stale WPA2 receive TD.  The connection is not
+             * complete yet, so quiesce the radio and let a later connection
+             * attempt arm RX again explicitly. */
+            rtl8188eu_quiesce_radio();
+            rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
             rtl8188eu.last_error = -ENOTSUP;
             return -ENOTSUP;
         }
@@ -4090,6 +4098,11 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
 
 connect_failed:
     rtl8188eu_quiesce_radio();
+    if (rtl8188eu_rx_armed) {
+        usb_printk("rtl8188eu: connect cleanup RX still armed; retry stop\n");
+        if (rtl8188eu_stop_rx() < 0)
+            usb_printk("rtl8188eu: connect cleanup RX stop failed\n");
+    }
     rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
     rtl8188eu.last_error = -EIO;
     return rtl8188eu.last_error;
