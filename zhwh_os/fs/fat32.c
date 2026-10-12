@@ -767,9 +767,21 @@ static int fat32_listdir(inode_t *dir, char *buf, int max)
     char lfn_buf[256];
     int  lfn_len = 0;
 
+    /* This flag is sticky across block operations; a new directory listing
+     * must start with a clean status or an earlier unrelated read failure
+     * could be reported against a later successful FAT-chain read. */
+    g_fat32_read_failed = 0;
+
     while (cluster >= 2 && cluster < FAT32_CLUSTER_EOC) {
         uint8_t *cl_buf = fat32_read_cluster(fs, cluster);
-        if (!cl_buf) break;
+        if (!cl_buf) {
+            usb_printk("[fat32] listdir: directory cluster read failed "
+                       "cluster=%u\n", cluster);
+            kernel_usb_error_line("fat32 listdir", "directory read failed");
+            if (max > 0)
+                buf[0] = '\0';
+            return -1;
+        }
 
         int entries_per_cluster = fs->cluster_size / 32;
 
@@ -872,6 +884,13 @@ static int fat32_listdir(inode_t *dir, char *buf, int max)
 
         kfree(cl_buf);
         cluster = fat32_next_cluster(fs, cluster);
+        if (g_fat32_read_failed) {
+            usb_printk("[fat32] listdir: FAT chain read failed\n");
+            kernel_usb_error_line("fat32 listdir", "FAT chain read failed");
+            if (max > 0)
+                buf[0] = '\0';
+            return -1;
+        }
     }
 
 done:
