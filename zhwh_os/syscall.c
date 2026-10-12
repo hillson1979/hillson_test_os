@@ -78,13 +78,15 @@ static int usb_mouse_y = 384;
 static uint8_t usb_mouse_buttons = 0;
 static int mouse_last_x = -1, mouse_last_y = -1, mouse_last_buttons = -1;
 static int desktop_usb_runtime_started = 0;
+static int wifi_usb_log_export_pending = 0;
 
-static void save_usb_log_snapshot_after_wifi(const char *operation)
+static void queue_usb_log_snapshot_after_wifi(const char *operation)
 {
-    extern int fat32_save_log(void);
-    int ret = fat32_save_log();
-    printf("[WiFi] USB log snapshot after %s: %s\n",
-           operation, ret == 0 ? "saved" : "not saved");
+    extern void usb_log_snapshot(void);
+    usb_log_snapshot();
+    wifi_usb_log_export_pending = 1;
+    printf("[WiFi] USB log snapshot after %s queued for export\n",
+           operation);
 }
 
 // ???? ?????????????????????????????????????????????????????????????????????
@@ -986,7 +988,7 @@ void syscall_dispatch(struct trapframe *tf) {
                 usb_init_poll();
             }
             tf->eax = rtl8188eu_wifi_scan();
-            save_usb_log_snapshot_after_wifi("scan");
+            queue_usb_log_snapshot_after_wifi("scan");
             break;
         }
         case SYS_WIFI_CONNECT: {
@@ -1011,7 +1013,7 @@ void syscall_dispatch(struct trapframe *tf) {
             kpassword[i < 63 ? i : 63] = 0;
             tf->eax = rtl8188eu_wifi_connect(kssid, kpassword);
             for (i = 0; i < (int)sizeof(kpassword); i++) kpassword[i] = 0;
-            save_usb_log_snapshot_after_wifi("connect");
+            queue_usb_log_snapshot_after_wifi("connect");
             break;
         }
         case SYS_WIFI_DISCONNECT: {
@@ -2580,6 +2582,14 @@ void syscall_dispatch(struct trapframe *tf) {
                 kpath[sizeof(kpath) - 1] = '\0';
                 path = kpath;
             }
+            /* FAT32 probing performs synchronous USB block transfers.  Run it
+             * only for an explicit /usb access, never from the scheduler idle
+             * hook where it would stop mouse callbacks and WiFi RX progress. */
+            if (path[0] == '/' && path[1] == 'u' && path[2] == 's' &&
+                path[3] == 'b' && (path[4] == 0 || path[4] == '/')) {
+                extern int xhci_service_deferred_msc_mount(void);
+                (void)xhci_service_deferred_msc_mount();
+            }
             extern int vfs_list_dir(const char *path, char *buf, int max);
             ret = vfs_list_dir(path, kbuf, outmax);
             printf("[lsdisk] path='%s' ret=%d first='%c'\n",
@@ -2722,7 +2732,11 @@ void syscall_dispatch(struct trapframe *tf) {
         }
         case SYS_USB_LOG_SAVE: {
             extern int fat32_save_log(void);
+            extern int xhci_service_deferred_msc_mount(void);
+            (void)xhci_service_deferred_msc_mount();
             tf->eax = fat32_save_log();
+            if (tf->eax == 0)
+                wifi_usb_log_export_pending = 0;
             printf("[syscall] USB log save %s\n",
                    tf->eax == 0 ? "OK" : "failed");
             break;

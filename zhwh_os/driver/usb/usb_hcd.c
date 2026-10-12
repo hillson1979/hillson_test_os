@@ -415,7 +415,6 @@ int usb_hcd_poll_hotplug(int cid) {
         return 0;
     (void)cid;
     xhci_poll();
-    (void)xhci_service_deferred_msc_mount();
     usb_hub_poll();
     return 0;
 }
