@@ -2039,6 +2039,9 @@ void rtl8188eu_wifi_poll(void)
     uint16_t rx_length;
     int success;
 
+    /* Scan owns its RX transfer synchronously through scan_poll_rx(). */
+    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_SCANNING)
+        return;
     /* usb_poll_interrupts() and synchronous connect() can both reach this
      * function.  A transfer must have exactly one owner while it is being
      * completed, deleted, and re-armed. */
