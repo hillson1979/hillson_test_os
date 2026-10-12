@@ -483,12 +483,13 @@ void usb_msd_remove(struct usb_interface_t *iface)
 
 long usb_msd_read(struct ata_dev_s *dev, size_t lba, int sectors, uintptr_t buf)
 {
-    struct usb_interface_t *iface = dev->priv;
+    struct usb_interface_t *iface;
 
     if(!dev || !dev->priv)
     {
         return -EINVAL;
     }
+    iface = dev->priv;
 
     if(sectors <= SECTORS_TO_DO)
     {
@@ -524,12 +525,13 @@ long usb_msd_read(struct ata_dev_s *dev, size_t lba, int sectors, uintptr_t buf)
 
 long usb_msd_write(struct ata_dev_s *dev, size_t lba, int sectors, uintptr_t buf)
 {
-    struct usb_interface_t *iface = dev->priv;
+    struct usb_interface_t *iface;
 
     if(!dev || !dev->priv)
     {
         return -EINVAL;
     }
+    iface = dev->priv;
 
     if(sectors <= SECTORS_TO_DO)
     {

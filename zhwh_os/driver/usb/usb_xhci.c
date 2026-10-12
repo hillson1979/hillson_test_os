@@ -173,6 +173,8 @@ static uint32_t xhci_last_cmd_control;
 static int g_usb_msc_runtime_enabled = 0;
 static volatile int g_xhci_msc_rescan_requested;
 static struct ata_dev_s *g_xhci_pending_msc_disk;
+static unsigned int g_xhci_msc_mount_attempts;
+static unsigned int g_xhci_msc_mount_backoff;
 
 void usb_msc_enable_runtime(int enabled)
 {
@@ -197,15 +199,22 @@ int xhci_service_deferred_msc_mount(void)
 
     if (!dev)
         return 0;
-    g_xhci_pending_msc_disk = NULL;
+    if (g_xhci_msc_mount_backoff) {
+        g_xhci_msc_mount_backoff--;
+        return 0;
+    }
     iface = (struct usb_interface_t *)dev->priv;
     if (!iface || !iface->usb || !iface->endpoint_in ||
         !iface->endpoint_out) {
         usb_printk("xhci: deferred MSC mount has invalid interface\n");
+        g_xhci_pending_msc_disk = NULL;
         kfree(dev);
         return -1;
     }
 
+    g_xhci_msc_mount_attempts++;
+    usb_printk("xhci: deferred FAT32 mount attempt %d\n",
+               g_xhci_msc_mount_attempts);
     ahci_register_dev(dev, NULL, 0);
     {
         extern int usb_msc_init(uint8_t dev_addr, uint8_t ep_in,
@@ -218,8 +227,23 @@ int xhci_service_deferred_msc_mount(void)
     {
         extern int fat32_try_mount_dev(struct ata_dev_s *dev);
         int ret = fat32_try_mount_dev(dev);
-        usb_printk("xhci: deferred FAT32 mount %s\n",
-                   ret == 0 ? "complete" : "failed");
+        if (ret == 0) {
+            g_xhci_pending_msc_disk = NULL;
+            g_xhci_msc_mount_attempts = 0;
+            g_xhci_msc_mount_backoff = 0;
+            usb_printk("xhci: deferred FAT32 mount complete; /usb ready\n");
+        } else if (g_xhci_msc_mount_attempts < 4) {
+            /* A newly initialized BOT device can transiently fail its first
+             * READ(10).  Keep the disk object and retry outside xhci_poll(). */
+            g_xhci_msc_mount_backoff = 32;
+            usb_printk("xhci: deferred FAT32 mount failed; retry queued\n");
+        } else {
+            /* Keep the disk metadata alive for diagnostics and manual I/O,
+             * but stop automatic retries so mouse polling is not starved. */
+            g_xhci_pending_msc_disk = NULL;
+            usb_printk("xhci: deferred FAT32 mount failed after %d attempts\n",
+                       g_xhci_msc_mount_attempts);
+        }
         return ret;
     }
 }
@@ -3704,6 +3728,8 @@ static void xhci_enable_next_port(volatile struct xhci_dev_t *xhci)
         if (xhci->init_disk) {
             if (!g_xhci_pending_msc_disk) {
                 g_xhci_pending_msc_disk = xhci->init_disk;
+                g_xhci_msc_mount_attempts = 0;
+                g_xhci_msc_mount_backoff = 0;
                 usb_printk("xhci: queued MSC disk for deferred FAT32 mount\n");
             } else {
                 usb_printk("xhci: deferred MSC mount queue busy\n");
