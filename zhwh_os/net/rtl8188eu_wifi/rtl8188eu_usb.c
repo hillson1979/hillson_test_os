@@ -3707,6 +3707,11 @@ int rtl8188eu_wifi_scan(void)
         rtl8188eu.wifi_state == RTL8188EU_WIFI_CONNECTED)
         return -EBUSY;
 
+    /* A new scan attempt invalidates the previous snapshot immediately.  If
+     * hardware setup fails, connect must not fall back to stale SSIDs. */
+    rtl8188eu_scan_hash_valid = 0;
+    rtl8188eu.scan_result_count = 0;
+    A_memset(rtl8188eu_scan_results, 0, sizeof(rtl8188eu_scan_results));
     if (rtl8188eu_stop_rx() < 0)
         return -EIO;
     rtl8188eu_write8(rtl8188eu.usb, RTL8188EU_REG_TXPAUSE, 0x00);
@@ -3725,8 +3730,6 @@ int rtl8188eu_wifi_scan(void)
     rtl8188eu.wifi_state = RTL8188EU_WIFI_SCANNING;
     rx_packets_before = rtl8188eu_rx_packets;
     rtl8188eu.last_error = 0;
-    rtl8188eu.scan_result_count = 0;
-    rtl8188eu_scan_hash_valid = 0;
     rtl8188eu_scan_channel = 0;
     A_memset(rtl8188eu_scan_results, 0, sizeof(rtl8188eu_scan_results));
 
@@ -3841,10 +3844,23 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
     if (ssid_length == 0 || password_length < 8 || password_length > 63)
         return -EINVAL;
 
+    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_CONNECTED) {
+        if (rtl8188eu.connected_ssid_length == ssid_length) {
+            for (j = 0; j < ssid_length; j++)
+                if (rtl8188eu.connected_ssid[j] != (uint8_t)ssid[j])
+                    break;
+            if (j == ssid_length) {
+                usb_printk("rtl8188eu: connect already satisfied for SSID\n");
+                return 0;
+            }
+        }
+        usb_printk("rtl8188eu: connect rejected; disconnect current SSID first\n");
+        return -EBUSY;
+    }
+
     scan_index = rtl8188eu_find_scanned_ssid((const uint8_t *)ssid,
                                              ssid_length);
     if (scan_index >= 0) {
-        j = 0;
         {
             uint8_t tx[RTL8188EU_TX_DESC_SIZE + 96];
             uint8_t txpause;
@@ -3901,7 +3917,8 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             rtl8188eu_auth_tx_started = 0;
             rtl8188eu.wifi_state = RTL8188EU_WIFI_AUTHENTICATING;
 
-            rtl8188eu_stop_rx();
+            if (rtl8188eu_stop_rx() < 0)
+                goto connect_failed;
             A_memset(rtl8188eu_rx_buffer, 0, sizeof(rtl8188eu_rx_buffer));
 
             if (rtl8188eu_clear_interrupt_status(rtl8188eu.usb) < 0 ||
@@ -4031,7 +4048,6 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
 
 connect_failed:
     rtl8188eu_quiesce_radio();
-    rtl8188eu_stop_rx();
     rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
     rtl8188eu.last_error = -EIO;
     return rtl8188eu.last_error;
