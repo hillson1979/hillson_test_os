@@ -3689,10 +3689,6 @@ int rtl8188eu_wifi_scan(void)
                            channel);
         }
 
-#if RTL8188EU_SAMPLE_SCAN_ONLY
-        if (rtl8188eu.scan_result_count > 0)
-            break;
-#endif
         if (channel == 255) break; /* é—ƒå‰î„?uint8_t å¯°î†å¹†å©§ãˆ åš­ */
     }
 
