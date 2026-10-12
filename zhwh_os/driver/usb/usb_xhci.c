@@ -236,6 +236,42 @@ int xhci_service_deferred_msc_mount(void)
     }
 }
 
+/* Explicit operations such as `ls /usb` may wait for enumeration.  Physical
+ * port reset and command completion require elapsed time, not just a large
+ * number of tight polls.  Service HID completions between polls so this wait
+ * does not freeze the USB mouse. */
+int xhci_wait_for_msc_mount(unsigned int timeout_ms)
+{
+    extern int vfs_mount_active(const char *mount_path);
+    extern void usb_poll_hid_interrupts(void);
+
+    if (vfs_mount_active("/usb"))
+        return 0;
+
+    xhci_request_msc_port_rescan();
+    while (timeout_ms-- && !vfs_mount_active("/usb")) {
+        int mount_ret = 0;
+
+        xhci_poll();
+        usb_poll_hid_interrupts();
+        /* A failed probe leaves the disk queued so a later explicit command
+         * can retry it.  Do not perform thousands of synchronous READ(10)
+         * probes in this one wait. */
+        if (g_xhci_pending_msc_disk) {
+            mount_ret = xhci_service_deferred_msc_mount();
+            if (mount_ret < 0)
+                return -1;
+        }
+        if (!vfs_mount_active("/usb"))
+            tick_delay(1000);
+    }
+
+    if (vfs_mount_active("/usb"))
+        return 0;
+    usb_printk("xhci: explicit /usb mount wait timed out\n");
+    return -1;
+}
+
 #define XHCI_MOUSE_ONLY      0
 
 static void xhci_parse_supported_protocols(volatile struct xhci_dev_t *xhci,

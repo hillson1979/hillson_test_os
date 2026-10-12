@@ -2588,23 +2588,9 @@ void syscall_dispatch(struct trapframe *tf) {
             if (path[0] == '/' && path[1] == 'u' && path[2] == 's' &&
                 path[3] == 'b' && (path[4] == 0 || path[4] == '/')) {
                 extern int vfs_mount_active(const char *mount_path);
-                extern void xhci_request_msc_port_rescan(void);
-                extern int xhci_service_deferred_msc_mount(void);
-                extern int usb_hcd_scan_ports(int controller_id);
-                extern void usb_poll_hid_interrupts(void);
-                if (!vfs_mount_active("/usb")) {
-                    xhci_request_msc_port_rescan();
-                    /* Explicit /usb access owns this bounded wait.  Advance
-                     * the existing asynchronous port/BOT enumerator until it
-                     * publishes a disk, then mount its FAT32 root. */
-                    for (int mount_poll = 0;
-                         mount_poll < 20000 && !vfs_mount_active("/usb");
-                         mount_poll++) {
-                        usb_hcd_scan_ports(0);
-                        usb_poll_hid_interrupts();
-                        (void)xhci_service_deferred_msc_mount();
-                    }
-                }
+                extern int xhci_wait_for_msc_mount(unsigned int timeout_ms);
+                if (!vfs_mount_active("/usb"))
+                    (void)xhci_wait_for_msc_mount(3000);
                 if (!vfs_mount_active("/usb")) {
                     const char *pending = "USB mount failed or device not ready.\n";
                     int p = 0;
@@ -2762,20 +2748,9 @@ void syscall_dispatch(struct trapframe *tf) {
         case SYS_USB_LOG_SAVE: {
             extern int fat32_save_log(void);
             extern int vfs_mount_active(const char *mount_path);
-            extern void xhci_request_msc_port_rescan(void);
-            extern int xhci_service_deferred_msc_mount(void);
-            extern int usb_hcd_scan_ports(int controller_id);
-            extern void usb_poll_hid_interrupts(void);
-            if (!vfs_mount_active("/usb")) {
-                xhci_request_msc_port_rescan();
-                for (int mount_poll = 0;
-                     mount_poll < 20000 && !vfs_mount_active("/usb");
-                     mount_poll++) {
-                    usb_hcd_scan_ports(0);
-                    usb_poll_hid_interrupts();
-                    (void)xhci_service_deferred_msc_mount();
-                }
-            }
+            extern int xhci_wait_for_msc_mount(unsigned int timeout_ms);
+            if (!vfs_mount_active("/usb"))
+                (void)xhci_wait_for_msc_mount(3000);
             if (!vfs_mount_active("/usb")) {
                 tf->eax = -1;
                 printf("[syscall] USB log save failed: /usb not mounted\n");
