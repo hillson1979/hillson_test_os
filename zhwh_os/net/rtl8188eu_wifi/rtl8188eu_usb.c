@@ -9,6 +9,27 @@
 #include <usb_log.h>
 #include "rtl8188eu_tables.h"
 
+extern void vga_setcolor(uint8_t fg, uint8_t bg);
+
+#define RTL8188EU_LOG_COLOR_DEFAULT       2
+#define RTL8188EU_LOG_COLOR_FAILURE       4
+#define RTL8188EU_LOG_COLOR_TARGET_BEACON 9
+#define RTL8188EU_LOG_COLOR_AUTH          10
+#define RTL8188EU_LOG_COLOR_TARGET_PROBE  11
+#define RTL8188EU_LOG_COLOR_OTHER_MGMT    13
+#define RTL8188EU_LOG_COLOR_TX            14
+#define RTL8188EU_LOG_COLOR_STATS         15
+
+static void rtl8188eu_log_set_color(uint8_t color)
+{
+    vga_setcolor(color, 0);
+}
+
+static void rtl8188eu_log_reset_color(void)
+{
+    vga_setcolor(RTL8188EU_LOG_COLOR_DEFAULT, 0);
+}
+
 #define RTL8188EU_USB_REQ_REGS  0x05
 #define RTL8188EU_USB_REQ_READ  0xC0
 #define RTL8188EU_USB_REQ_WRITE 0x40
@@ -260,6 +281,15 @@ static volatile int rtl8188eu_assoc_status = -1;
 static volatile uint16_t rtl8188eu_assoc_aid;
 static unsigned int rtl8188eu_auth_poll_pending;
 static unsigned int rtl8188eu_auth_poll_completions;
+static unsigned int rtl8188eu_auth_rx_mgmt;
+static unsigned int rtl8188eu_auth_rx_control;
+static unsigned int rtl8188eu_auth_rx_data;
+static unsigned int rtl8188eu_auth_rx_other;
+static unsigned int rtl8188eu_auth_rx_target;
+static unsigned int rtl8188eu_auth_rx_target_beacon;
+static unsigned int rtl8188eu_auth_rx_target_probe;
+static unsigned int rtl8188eu_auth_rx_auth;
+static unsigned int rtl8188eu_auth_rx_target_logs;
 static int rtl8188eu_rx_poll_busy;
 static int rtl8188eu_auth_tx_started;
 static volatile unsigned int rtl8188eu_eapol_messages;
@@ -284,6 +314,22 @@ static volatile unsigned int rtl8188eu_eapol_mic_valid;
 static uint32_t rtl8188eu_dhcp_xid;
 static uint16_t rtl8188eu_tx_sequence;
 static net_device_t rtl8188eu_netdev;
+
+static void rtl8188eu_log_auth_rx_stats(const char *tag)
+{
+    rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
+    usb_printk("rtl8188eu: auth RX stats %s completions=%u pending=%u "
+               "mgmt=%u control=%u data=%u other=%u target=%u "
+               "target_beacon=%u target_probe=%u auth=%u\n",
+               tag ? tag : "", rtl8188eu_auth_poll_completions,
+               rtl8188eu_auth_poll_pending, rtl8188eu_auth_rx_mgmt,
+               rtl8188eu_auth_rx_control, rtl8188eu_auth_rx_data,
+               rtl8188eu_auth_rx_other, rtl8188eu_auth_rx_target,
+               rtl8188eu_auth_rx_target_beacon,
+               rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth);
+    rtl8188eu_log_reset_color();
+}
+
 /* Poll only the transfer owned by this synchronous caller.  On xHCI,
  * usb_poll_transfer() drains the shared event ring and latches completions
  * for the other slot/DCI owners, so calling usb_poll_interrupts() here is
@@ -1699,6 +1745,55 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
         uint16_t frame_type = frame_control &
                               RTL8188EU_IEEE80211_FCTL_TYPE_MASK;
 
+        if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
+            rtl8188eu_auth_tx_started) {
+            if (frame_type == RTL8188EU_IEEE80211_FTYPE_MGMT) {
+                uint8_t subtype = frame[0] & 0xf0;
+                int from_target = packet_length >= 24 &&
+                    (rtl8188eu_bssid_equal(frame + 10,
+                                           rtl8188eu_connect_bssid) ||
+                     rtl8188eu_bssid_equal(frame + 16,
+                                           rtl8188eu_connect_bssid));
+
+                rtl8188eu_auth_rx_mgmt++;
+                if (subtype == 0xb0)
+                    rtl8188eu_auth_rx_auth++;
+                if (from_target) {
+                    uint8_t log_color = RTL8188EU_LOG_COLOR_OTHER_MGMT;
+
+                    rtl8188eu_auth_rx_target++;
+                    if (subtype == 0x80) {
+                        rtl8188eu_auth_rx_target_beacon++;
+                        log_color = RTL8188EU_LOG_COLOR_TARGET_BEACON;
+                    } else if (subtype == 0x50) {
+                        rtl8188eu_auth_rx_target_probe++;
+                        log_color = RTL8188EU_LOG_COLOR_TARGET_PROBE;
+                    } else if (subtype == 0xb0) {
+                        log_color = RTL8188EU_LOG_COLOR_AUTH;
+                    }
+                    if (subtype == 0xb0 ||
+                        rtl8188eu_auth_rx_target_logs++ < 8 ||
+                        (rtl8188eu_auth_rx_target % 50u) == 0) {
+                        rtl8188eu_log_set_color(log_color);
+                        usb_printk("rtl8188eu: auth RX target fc=%02x%02x "
+                                   "len=%u DA=%02x:%02x:%02x:%02x:%02x:%02x "
+                                   "SA=%02x:%02x:%02x:%02x:%02x:%02x\n",
+                                   frame[0], frame[1], packet_length,
+                                   frame[4], frame[5], frame[6], frame[7],
+                                   frame[8], frame[9], frame[10], frame[11],
+                                   frame[12], frame[13], frame[14], frame[15]);
+                        rtl8188eu_log_reset_color();
+                    }
+                }
+            } else if (frame_type == 0x0004) {
+                rtl8188eu_auth_rx_control++;
+            } else if (frame_type == RTL8188EU_IEEE80211_FTYPE_DATA) {
+                rtl8188eu_auth_rx_data++;
+            } else {
+                rtl8188eu_auth_rx_other++;
+            }
+        }
+
         /* Management parsing is selected by the frame header, not by a
          * b0 00 byte appearing anywhere in an IP/EAPOL payload. */
         if (frame_type == RTL8188EU_IEEE80211_FTYPE_MGMT)
@@ -1945,8 +2040,10 @@ void rtl8188eu_wifi_poll(void)
     if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
         rtl8188eu_auth_tx_started) {
         rtl8188eu_auth_poll_completions++;
-        usb_printk("rtl8188eu: auth RX complete #%u success=%d actual=%u\n",
-                   rtl8188eu_auth_poll_completions, success, rx_length);
+        if (rtl8188eu_auth_poll_completions <= 8 ||
+            (rtl8188eu_auth_poll_completions % 100u) == 0)
+            usb_printk("rtl8188eu: auth RX complete #%u success=%d actual=%u\n",
+                       rtl8188eu_auth_poll_completions, success, rx_length);
         /* Full aggregate dumps are intentionally disabled here: Beacon
          * traffic is expected during authentication.  Meaningful response
          * subtypes are logged by rtl8188eu_parse_rx_item(). */
@@ -3737,6 +3834,15 @@ retry_results:
             rtl8188eu_auth_status = -1;
             rtl8188eu_auth_poll_pending = 0;
             rtl8188eu_auth_poll_completions = 0;
+            rtl8188eu_auth_rx_mgmt = 0;
+            rtl8188eu_auth_rx_control = 0;
+            rtl8188eu_auth_rx_data = 0;
+            rtl8188eu_auth_rx_other = 0;
+            rtl8188eu_auth_rx_target = 0;
+            rtl8188eu_auth_rx_target_beacon = 0;
+            rtl8188eu_auth_rx_target_probe = 0;
+            rtl8188eu_auth_rx_auth = 0;
+            rtl8188eu_auth_rx_target_logs = 0;
             rtl8188eu_auth_tx_started = 0;
             rtl8188eu.wifi_state = RTL8188EU_WIFI_AUTHENTICATING;
 
@@ -3753,9 +3859,11 @@ retry_results:
             if (!tx_length)
                 goto connect_failed;
             rtl8188eu_auth_tx_started = 1;
+            rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_TX);
             rtl8188eu_log_tx_descriptor(tx);
             rtl8188eu_dump_bytes("AUTH TX descriptor and frame",
                                  tx, (unsigned int)tx_length);
+            rtl8188eu_log_reset_color();
             rtl8188eu_log_tx_state(rtl8188eu.usb, "before-auth-usb");
             if (rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out,
                                    tx, tx_length) < 0) {
@@ -3775,16 +3883,30 @@ retry_results:
                     }
                     usb_printk("rtl8188eu: auth retry #%u\n",
                                poll / 1000u);
+                    rtl8188eu_log_auth_rx_stats("before-retry");
                     if (rtl8188eu_bulk_out(&rtl8188eu,
                                            rtl8188eu.bulk_out,
-                                           tx, tx_length) < 0)
+                                           tx, tx_length) < 0) {
+                        rtl8188eu_log_set_color(
+                            RTL8188EU_LOG_COLOR_FAILURE);
                         usb_printk("rtl8188eu: auth retry TX failed\n");
+                        rtl8188eu_log_reset_color();
+                    } else {
+                        tick_delay(1000);
+                        rtl8188eu_log_tx_state(rtl8188eu.usb,
+                                               "after-auth-retry");
+                    }
                 }
                 tick_delay(2000); /* 2ms polling interval */
             }
 
             if (rtl8188eu_auth_status != 0) {
+                rtl8188eu_log_auth_rx_stats("final");
+                rtl8188eu_log_tx_state(rtl8188eu.usb,
+                                       "auth-failed-final");
+                rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_FAILURE);
                 usb_printk("rtl8188eu: auth failed status=%d\n", rtl8188eu_auth_status);
+                rtl8188eu_log_reset_color();
                 goto connect_failed;
             }
 
