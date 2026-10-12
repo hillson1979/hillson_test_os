@@ -284,8 +284,11 @@ static volatile unsigned int rtl8188eu_eapol_mic_valid;
 static uint32_t rtl8188eu_dhcp_xid;
 static uint16_t rtl8188eu_tx_sequence;
 static net_device_t rtl8188eu_netdev;
-/* Synchronous Wi-Fi commands pause the normal USB idle poll. Keep HID
- * interrupt transfers serviced while a Wi-Fi transfer awaits completion. */
+/* Poll only the transfer owned by this synchronous caller.  On xHCI,
+ * usb_poll_transfer() drains the shared event ring and latches completions
+ * for the other slot/DCI owners, so calling usb_poll_interrupts() here is
+ * unnecessary and creates a recursive cross-poll path back through
+ * rtl8188eu_wifi_poll(). */
 static int rtl8188eu_wait_transfer(struct usb_transfer_t *transfer,
                                    unsigned int poll_limit)
 {
@@ -299,11 +302,15 @@ static int rtl8188eu_wait_transfer(struct usb_transfer_t *transfer,
             rtl8188eu_rx_poll_busy = 0;
             return transfer->success ? 0 : -EIO;
         }
-        usb_poll_interrupts();
         tick_delay(100);
     }
+
+    /* A stack-backed transfer cannot be returned while xHCI may still own
+     * its TRB.  Let the HCI wait path perform its timeout recovery (Stop
+     * Endpoint + Set TR Dequeue on xHCI) before the caller deletes it. */
+    usb_wait_transfer(transfer);
     rtl8188eu_rx_poll_busy = 0;
-    return -ETIMEDOUT;
+    return transfer->success ? 0 : -ETIMEDOUT;
 }
 
 static int rtl8188eu_binding_valid(void)
@@ -1749,22 +1756,24 @@ static int rtl8188eu_bulk_out(struct rtl8188eu_device *dev,
 {
     struct usb_transfer_t transfer;
     static unsigned int management_tx_log_count;
+    int ret;
 
     if (!dev || !dev->usb || !endpoint || !buffer || !length)
         return -EINVAL;
     usb_setup_transfer(dev->usb, endpoint, &transfer, USB_TRANSFER_BULK);
     usb_out_transaction(&transfer, 0, buffer, length);
     usb_schedule_transfer(&transfer);
-    rtl8188eu_wait_transfer(&transfer, 50000);
+    ret = rtl8188eu_wait_transfer(&transfer, 50000);
     if (length <= RTL8188EU_TX_DESC_SIZE + 96 &&
         ((rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING) ||
          management_tx_log_count++ < 4))
         usb_printk("rtl8188eu: bulk-out EP=%u requested=%u actual=%u "
-                   "success=%s\n", endpoint->addr, (unsigned int)length,
+                   "success=%s wait_ret=%d\n", endpoint->addr,
+                   (unsigned int)length,
                    (unsigned int)transfer.actual_length,
-                   transfer.success ? "yes" : "no");
+                   transfer.success ? "yes" : "no", ret);
     usb_delete_transfer(&transfer);
-    return transfer.success ? 0 : -EIO;
+    return ret;
 }
 
 /* Snapshot MAC-side TX state after a management packet leaves USB.  USB
@@ -1772,18 +1781,21 @@ static int rtl8188eu_bulk_out(struct rtl8188eu_device *dev,
  * these registers show whether the RTL8188E TXDMA/MAC consumed it. */
 static void rtl8188eu_log_tx_state(struct usb_dev_t *usb, const char *tag)
 {
-    uint32_t txdma = 0, empty = 0, pause = 0, rpt = 0, hisr = 0;
+    uint32_t txdma = 0, hisr = 0;
+    uint16_t empty = 0;
+    uint8_t pause = 0;
+    uint8_t rpt = 0;
 
     if (!usb)
         return;
     if (rtl8188eu_read32(usb, RTL8188EU_REG_TXDMA_STATUS, &txdma) < 0 ||
-        rtl8188eu_read32(usb, RTL8188EU_REG_TXPKT_EMPTY, &empty) < 0 ||
-        rtl8188eu_read32(usb, RTL8188EU_REG_TXPAUSE, &pause) < 0 ||
-        rtl8188eu_read32(usb, RTL8188EU_REG_TX_RPT_CTRL, &rpt) < 0 ||
+        rtl8188eu_read16(usb, RTL8188EU_REG_TXPKT_EMPTY, &empty) < 0 ||
+        rtl8188eu_read8(usb, RTL8188EU_REG_TXPAUSE, &pause) < 0 ||
+        rtl8188eu_read8(usb, RTL8188EU_REG_TX_RPT_CTRL, &rpt) < 0 ||
         rtl8188eu_read32(usb, RTL8188EU_REG_HISR, &hisr) < 0)
         return;
     usb_printk("rtl8188eu: TX state %s TXDMA_STATUS=%08x "
-               "TXPKT_EMPTY=%08x TXPAUSE=%08x TX_RPT_CTRL=%08x HISR=%08x\n",
+               "TXPKT_EMPTY=%04x TXPAUSE=%02x TX_RPT_CTRL=%02x HISR=%08x\n",
                tag ? tag : "", txdma, empty, pause, rpt, hisr);
 }
 
@@ -1822,28 +1834,19 @@ static int rtl8188eu_bulk_in_start(struct rtl8188eu_device *dev,
 static int rtl8188eu_bulk_in_finish(struct usb_transfer_t *transfer,
                                     uint16_t *actual_length)
 {
-    unsigned int poll;
-    int ret = -ETIMEDOUT;
+    int ret;
 
     if (!transfer)
         return -EINVAL;
-    rtl8188eu_rx_poll_busy = 1;
-    for (poll = 0; poll < RTL8188EU_SCAN_DWELL_POLLS; poll++) {
-        if (usb_poll_transfer(transfer)) {
-            ret = transfer->success ? 0 : -EIO;
-            break;
-        }
-        usb_poll_interrupts();
-        tick_delay(RTL8188EU_SCAN_POLL_DELAY_US);
-    }
+    ret = rtl8188eu_wait_transfer(transfer,
+                                  RTL8188EU_SCAN_DWELL_POLLS);
     if (actual_length)
         *actual_length = transfer->actual_length;
     /* Never free/reuse a transfer while xHCI may still own its TRB. */
     if (transfer->trb_released)
         usb_delete_transfer(transfer);
-    else if (ret == -ETIMEDOUT)
+    else
         ret = -EIO;
-    rtl8188eu_rx_poll_busy = 0;
     return ret;
 }
 

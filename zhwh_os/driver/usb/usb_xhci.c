@@ -4140,8 +4140,10 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
     volatile int timeout = 1000000;  /* 1 second */
 
     while (timeout--) {
-        /* Keep HID interrupt pipes serviced while synchronous transfers wait. */
-        usb_poll_interrupts();
+        /* Drain and dispatch the shared event ring directly.  Calling the
+         * global interrupt poller here can recurse into another synchronous
+         * transfer waiter; xhci_drain_events() already latches completions
+         * for every slot/DCI owner. */
         xhci_drain_events(xhci);
         if (transfer->event_pending) {
         A_memset(&event, 0, sizeof(event));
