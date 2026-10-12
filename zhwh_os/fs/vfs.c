@@ -220,6 +220,15 @@ inode_t *vfs_get_mount_root(const char *path, const char **remainder) {
     return NULL;
 }
 
+int vfs_mount_active(const char *mount_path)
+{
+    if (!mount_path) return 0;
+    for (int i = 0; i < vfs_num_mounts; i++)
+        if (strcmp(vfs_mounts[i].mount_path, mount_path) == 0)
+            return 1;
+    return 0;
+}
+
 // ================================
 // 路径解析
 // ================================

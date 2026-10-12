@@ -2587,8 +2587,37 @@ void syscall_dispatch(struct trapframe *tf) {
              * hook where it would stop mouse callbacks and WiFi RX progress. */
             if (path[0] == '/' && path[1] == 'u' && path[2] == 's' &&
                 path[3] == 'b' && (path[4] == 0 || path[4] == '/')) {
+                extern int vfs_mount_active(const char *mount_path);
+                extern void xhci_request_msc_port_rescan(void);
                 extern int xhci_service_deferred_msc_mount(void);
-                (void)xhci_service_deferred_msc_mount();
+                extern int usb_hcd_scan_ports(int controller_id);
+                extern void usb_poll_hid_interrupts(void);
+                if (!vfs_mount_active("/usb")) {
+                    xhci_request_msc_port_rescan();
+                    /* Explicit /usb access owns this bounded wait.  Advance
+                     * the existing asynchronous port/BOT enumerator until it
+                     * publishes a disk, then mount its FAT32 root. */
+                    for (int mount_poll = 0;
+                         mount_poll < 20000 && !vfs_mount_active("/usb");
+                         mount_poll++) {
+                        usb_hcd_scan_ports(0);
+                        usb_poll_hid_interrupts();
+                        (void)xhci_service_deferred_msc_mount();
+                    }
+                }
+                if (!vfs_mount_active("/usb")) {
+                    const char *pending = "USB mount failed or device not ready.\n";
+                    int p = 0;
+                    while (pending[p] && p < outmax - 1) {
+                        kbuf[p] = pending[p];
+                        p++;
+                    }
+                    kbuf[p] = '\0';
+                    if (arg1) copy_to_user((void*)arg1, kbuf, outmax);
+                    kfree(kbuf);
+                    tf->eax = p;
+                    break;
+                }
             }
             extern int vfs_list_dir(const char *path, char *buf, int max);
             ret = vfs_list_dir(path, kbuf, outmax);
@@ -2732,8 +2761,26 @@ void syscall_dispatch(struct trapframe *tf) {
         }
         case SYS_USB_LOG_SAVE: {
             extern int fat32_save_log(void);
+            extern int vfs_mount_active(const char *mount_path);
+            extern void xhci_request_msc_port_rescan(void);
             extern int xhci_service_deferred_msc_mount(void);
-            (void)xhci_service_deferred_msc_mount();
+            extern int usb_hcd_scan_ports(int controller_id);
+            extern void usb_poll_hid_interrupts(void);
+            if (!vfs_mount_active("/usb")) {
+                xhci_request_msc_port_rescan();
+                for (int mount_poll = 0;
+                     mount_poll < 20000 && !vfs_mount_active("/usb");
+                     mount_poll++) {
+                    usb_hcd_scan_ports(0);
+                    usb_poll_hid_interrupts();
+                    (void)xhci_service_deferred_msc_mount();
+                }
+            }
+            if (!vfs_mount_active("/usb")) {
+                tf->eax = -1;
+                printf("[syscall] USB log save failed: /usb not mounted\n");
+                break;
+            }
             tf->eax = fat32_save_log();
             if (tf->eax == 0)
                 wifi_usb_log_export_pending = 0;
