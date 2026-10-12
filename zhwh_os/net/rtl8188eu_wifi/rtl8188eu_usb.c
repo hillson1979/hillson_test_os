@@ -262,6 +262,7 @@ static struct usb_transfer_t rtl8188eu_rx_transfer;
 static uint8_t rtl8188eu_rx_buffer[RTL8188EU_RX_TEST_SIZE];
 static int rtl8188eu_rx_armed;
 static unsigned int rtl8188eu_rx_packets;
+static uint8_t rtl8188eu_scan_channel;
 static uint8_t rtl8188eu_connect_bssid[6];
 static volatile int rtl8188eu_auth_status = -1;
 static volatile int rtl8188eu_assoc_status = -1;
@@ -1562,6 +1563,8 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
         result.privacy = common_info.privacy;
         result.rsn = common_info.rsn;
     }
+    if (!result.channel)
+        result.channel = rtl8188eu_scan_channel;
     for (result_index = 0; result_index < rtl8188eu.scan_result_count;
          result_index++) {
         unsigned int byte;
@@ -1575,6 +1578,9 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
             }
         }
         if (same) {
+            if (!result.ssid_length &&
+                rtl8188eu_scan_results[result_index].ssid_length)
+                return;
             rtl8188eu_scan_results[result_index] = result;
             return;
         }
@@ -1885,25 +1891,6 @@ static int rtl8188eu_bulk_in_start(struct rtl8188eu_device *dev,
     return 0;
 }
 
-static int rtl8188eu_bulk_in_finish(struct usb_transfer_t *transfer,
-                                    uint16_t *actual_length)
-{
-    int ret;
-
-    if (!transfer)
-        return -EINVAL;
-    ret = rtl8188eu_wait_transfer(transfer,
-                                  RTL8188EU_SCAN_DWELL_POLLS);
-    if (actual_length)
-        *actual_length = transfer->actual_length;
-    /* Never free/reuse a transfer while xHCI may still own its TRB. */
-    if (transfer->trb_released)
-        usb_delete_transfer(transfer);
-    else
-        ret = -EIO;
-    return ret;
-}
-
 static int rtl8188eu_arm_rx(void)
 {
     int ret;
@@ -1933,12 +1920,23 @@ static int rtl8188eu_arm_rx(void)
 /* Stop the long-lived scan/runtime Bulk-IN request before changing owners of
  * the RX path.  A scan timeout intentionally keeps the request armed while
  * changing channels, but it must not escape the scan command. */
-static void rtl8188eu_stop_rx(void)
+static int rtl8188eu_stop_rx(void)
 {
     if (!rtl8188eu_rx_armed)
-        return;
+        return 0;
+
+    rtl8188eu_rx_poll_busy = 1;
+    if (!rtl8188eu_rx_transfer.trb_released)
+        usb_wait_transfer(&rtl8188eu_rx_transfer);
+    if (!rtl8188eu_rx_transfer.trb_released) {
+        usb_printk("rtl8188eu: RX stop failed; controller still owns TRB\n");
+        rtl8188eu_rx_poll_busy = 0;
+        return -EIO;
+    }
     usb_delete_transfer(&rtl8188eu_rx_transfer);
     rtl8188eu_rx_armed = 0;
+    rtl8188eu_rx_poll_busy = 0;
+    return 0;
 }
 
 /* Quiesce a failed connection so queued frames cannot remain on the air.
@@ -1951,7 +1949,8 @@ static void rtl8188eu_quiesce_radio(void)
 
     if (!rtl8188eu.usb)
         return;
-    rtl8188eu_stop_rx();
+    if (rtl8188eu_stop_rx() < 0)
+        return -EIO;
     if (rtl8188eu_write8(rtl8188eu.usb, RTL8188EU_REG_TXPAUSE, 0xff) < 0 ||
         rtl8188eu_read16(rtl8188eu.usb, RTL8188EU_REG_CR, &cr_before) < 0) {
         usb_printk("rtl8188eu: radio quiesce register access failed\n");
@@ -2016,6 +2015,46 @@ void rtl8188eu_wifi_poll(void)
     if (rtl8188eu_arm_rx() < 0)
         usb_printk("rtl8188eu: runtime RX re-arm failed\n");
     rtl8188eu_rx_poll_busy = 0;
+}
+
+/* Scan has its own RX owner.  Authentication, association, EAPOL, and data
+ * traffic continue to use rtl8188eu_wifi_poll(); scan only feeds received
+ * Beacon/Probe Response aggregates into the shared frame parser. */
+static int rtl8188eu_scan_poll_rx(unsigned int *completions)
+{
+    uint16_t rx_length;
+    int success;
+
+    if (rtl8188eu.wifi_state != RTL8188EU_WIFI_SCANNING ||
+        !rtl8188eu_rx_armed)
+        return -EINVAL;
+    if (rtl8188eu_rx_poll_busy)
+        return 0;
+
+    rtl8188eu_rx_poll_busy = 1;
+    if (!usb_poll_transfer(&rtl8188eu_rx_transfer)) {
+        rtl8188eu_rx_poll_busy = 0;
+        return 0;
+    }
+
+    success = rtl8188eu_rx_transfer.success;
+    rx_length = rtl8188eu_rx_transfer.actual_length;
+    if (completions)
+        (*completions)++;
+    usb_delete_transfer(&rtl8188eu_rx_transfer);
+    rtl8188eu_rx_armed = 0;
+
+    if (success && rx_length) {
+        rtl8188eu_rx_packets++;
+        rtl8188eu_parse_rx_packet(rtl8188eu_rx_buffer, rx_length);
+    }
+    if (rtl8188eu_arm_rx() < 0) {
+        rtl8188eu_rx_poll_busy = 0;
+        usb_printk("rtl8188eu: scan RX re-arm failed\n");
+        return -EIO;
+    }
+    rtl8188eu_rx_poll_busy = 0;
+    return 1;
 }
 
 static size_t rtl8188eu_build_probe_request(uint8_t *packet, size_t capacity,
@@ -3618,6 +3657,7 @@ int rtl8188eu_wifi_scan(void)
     rx_packets_before = rtl8188eu_rx_packets;
     rtl8188eu.last_error = 0;
     rtl8188eu.scan_result_count = 0;
+    rtl8188eu_scan_channel = 0;
     A_memset(rtl8188eu_scan_results, 0, sizeof(rtl8188eu_scan_results));
 
     start_chan = RTL8188EU_SCAN_FIRST_CHANNEL;
@@ -3634,7 +3674,10 @@ int rtl8188eu_wifi_scan(void)
     }
 
     for (channel = start_chan; channel <= end_chan; channel++) {
-        uint16_t rx_length = 0;
+        unsigned int poll;
+        unsigned int completions = 0;
+        unsigned int channel_rx_before = rtl8188eu_rx_packets;
+        unsigned int networks_before = rtl8188eu.scan_result_count;
         int ret;
 
         ret = 0;
@@ -3647,6 +3690,7 @@ int rtl8188eu_wifi_scan(void)
                        channel, ret);
             continue;
         }
+        rtl8188eu_scan_channel = channel;
 
         tick_delay(2000);
         rtl8188eu_clear_interrupt_status(rtl8188eu.usb);
@@ -3659,40 +3703,32 @@ int rtl8188eu_wifi_scan(void)
                    channel, ret == 0 ? "sent" : "failed",
                    rtl8188eu_rx_armed ? "yes" : "no");
 
-        ret = rtl8188eu_bulk_in_finish(&rtl8188eu_rx_transfer, &rx_length);
-        rtl8188eu_rx_armed = 0;
-        if (ret == -ETIMEDOUT)
-            usb_printk("rtl8188eu: scan channel=%u RX wait timeout actual=%u\n",
-                       channel, rx_length);
-
-        if (ret == 0) {
-            if (rx_length) {
-                rtl8188eu_rx_packets++;
-                rtl8188eu_parse_rx_packet(rtl8188eu_rx_buffer, rx_length);
-            }
-            if (rtl8188eu_arm_rx() < 0) {
+        for (poll = 0; poll < RTL8188EU_SCAN_DWELL_POLLS; poll++) {
+            ret = rtl8188eu_scan_poll_rx(&completions);
+            if (ret < 0) {
                 rtl8188eu_quiesce_radio();
                 rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
-                rtl8188eu.last_error = -EIO;
-                return -EIO;
+                rtl8188eu.last_error = ret;
+                return ret;
             }
-        } else if (ret != -ETIMEDOUT) {
-            rtl8188eu_rx_armed = 0;
-            if (rtl8188eu_arm_rx() < 0)
-                usb_printk("rtl8188eu: RX re-arm failed after channel=%u\n", channel);
-        } else {
-            /* A timeout means no packet arrived during this channel's dwell;
-             * the old request was deleted by bulk_in_finish(), so re-arm a
-             * clean request before moving to the next channel. */
-            if (rtl8188eu_arm_rx() < 0)
-                usb_printk("rtl8188eu: RX re-arm failed after timeout channel=%u\n",
-                           channel);
+            tick_delay(RTL8188EU_SCAN_POLL_DELAY_US);
         }
+        usb_printk("rtl8188eu: scan channel=%u done completions=%u "
+                   "rx_packets=%u new_networks=%u total_networks=%u\n",
+                   channel, completions,
+                   rtl8188eu_rx_packets - channel_rx_before,
+                   rtl8188eu.scan_result_count - networks_before,
+                   rtl8188eu.scan_result_count);
 
         if (channel == 255) break; /* é—ƒå‰î„?uint8_t å¯°î†å¹†å©§ãˆ åš­ */
     }
 
-    rtl8188eu_stop_rx();
+    if (rtl8188eu_stop_rx() < 0) {
+        rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
+        rtl8188eu.last_error = -EIO;
+        return -EIO;
+    }
+    rtl8188eu_scan_channel = 0;
     rtl8188eu.wifi_state = RTL8188EU_WIFI_READY;
     usb_printk("rtl8188eu: scan complete probes=%u rx_packets=%u networks=%u\n",
                probes, rtl8188eu_rx_packets - rx_packets_before,
