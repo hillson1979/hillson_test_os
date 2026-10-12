@@ -2316,20 +2316,23 @@ static void rtl8188eu_print_scan_results(void)
 {
     unsigned int result_index;
 
-    usb_printk("rtl8188eu: scan complete networks=%u\n",
+    rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
+    usb_printk("rtl8188eu: ===== WiFi scan SSID results (%u) =====\n",
                rtl8188eu.scan_result_count);
+    if (!rtl8188eu.scan_result_count)
+        usb_printk("rtl8188eu: SSID results: <none>\n");
     for (result_index = 0; result_index < rtl8188eu.scan_result_count;
          result_index++) {
         const struct rtl8188eu_scan_result *result =
             &rtl8188eu_scan_results[result_index];
         unsigned int byte;
 
-        usb_printk("rtl8188eu: available SSID=");
+        usb_printk("rtl8188eu: SSID[%u]=\"", result_index);
         for (byte = 0; byte < result->ssid_length; byte++) {
             uint8_t c = result->ssid[byte];
             usb_printk("%c", c >= 0x20 && c <= 0x7e ? c : '.');
         }
-        usb_printk(" channel=%u security=%s BSSID="
+        usb_printk("\" channel=%u security=%s BSSID="
                    "%02x:%02x:%02x:%02x:%02x:%02x\n",
                    result->channel,
                    result->rsn ? "WPA2/RSN" :
@@ -2337,6 +2340,8 @@ static void rtl8188eu_print_scan_results(void)
                    result->bssid[0], result->bssid[1], result->bssid[2],
                    result->bssid[3], result->bssid[4], result->bssid[5]);
     }
+    usb_printk("rtl8188eu: ===== end WiFi scan SSID results =====\n");
+    rtl8188eu_log_reset_color();
 }
 
 static void rtl8188eu_log_tx_queue_state(struct usb_dev_t *usb)
