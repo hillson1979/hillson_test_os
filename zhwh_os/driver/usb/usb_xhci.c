@@ -4917,6 +4917,27 @@ int xhci_poll_transfer(struct usb_transfer_t *transfer)
                         requested - remain : 0;
                     transfer->actual_length = (uint16_t)actual;
                 }
+                /* rtl8188eu and other asynchronously-polled Bulk pipes use
+                 * xhci_poll_transfer(), not xhci_wait_transfer().  Retire the
+                 * completed TRB here as well, otherwise the software dequeue
+                 * remains at zero while enqueue advances on every Probe TX. */
+                if (transfer->type == USB_TRANSFER_BULK && event.param) {
+                    int slot_id = transfer->dev->num;
+                    int ep_id = xhci_transfer_ep_id(transfer);
+                    struct xhci_ring_t *ring =
+                        &xhci->slots[slot_id].ep_rings[ep_id];
+                    if (ring->ring && event.param >= ring->phys) {
+                        uint64_t offset = event.param - ring->phys;
+                        uint32_t completed = (uint32_t)(offset /
+                            sizeof(struct xhci_trb_t));
+                        if ((offset % sizeof(struct xhci_trb_t)) == 0 &&
+                            completed < ring->size - 1) {
+                            ring->dequeue = completed + 1;
+                            if (ring->dequeue == ring->size - 1)
+                                ring->dequeue = 0;
+                        }
+                    }
+                }
                 transfer->success = 1;
                 return 1;
             }

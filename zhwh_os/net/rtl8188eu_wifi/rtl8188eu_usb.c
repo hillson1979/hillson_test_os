@@ -3841,6 +3841,21 @@ int rtl8188eu_wifi_scan(void)
         usb_printk("rtl8188eu: scan channel=%u probe=%s rx_arm=%s\n",
                    channel, ret == 0 ? "sent" : "failed",
                    rtl8188eu_rx_armed ? "yes" : "no");
+        if (ret < 0) {
+            /* A failed Probe TX leaves the shared WiFi Bulk-OUT endpoint in
+             * timeout recovery.  Do not continue scanning or publish this
+             * partial result set for a later connect attempt. */
+            usb_printk("rtl8188eu: scan abort channel=%u probe TX error=%d\n",
+                       channel, ret);
+            rtl8188eu_scan_hash_valid = 0;
+            rtl8188eu.scan_result_count = 0;
+            if (rtl8188eu_stop_rx() < 0)
+                usb_printk("rtl8188eu: scan abort RX stop failed\n");
+            rtl8188eu_scan_channel = 0;
+            rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
+            rtl8188eu.last_error = ret;
+            return ret;
+        }
 
         channel_start_tick = ticks;
         for (poll = 0;
