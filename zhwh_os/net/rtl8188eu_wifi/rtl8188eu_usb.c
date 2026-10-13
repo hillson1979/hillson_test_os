@@ -3970,7 +3970,6 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
 
             if (rtl8188eu_clear_interrupt_status(rtl8188eu.usb) < 0 ||
                 rtl8188eu_clear_txdma_status(rtl8188eu.usb) < 0 ||
-                rtl8188eu_arm_rx() < 0 ||
                 !rtl8188eu_connection_binding_valid()) {
                 goto connect_failed;
             }
@@ -3988,6 +3987,14 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
                                    tx, tx_length) < 0) {
                 goto connect_failed;
             }
+            /* Submit the authentication frame before arming the persistent
+             * Bulk-IN TD.  Keeping both WiFi bulk endpoints outstanding
+             * during the first management TX can lose the EP-OUT completion
+             * in the current shared xHCI dispatcher.  The AP cannot answer
+             * before the OUT transaction has completed, so arming RX here
+             * does not discard an authentication response. */
+            if (rtl8188eu_arm_rx() < 0)
+                goto connect_failed;
             tick_delay(1000);
             rtl8188eu_log_tx_state(rtl8188eu.usb, "after-auth-usb");
 
