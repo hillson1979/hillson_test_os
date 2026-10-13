@@ -1875,6 +1875,34 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
                    actual_length, packets);
 }
 
+static void rtl8188eu_log_xhci_transfer(struct usb_transfer_t *transfer,
+                                        const char *stage)
+{
+    struct xhci_transfer_debug_t debug;
+
+    if (!transfer || !transfer->dev ||
+        transfer->dev->type != USB_TYPE_XHCI)
+        return;
+    if (xhci_get_transfer_debug(transfer, &debug) < 0) {
+        usb_printk("rtl8188eu: xHCI TX %s snapshot unavailable\n",
+                   stage ? stage : "");
+        return;
+    }
+    usb_printk("rtl8188eu: xHCI TX %s slot=%u dci=%u ep_state=%u "
+               "owner=%u enq=%u deq=%u pcs=%u ring=%08x "
+               "epctx0=%08x hw_deq=%08x "
+               "expect=%08x event=%08x cc=%u pending=%u ready=%u "
+               "released=%u success=%u actual=%u usbsts=%08x\n",
+               stage ? stage : "", debug.slot, debug.dci,
+               debug.ep_state, debug.owner_matches, debug.enqueue,
+               debug.dequeue, debug.cycle, debug.ring_phys,
+               debug.ep_ctx0, debug.ep_dequeue,
+               debug.expected_trb, debug.event_trb, debug.event_cc,
+               debug.event_pending, debug.event_ready,
+               transfer->trb_released, transfer->success,
+               transfer->actual_length, debug.usb_sts);
+}
+
 static int rtl8188eu_bulk_out(struct rtl8188eu_device *dev,
                               struct usb_endpoint_t *endpoint,
                               uint8_t *buffer, size_t length)
@@ -1887,8 +1915,12 @@ static int rtl8188eu_bulk_out(struct rtl8188eu_device *dev,
         return -EINVAL;
     usb_setup_transfer(dev->usb, endpoint, &transfer, USB_TRANSFER_BULK);
     usb_out_transaction(&transfer, 0, buffer, length);
+    rtl8188eu_log_xhci_transfer(&transfer, "setup");
     usb_schedule_transfer(&transfer);
+    rtl8188eu_log_xhci_transfer(&transfer, "scheduled");
     ret = rtl8188eu_wait_transfer(&transfer, 50000);
+    rtl8188eu_log_xhci_transfer(&transfer,
+                                ret == 0 ? "completed" : "timeout");
     if (length <= RTL8188EU_TX_DESC_SIZE + 96 &&
         ((rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING) ||
          management_tx_log_count++ < 4))

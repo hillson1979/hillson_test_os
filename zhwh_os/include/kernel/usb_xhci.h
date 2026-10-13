@@ -510,6 +510,28 @@ struct xhci_dev_t {
 
 int xhci_update_ep0_mps(struct usb_dev_t *dev, uint16_t mps);
 
+struct xhci_transfer_debug_t {
+    uint8_t slot;
+    uint8_t dci;
+    uint8_t ep_state;
+    uint8_t owner_matches;
+    uint32_t enqueue;
+    uint32_t dequeue;
+    uint32_t cycle;
+    uint32_t ring_phys;
+    uint32_t ep_ctx0;
+    uint32_t ep_dequeue;
+    uint32_t expected_trb;
+    uint32_t event_trb;
+    uint32_t event_cc;
+    uint32_t event_pending;
+    uint32_t event_ready;
+    uint32_t usb_sts;
+};
+
+int xhci_get_transfer_debug(struct usb_transfer_t *transfer,
+                            struct xhci_transfer_debug_t *debug);
+
 /* Flags */
 #define XHCI_FLAG_RUN            0x01
 #define XHCI_FLAG_PORTSENABLED   0x02

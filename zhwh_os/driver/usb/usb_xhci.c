@@ -2006,6 +2006,53 @@ int xhci_cancel_transfer(struct usb_transfer_t *transfer)
     return ret;
 }
 
+int xhci_get_transfer_debug(struct usb_transfer_t *transfer,
+                            struct xhci_transfer_debug_t *debug)
+{
+    struct xhci_dev_t *xhci;
+    struct xhci_ring_t *ring;
+    uint32_t *out;
+    uint32_t *epc;
+    int slot;
+    int dci;
+
+    if (!transfer || !transfer->dev || !transfer->dev->priv || !debug)
+        return -EINVAL;
+    xhci = (struct xhci_dev_t *)transfer->dev->priv;
+    slot = transfer->dev->num;
+    dci = xhci_transfer_ep_id(transfer);
+    if (slot < 1 || slot > (int)xhci->max_slots ||
+        dci < 1 || dci >= XHCI_MAX_ENDPOINTS ||
+        !xhci->slots[slot].ep_rings)
+        return -EINVAL;
+
+    A_memset(debug, 0, sizeof(*debug));
+    ring = &xhci->slots[slot].ep_rings[dci];
+    debug->slot = (uint8_t)slot;
+    debug->dci = (uint8_t)dci;
+    debug->owner_matches =
+        xhci->slots[slot].transfers[dci] == transfer ? 1 : 0;
+    debug->enqueue = ring->enqueue;
+    debug->dequeue = ring->dequeue;
+    debug->cycle = ring->ccs;
+    debug->ring_phys = (uint32_t)ring->phys;
+    debug->expected_trb = transfer->trans_tail ?
+        (uint32_t)transfer->trans_tail->hc_trb_phys : 0;
+    debug->event_trb = (uint32_t)transfer->event_trb_phys;
+    debug->event_cc = transfer->event_cc;
+    debug->event_pending = transfer->event_pending;
+    debug->event_ready = xhci_event_ready_count(xhci);
+    debug->usb_sts = mmio_read32(xhci->op_base + XHCI_OP_USBSTS);
+    out = (uint32_t *)xhci->slots[slot].dev_ctx;
+    if (out) {
+        epc = xhci_output_ep_ctx(xhci, out, dci);
+        debug->ep_ctx0 = epc[0];
+        debug->ep_state = (uint8_t)(epc[0] & 0x7);
+        debug->ep_dequeue = epc[2];
+    }
+    return 0;
+}
+
 static void xhci_release_init_ctrl_buffer(volatile struct xhci_dev_t *xhci)
 {
     if (!xhci || !xhci->init_ctrl_buf)
