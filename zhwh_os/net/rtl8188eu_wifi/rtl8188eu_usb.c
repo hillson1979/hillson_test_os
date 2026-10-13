@@ -314,12 +314,13 @@ static void rtl8188eu_log_auth_rx_stats(const char *tag)
 {
     rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
     usb_printk("rtl8188eu: auth RX stats %s completions=%u pending=%u "
-               "mgmt=%u control=%u data=%u other=%u target=%u "
-               "target_beacon=%u target_probe=%u auth_frames=%u\n",
+               "mgmt=%u control=%u data=%u other=%u target=%u\n",
                tag ? tag : "", rtl8188eu_auth_poll_completions,
                rtl8188eu_auth_poll_pending, rtl8188eu_auth_rx_mgmt,
                rtl8188eu_auth_rx_control, rtl8188eu_auth_rx_data,
-               rtl8188eu_auth_rx_other, rtl8188eu_auth_rx_target,
+               rtl8188eu_auth_rx_other, rtl8188eu_auth_rx_target);
+
+    usb_printk(" target_beacon=%u target_probe=%u auth_frames=%u\n",
                rtl8188eu_auth_rx_target_beacon,
                rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth);
     rtl8188eu_log_reset_color();
@@ -1736,6 +1737,7 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
                                              unsigned int available)
 {
     uint32_t dw0;
+    uint32_t rx_error_flags;
     unsigned int packet_length;
     unsigned int driver_info_length;
     unsigned int shift;
@@ -1748,6 +1750,7 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
     driver_info_length = ((dw0 >> 16) & 0x0f) * 8;
     shift = (dw0 >> 24) & 0x03;
     frame_offset = 24 + driver_info_length + shift;
+    rx_error_flags = dw0 & ((1u << 14) | (1u << 15));
 #if RTL8188EU_RX_DESCRIPTOR_DEBUG
     usb_printk("rtl8188eu: RX item available=%u pkt_len=%u "
                "drvinfo=%u shift=%u frame_offset=%u\n",
@@ -1758,11 +1761,28 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
      * marks the end of valid RX items, rather than a malformed packet. */
     if (!dw0)
         return 0;
-    if ((dw0 & ((1u << 14) | (1u << 15))) ||
-        frame_offset > available || !packet_length ||
+    /* CRC32/ICV bits describe a bad wireless frame, not a malformed USB
+     * descriptor.  The descriptor still carries a usable packet length, so
+     * consume this item and let the aggregate parser continue with the next
+     * descriptor.  Treating it as a zero-length parse result used to stop the
+     * whole RX aggregate and hide later AUTH/ASSOC frames. */
+    if (frame_offset <= available && packet_length &&
+        packet_length <= available - frame_offset && rx_error_flags) {
+        static unsigned int rx_error_logs;
+        if (rx_error_logs++ < 8)
+            usb_printk("rtl8188eu: RX frame dropped status=%08x "
+                       "pkt_len=%u drvinfo=%u shift=%u offset=%u\n",
+                       rx_error_flags, packet_length, driver_info_length,
+                       shift, frame_offset);
+        return frame_offset + packet_length;
+    }
+    if (frame_offset > available || !packet_length ||
         packet_length > available - frame_offset) {
 #if RTL8188EU_RX_DESCRIPTOR_DEBUG
-        usb_printk("rtl8188eu: RX item invalid\n");
+        usb_printk("rtl8188eu: RX item structurally invalid "
+                   "dw0=%08x available=%u pkt_len=%u drvinfo=%u "
+                   "shift=%u frame_offset=%u\n", dw0, available,
+                   packet_length, driver_info_length, shift, frame_offset);
 #endif
         return 0;
     }
