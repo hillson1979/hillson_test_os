@@ -528,9 +528,15 @@ static int ring_enqueue(struct xhci_ring_t *ring, struct xhci_trb_t *trb)
         ring->ccs ^= 1;
     }
 
-    /* Full check: next slot must not be dequeue */
+    /* Full check uses logical data positions.  The final array entry is a
+     * Link TRB, so advancing past the final data TRB lands at index zero. */
     uint32_t next = ring->enqueue + 1;
-    if (next == ring->dequeue)
+    uint32_t dequeue = ring->dequeue;
+    if (next == ring->size - 1)
+        next = 0;
+    if (dequeue == ring->size - 1)
+        dequeue = 0;
+    if (next == dequeue)
         return -1;
 
     int idx = ring->enqueue;
@@ -4346,8 +4352,19 @@ static void xhci_wait_transfer(struct usb_transfer_t *transfer)
 
                 if (cc == CC_SUCCESS || cc == CC_SHORT_PACKET) {
                     /* One synchronous request is in flight per endpoint. */
-                    xhci->slots[transfer->dev->num].ep_rings[my_ep].dequeue =
-                        xhci->slots[transfer->dev->num].ep_rings[my_ep].enqueue;
+                    {
+                        struct xhci_ring_t *done_ring =
+                            &xhci->slots[transfer->dev->num].ep_rings[my_ep];
+                        /* The last array entry is a permanent Link TRB, not
+                         * a usable consumer position.  Once the controller
+                         * follows it, its dequeue position is ring[0].
+                         * Keeping the software dequeue at the Link index
+                         * makes the next producer lap look full after one
+                         * FAT32 directory walk. */
+                        done_ring->dequeue = done_ring->enqueue;
+                        if (done_ring->dequeue == done_ring->size - 1)
+                            done_ring->dequeue = 0;
+                    }
                     if (transfer->type == USB_TRANSFER_BULK &&
                         transfer->trans_head) {
                         uint32_t requested = transfer->trans_head->len;
