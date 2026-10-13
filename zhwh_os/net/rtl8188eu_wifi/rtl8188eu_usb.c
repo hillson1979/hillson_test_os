@@ -288,6 +288,11 @@ static unsigned int rtl8188eu_auth_rx_auth;
 static unsigned int rtl8188eu_auth_rx_target_logs;
 static int rtl8188eu_rx_poll_busy;
 static int rtl8188eu_auth_tx_started;
+static unsigned int rtl8188eu_auth_tx_attempts;
+static unsigned int rtl8188eu_auth_tx_success;
+static unsigned int rtl8188eu_auth_tx_failures;
+static unsigned int rtl8188eu_auth_tx_bytes;
+static int rtl8188eu_auth_tx_last_ret;
 static volatile unsigned int rtl8188eu_eapol_messages;
 static volatile unsigned int rtl8188eu_eapol_msg1_seen;
 static volatile unsigned int rtl8188eu_eapol_msg2_seen;
@@ -324,6 +329,21 @@ static void rtl8188eu_log_auth_rx_stats(const char *tag)
     usb_printk(" target_beacon=%u target_probe=%u auth_frames=%u\n",
                rtl8188eu_auth_rx_target_beacon,
                rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth);
+    // usb_printk(" auth TX stats attempts=%u success=%u failures=%u bytes=%u last_ret=%d\n",
+    //            rtl8188eu_auth_tx_attempts, rtl8188eu_auth_tx_success,
+    //            rtl8188eu_auth_tx_failures, rtl8188eu_auth_tx_bytes,
+    //            rtl8188eu_auth_tx_last_ret);
+    rtl8188eu_log_reset_color();
+}
+
+static void rtl8188eu_log_auth_tx_stats(const char *tag)
+{
+    rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
+    usb_printk("rtl8188eu: auth TX stats %s attempts=%u success=%u "
+               "failures=%u bytes=%u last_ret=%d\n",
+               tag ? tag : "", rtl8188eu_auth_tx_attempts,
+               rtl8188eu_auth_tx_success, rtl8188eu_auth_tx_failures,
+               rtl8188eu_auth_tx_bytes, rtl8188eu_auth_tx_last_ret);
     rtl8188eu_log_reset_color();
 }
 
@@ -1996,6 +2016,15 @@ static int rtl8188eu_bulk_out(struct rtl8188eu_device *dev,
     usb_schedule_transfer(&transfer);
     rtl8188eu_log_xhci_transfer(&transfer, "scheduled");
     ret = rtl8188eu_wait_transfer(&transfer, 50000);
+    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING) {
+        rtl8188eu_auth_tx_attempts++;
+        rtl8188eu_auth_tx_bytes += (unsigned int)length;
+        rtl8188eu_auth_tx_last_ret = ret;
+        if (ret == 0)
+            rtl8188eu_auth_tx_success++;
+        else
+            rtl8188eu_auth_tx_failures++;
+    }
     rtl8188eu_log_xhci_transfer(&transfer,
                                 ret == 0 ? "completed" : "timeout");
     if (length <= RTL8188EU_TX_DESC_SIZE + 96 &&
@@ -2296,6 +2325,10 @@ static size_t rtl8188eu_build_probe_request(uint8_t *packet, size_t capacity,
     rtl8188eu_put_le32(packet + 4, txdw1);
     rtl8188eu_put_le32(packet + 16, txdw4);
     rtl8188eu_txdesc_checksum(packet);
+    if ((rtl8188eu_get_le32_early(packet) & 0x3fff) != frame_len ||
+        ((rtl8188eu_get_le32_early(packet) >> 16) & 0xff) !=
+            RTL8188EU_TX_DESC_SIZE)
+        return 0;
     return RTL8188EU_TX_DESC_SIZE + frame_len;
 }
 
@@ -4087,6 +4120,11 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             rtl8188eu_auth_rx_auth = 0;
             rtl8188eu_auth_rx_target_logs = 0;
             rtl8188eu_auth_tx_started = 0;
+            rtl8188eu_auth_tx_attempts = 0;
+            rtl8188eu_auth_tx_success = 0;
+            rtl8188eu_auth_tx_failures = 0;
+            rtl8188eu_auth_tx_bytes = 0;
+            rtl8188eu_auth_tx_last_ret = 0;
             rtl8188eu.wifi_state = RTL8188EU_WIFI_AUTHENTICATING;
 
             if (rtl8188eu_stop_rx() < 0)
@@ -4159,7 +4197,8 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             }
 
             if (rtl8188eu_auth_status != 0) {
-                rtl8188eu_log_auth_rx_stats("final");
+                rtl8188eu_log_auth_rx_stats("RX final");
+                rtl8188eu_log_auth_tx_stats("TX final");
                 rtl8188eu_log_tx_state(rtl8188eu.usb,
                                        "auth-failed-final");
                 rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_FAILURE);
