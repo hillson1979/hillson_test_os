@@ -23,6 +23,25 @@ static int   rtl8188_w = 0;
  * such as RTL8188EUS are being brought up. */
 static int   usb_console_enabled = 1;
 
+static int usb_log_contains(const char *text, int text_len,
+                            const char *needle)
+{
+    int i;
+    int j;
+
+    if (!text || !needle || text_len <= 0 || needle[0] == '\0')
+        return 0;
+    for (i = 0; i < text_len; i++) {
+        for (j = 0; needle[j] != '\0' && i + j < text_len; j++) {
+            if (text[i + j] != needle[j])
+                break;
+        }
+        if (needle[j] == '\0')
+            return 1;
+    }
+    return 0;
+}
+
 void usb_log_write(const char *s, int len) {
     if (len <= 0) return;
     for (int i = 0; i < len; i++) {
@@ -112,7 +131,7 @@ int usb_printk(const char *fmt, ...) {
         usb_log_write_screen_lines(line, len);
     /* Length was clamped before screen and ring-buffer output. */
     usb_log_write(line, len);
-    if (strstr(line, "rtl8188eu") != NULL) {
+    if (usb_log_contains(line, len, "rtl8188eu")) {
         int i;
         for (i = 0; i < len; i++) {
             rtl8188_buf[rtl8188_w % USB_LOG_SZ] = line[i];
