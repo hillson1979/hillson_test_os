@@ -18,7 +18,7 @@ static int   usb_snap_len = 0;
  * noisy shared USB ring so initialization through connect fits in the file. */
 static char  rtl8188_buf[USB_LOG_SZ];
 static int   rtl8188_w = 0;
-#define USB_LOG_EXPORT_RTL8188_ONLY 1
+#define USB_LOG_EXPORT_RTL8188_ONLY 0
 /* Keep USB probe diagnostics visible on the serial console while drivers
  * such as RTL8188EUS are being brought up. */
 static int   usb_console_enabled = 1;

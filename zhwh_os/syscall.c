@@ -2753,6 +2753,8 @@ void syscall_dispatch(struct trapframe *tf) {
                 (void)xhci_wait_for_msc_mount(3000);
             if (!vfs_mount_active("/usb")) {
                 tf->eax = -1;
+                extern int usb_printk(const char *fmt, ...);
+                usb_printk("usb log save: /usb not mounted after wait\n");
                 printf("[syscall] USB log save failed: /usb not mounted\n");
                 break;
             }
@@ -2761,6 +2763,11 @@ void syscall_dispatch(struct trapframe *tf) {
                 wifi_usb_log_export_pending = 0;
             printf("[syscall] USB log save %s\n",
                    tf->eax == 0 ? "OK" : "failed");
+            {
+                extern int usb_printk(const char *fmt, ...);
+                usb_printk("usb log save result=%d mount=%d\n",
+                           tf->eax, vfs_mount_active("/usb"));
+            }
             break;
         }
         case SYS_USB_STATUS: {
