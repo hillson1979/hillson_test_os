@@ -1987,6 +1987,8 @@ static int rtl8188eu_arm_rx(void)
  * changing channels, but it must not escape the scan command. */
 static int rtl8188eu_stop_rx(void)
 {
+    unsigned int wait;
+
     if (!rtl8188eu_rx_armed)
         return 0;
 
@@ -1997,6 +1999,16 @@ static int rtl8188eu_stop_rx(void)
         if (rtl8188eu_rx_transfer.dev->type != USB_TYPE_XHCI ||
             xhci_cancel_transfer(&rtl8188eu_rx_transfer) < 0)
             usb_wait_transfer(&rtl8188eu_rx_transfer);
+    }
+    /* A cancelled xHCI TD may complete through a late event.  Pump the
+     * dispatcher for a bounded interval before declaring ownership stuck;
+     * otherwise MSC immediately reuses the controller while WiFi still owns
+     * the RX TD. */
+    for (wait = 0;
+         wait < 200 && !rtl8188eu_rx_transfer.trb_released; wait++) {
+        usb_poll_interrupts();
+        usb_poll_hid_interrupts();
+        tick_delay(1000);
     }
     if (!rtl8188eu_rx_transfer.trb_released) {
         usb_printk("rtl8188eu: RX stop failed; controller still owns TRB\n");
@@ -4084,7 +4096,11 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
              * compete with a stale WPA2 receive TD.  The connection is not
              * complete yet, so quiesce the radio and let a later connection
              * attempt arm RX again explicitly. */
-            rtl8188eu_quiesce_radio();
+            /* RX must be released before returning to the shell.  Avoid
+             * additional MAC register traffic here: a failed control TD can
+             * poison the shared xHCI schedule used by MSC. */
+            if (rtl8188eu_stop_rx() < 0)
+                usb_printk("rtl8188eu: WPA2 exit RX stop failed\n");
             rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
             rtl8188eu.last_error = -ENOTSUP;
             return -ENOTSUP;
@@ -4097,7 +4113,10 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
     return -ENOENT;
 
 connect_failed:
-    rtl8188eu_quiesce_radio();
+    /* Do not issue more WiFi control transfers on the shared controller
+     * while handing ownership back to MSC. */
+    if (rtl8188eu_stop_rx() < 0)
+        usb_printk("rtl8188eu: connect cleanup RX stop failed\n");
     if (rtl8188eu_rx_armed) {
         usb_printk("rtl8188eu: connect cleanup RX still armed; retry stop\n");
         if (rtl8188eu_stop_rx() < 0)
