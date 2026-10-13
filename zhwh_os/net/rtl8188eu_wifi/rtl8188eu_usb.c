@@ -1887,6 +1887,7 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
 {
     static unsigned int aggregate_dump_count;
     static unsigned int aggregate_summary_count;
+    static unsigned int invalid_descriptor_logs;
     unsigned int offset = 0;
     unsigned int packets = 0;
     unsigned int invalid_items = 0;
@@ -1924,22 +1925,24 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
          * Do not scan payload every 8 bytes looking for plausible DW0 data. */
         if (rtl8188eu_get_le32_early(data + offset) == 0)
             break;
-        if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
-            rtl8188eu_auth_tx_started && invalid_items < 8)
-            usb_printk("rtl8188eu: auth RX invalid descriptor "
+        if (invalid_descriptor_logs < 16) {
+            uint32_t invalid_dw0 = rtl8188eu_get_le32_early(data + offset);
+            unsigned int invalid_pkt_len = invalid_dw0 & 0x3fff;
+            unsigned int invalid_drvinfo =
+                ((invalid_dw0 >> 16) & 0x0f) * 8;
+            unsigned int invalid_shift = (invalid_dw0 >> 24) & 0x03;
+            unsigned int invalid_frame_offset =
+                24 + invalid_drvinfo + invalid_shift;
+
+            usb_printk("rtl8188eu: RX invalid descriptor state=%u "
                        "usb_offset=%u available=%u dw0=%08x "
                        "pkt_len=%u drvinfo=%u shift=%u offset=%u "
-                       "crc=%u icv=%u\n", offset, actual_length - offset,
-                       rtl8188eu_get_le32_early(data + offset),
-                       rtl8188eu_get_le32_early(data + offset) & 0x3fff,
-                       ((rtl8188eu_get_le32_early(data + offset) >> 16) &
-                        0x0f) * 8,
-                       (rtl8188eu_get_le32_early(data + offset) >> 24) & 0x03,
-                       24 + (((rtl8188eu_get_le32_early(data + offset) >> 16) &
-                              0x0f) * 8) +
-                       ((rtl8188eu_get_le32_early(data + offset) >> 24) & 0x03),
-                       (rtl8188eu_get_le32_early(data + offset) >> 14) & 1,
-                       (rtl8188eu_get_le32_early(data + offset) >> 15) & 1);
+                       "crc=%u icv=%u\n", rtl8188eu.wifi_state, offset,
+                       actual_length - offset, invalid_dw0, invalid_pkt_len,
+                       invalid_drvinfo, invalid_shift, invalid_frame_offset,
+                       (invalid_dw0 >> 14) & 1, (invalid_dw0 >> 15) & 1);
+            invalid_descriptor_logs++;
+        }
         invalid_items++;
         break;
     }
