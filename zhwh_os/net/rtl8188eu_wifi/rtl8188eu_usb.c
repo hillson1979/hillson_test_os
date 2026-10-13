@@ -1544,6 +1544,13 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
 
     if (frame_length < 24)
         return;
+
+    /* Feed connection-management frames through the dedicated AUTH/ASSOC
+     * state handler as well as the generic IE parser.  This function used to
+     * be defined but never reached from the RX path, so AUTH responses could
+     * only be observed by diagnostics and could not advance auth_status. */
+    rtl8188eu_handle_connection_management(frame, frame_length);
+
     common_valid = ieee80211_parse_mgmt(frame, frame_length, &common_info) == 0;
     if (common_valid) {
         if (common_info.subtype == IEEE80211_STYPE_AUTH &&
