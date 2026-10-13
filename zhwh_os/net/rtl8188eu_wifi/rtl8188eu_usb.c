@@ -499,7 +499,8 @@ static void rtl8188eu_bind_connection_result(unsigned int index)
                rtl8188eu_connect_bssid[4], rtl8188eu_connect_bssid[5]);
     for (i = 0; i < rtl8188eu.connected_ssid_length; i++)
         usb_printk("%c", rtl8188eu.connected_ssid[i]);
-    usb_printk("\n");
+    usb_printk("\nrtl8188eu: connect selected scan_index=%u "
+               "SSID/BSSID/channel bound from this scan entry\n", index);
 }
 static int rtl8188eu_fw_usb_trace;
 static unsigned int rtl8188eu_fw_data_writes;
@@ -623,8 +624,17 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
      * discard an otherwise valid response merely because addr1/addr3 is not
      * an exact copy of the interface/BSSID tuple. */
     if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid) &&
-        !rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid))
+        !rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid)) {
+        usb_printk("rtl8188eu: auth frame ignored target=%02x:%02x:%02x:%02x:%02x:%02x "
+                   "rx_sa=%02x:%02x:%02x:%02x:%02x:%02x "
+                   "rx_bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
+                   rtl8188eu_connect_bssid[0], rtl8188eu_connect_bssid[1],
+                   rtl8188eu_connect_bssid[2], rtl8188eu_connect_bssid[3],
+                   rtl8188eu_connect_bssid[4], rtl8188eu_connect_bssid[5],
+                   frame[10], frame[11], frame[12], frame[13], frame[14], frame[15],
+                   frame[16], frame[17], frame[18], frame[19], frame[20], frame[21]);
         return;
+    }
     if (subtype == 0xb0 && rtl8188eu.wifi_state ==
         RTL8188EU_WIFI_AUTHENTICATING && rtl8188eu_auth_tx_started) {
         uint16_t algorithm = rtl8188eu_get_le16(frame + 24);
@@ -4070,35 +4080,35 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
             for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
                 usb_poll_interrupts();
-                if (poll && (poll % 1000u) == 0 &&
-                    rtl8188eu_auth_status < 0) {
-                    if (!rtl8188eu_connection_binding_valid()) {
-                        usb_printk("rtl8188eu: connect binding changed during auth\n");
-                        goto connect_failed;
-                    }
-                    usb_printk("rtl8188eu: auth retry #%u\n",
-                               poll / 1000u);
-                    rtl8188eu_log_auth_rx_stats("before-retry");
-                    if (rtl8188eu_bulk_out(&rtl8188eu,
-                                           rtl8188eu.bulk_out,
-                                           tx, tx_length) < 0) {
-                        rtl8188eu_log_set_color(
-                            RTL8188EU_LOG_COLOR_FAILURE);
-                        usb_printk("rtl8188eu: auth retry TX failed\n");
-                        rtl8188eu_log_reset_color();
-                        /* A timed-out xHCI TD has already required Stop
-                         * Endpoint + Set TR Dequeue recovery.  Repeating the
-                         * same synchronous TX several more times accumulates
-                         * late events and can starve unrelated MSC traffic on
-                         * the shared controller.  Abort and quiesce RX at the
-                         * first failed retry. */
-                        goto connect_failed;
-                    } else {
-                        tick_delay(1000);
-                        rtl8188eu_log_tx_state(rtl8188eu.usb,
-                                               "after-auth-retry");
-                    }
-                }
+                // if (poll && (poll % 1000u) == 0 &&
+                //     rtl8188eu_auth_status < 0) {
+                //     if (!rtl8188eu_connection_binding_valid()) {
+                //         usb_printk("rtl8188eu: connect binding changed during auth\n");
+                //         goto connect_failed;
+                //     }
+                //     usb_printk("rtl8188eu: auth retry #%u\n",
+                //                poll / 1000u);
+                //     rtl8188eu_log_auth_rx_stats("before-retry");
+                //     if (rtl8188eu_bulk_out(&rtl8188eu,
+                //                            rtl8188eu.bulk_out,
+                //                            tx, tx_length) < 0) {
+                //         rtl8188eu_log_set_color(
+                //             RTL8188EU_LOG_COLOR_FAILURE);
+                //         usb_printk("rtl8188eu: auth retry TX failed\n");
+                //         rtl8188eu_log_reset_color();
+                //         /* A timed-out xHCI TD has already required Stop
+                //          * Endpoint + Set TR Dequeue recovery.  Repeating the
+                //          * same synchronous TX several more times accumulates
+                //          * late events and can starve unrelated MSC traffic on
+                //          * the shared controller.  Abort and quiesce RX at the
+                //          * first failed retry. */
+                //         goto connect_failed;
+                //     } else {
+                //         tick_delay(1000);
+                //         rtl8188eu_log_tx_state(rtl8188eu.usb,
+                //                                "after-auth-retry");
+                //     }
+                // }
                 tick_delay(2000); /* 2ms polling interval */
             }
 
