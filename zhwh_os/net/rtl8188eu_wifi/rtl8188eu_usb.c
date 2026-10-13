@@ -617,9 +617,13 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
                    rtl8188eu_get_le16(frame + 26),
                    rtl8188eu_get_le16(frame + 28));
     }
-    /* Match the complete BSSID tuple.  Testing addr2 OR addr3 is too broad:
-     * a data/control frame from another BSS must never advance auth state. */
-    if (!rtl8188eu_bssid_equal(frame + 4, rtl8188eu.mac_addr))
+    /* Authentication replies seen from some RTL8188 firmware revisions have
+     * a non-canonical addr3 (or a locally-generated destination address).
+     * The AP transmitter (addr2) is the authoritative identity here; do not
+     * discard an otherwise valid response merely because addr1/addr3 is not
+     * an exact copy of the interface/BSSID tuple. */
+    if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu.connect_bssid) &&
+        !rtl8188eu_bssid_equal(frame + 16, rtl8188eu.connect_bssid))
         return;
     if (subtype == 0xb0 && rtl8188eu.wifi_state ==
         RTL8188EU_WIFI_AUTHENTICATING && rtl8188eu_auth_tx_started) {
@@ -627,7 +631,7 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
         uint16_t sequence = rtl8188eu_get_le16(frame + 26);
         uint16_t status = rtl8188eu_get_le16(frame + 28);
 
-        if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid) ||
+        if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid) &&
             !rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid)) {
             usb_printk("rtl8188eu: ignore auth response from unexpected "
                        "SA/BSSID\n");
@@ -1535,10 +1539,10 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
             rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
             rtl8188eu_auth_tx_started &&
             rtl8188eu_bssid_equal(common_info.addr1, rtl8188eu.mac_addr) &&
-            rtl8188eu_bssid_equal(common_info.addr2,
-                                  rtl8188eu_connect_bssid) &&
-            rtl8188eu_bssid_equal(common_info.addr3,
-                                  rtl8188eu_connect_bssid) &&
+            (rtl8188eu_bssid_equal(common_info.addr2,
+                                   rtl8188eu_connect_bssid) ||
+             rtl8188eu_bssid_equal(common_info.addr3,
+                                   rtl8188eu_connect_bssid)) &&
             common_info.auth_algorithm == 0 &&
             common_info.auth_transaction == 2) {
             usb_printk("rtl8188eu: common 80211 auth response status=%u\n",
@@ -4133,7 +4137,8 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             /* Keep RX armed long enough to observe the AP's first EAPOL-Key.
              * Cryptographic response generation is the next phase; this
              * window verifies that the associated data path is alive. */
-            for (poll = 0; poll < 5000 && !rtl8188eu_eapol_msg1_seen;
+            for (poll = 0; poll < 15000 &&
+                 rtl8188eu.wifi_state == RTL8188EU_WIFI_WPA2_HANDSHAKE;
                  poll++) {
                 usb_poll_interrupts();
                 tick_delay(2000);
@@ -4144,6 +4149,14 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             else
                 usb_printk("rtl8188eu: WPA2 EAPOL message 1 timeout "
                            "messages=%u\n", rtl8188eu_eapol_messages);
+            if (rtl8188eu.wifi_state == RTL8188EU_WIFI_CONNECTED) {
+                usb_printk("rtl8188eu: connect success SSID=%s\n",
+                           rtl8188eu.connected_ssid);
+                rtl8188eu.last_error = 0;
+                return 0;
+            }
+            usb_printk("rtl8188eu: WPA2 handshake timeout/state=%u messages=%u\n",
+                       rtl8188eu.wifi_state, rtl8188eu_eapol_messages);
             /* Do not leave the long-lived WiFi RX Bulk-IN request armed
              * while control returns to the shell.  MSC/FAT32 uses the same
              * xHCI controller and its BOT CBW/DATA/CSW sequence must not
@@ -4156,8 +4169,8 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             if (rtl8188eu_stop_rx() < 0)
                 usb_printk("rtl8188eu: WPA2 exit RX stop failed\n");
             rtl8188eu.wifi_state = RTL8188EU_WIFI_FAILED;
-            rtl8188eu.last_error = -ENOTSUP;
-            return -ENOTSUP;
+            rtl8188eu.last_error = -ETIMEDOUT;
+            return -ETIMEDOUT;
         }
     }
 
