@@ -315,7 +315,7 @@ static void rtl8188eu_log_auth_rx_stats(const char *tag)
     rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
     usb_printk("rtl8188eu: auth RX stats %s completions=%u pending=%u "
                "mgmt=%u control=%u data=%u other=%u target=%u "
-               "target_beacon=%u target_probe=%u auth=%u\n",
+               "target_beacon=%u target_probe=%u auth_frames=%u\n",
                tag ? tag : "", rtl8188eu_auth_poll_completions,
                rtl8188eu_auth_poll_pending, rtl8188eu_auth_rx_mgmt,
                rtl8188eu_auth_rx_control, rtl8188eu_auth_rx_data,
@@ -2147,7 +2147,8 @@ void rtl8188eu_wifi_poll(void)
         rtl8188eu_auth_poll_completions++;
         if (rtl8188eu_auth_poll_completions <= 8 ||
             (rtl8188eu_auth_poll_completions % 100u) == 0)
-            usb_printk("rtl8188eu: auth RX complete #%u success=%d actual=%u\n",
+            usb_printk("rtl8188eu: auth RX transfer complete #%u success=%d "
+                       "actual=%u (parsed frames follow)\n",
                        rtl8188eu_auth_poll_completions, success, rx_length);
         /* Full aggregate dumps are intentionally disabled here: Beacon
          * traffic is expected during authentication.  Meaningful response
