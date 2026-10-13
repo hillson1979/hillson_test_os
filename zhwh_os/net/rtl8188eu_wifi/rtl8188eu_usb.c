@@ -3,6 +3,7 @@
 #include <kernel/errno.h>
 #include <kernel/hillsonos.h>
 #include <kernel/usb.h>
+#include <kernel/usb_xhci.h>
 #include <kernel/rtl8188eu_wifi.h>
 #include <kernel/wpa2_crypto.h>
 #include <net.h>
@@ -221,7 +222,6 @@ static void rtl8188eu_log_reset_color(void)
 
 extern const uint8_t rtl8188eufw[];
 extern const uint32_t rtl8188eufw_size;
-extern int xhci_cancel_transfer(struct usb_transfer_t *transfer);
 extern uint32_t ticks;
 
 struct rtl8188eu_device {

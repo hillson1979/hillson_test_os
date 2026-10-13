@@ -509,6 +509,7 @@ struct xhci_dev_t {
 };
 
 int xhci_update_ep0_mps(struct usb_dev_t *dev, uint16_t mps);
+int xhci_cancel_transfer(struct usb_transfer_t *transfer);
 
 struct xhci_transfer_debug_t {
     uint8_t slot;
