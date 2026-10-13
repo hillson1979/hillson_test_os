@@ -145,6 +145,7 @@ static void rtl8188eu_log_reset_color(void)
 #define RTL8188EU_PRE_FW_POWER_ON  1
 #define RTL8188EU_FW_RAM_VERIFY    0
 #define RTL8188EU_RX_TEST_SIZE     15360
+#define RTL8188EU_RX_AGG_ALIGN     8
 #define RTL8188EU_RX_RAW_DEBUG     0
 #define RTL8188EU_RX_DESCRIPTOR_DEBUG 0
 #define RTL8188EU_TX_TOTAL_PAGES   0xA9
@@ -1890,6 +1891,16 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
     unsigned int packets = 0;
     unsigned int invalid_items = 0;
 
+    if (!data || !actual_length)
+        return;
+    /* actual_length comes from the host-controller completion.  Never trust
+     * a corrupt completion length to walk past the dedicated RX buffer. */
+    if (actual_length > sizeof(rtl8188eu_rx_buffer)) {
+        usb_printk("rtl8188eu: RX completion length %u exceeds buffer %u; "
+                   "clamped\n", actual_length,
+                   (unsigned int)sizeof(rtl8188eu_rx_buffer));
+        actual_length = sizeof(rtl8188eu_rx_buffer);
+    }
     if (RTL8188EU_RX_RAW_DEBUG && aggregate_dump_count++ == 0)
         rtl8188eu_dump_bytes("RX raw", data, actual_length);
     while (offset + 24 <= actual_length) {
@@ -1898,10 +1909,15 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
 
         if (consumed) {
             packets++;
-            /* Linux rounds USB-aggregation items to four bytes.  The
-             * 128-byte rule belongs to RXDMA aggregation, which is disabled
-             * by rtl8188eu_configure_rx_aggregation(). */
-            offset += (consumed + 3u) & ~3u;
+            /* RTL8188E USB RX aggregation aligns each item to an 8-byte
+             * boundary.  Four-byte rounding leaves the next descriptor
+             * shifted by four bytes whenever a frame's descriptor+payload is
+             * not 4-byte aligned; the shifted payload can then decode as a
+             * bogus descriptor (for example dw0=71f3f397).  The 128-byte
+             * rule belongs to RXDMA aggregation, which is disabled by
+             * rtl8188eu_configure_rx_aggregation(). */
+            offset = (offset + consumed + (RTL8188EU_RX_AGG_ALIGN - 1u)) &
+                     ~(RTL8188EU_RX_AGG_ALIGN - 1u);
             continue;
         }
         /* Descriptor boundaries are deterministic in USB aggregation mode.
@@ -1911,8 +1927,19 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
         if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
             rtl8188eu_auth_tx_started && invalid_items < 8)
             usb_printk("rtl8188eu: auth RX invalid descriptor "
-                       "usb_offset=%u dw0=%08x\n", offset,
-                       rtl8188eu_get_le32_early(data + offset));
+                       "usb_offset=%u available=%u dw0=%08x "
+                       "pkt_len=%u drvinfo=%u shift=%u offset=%u "
+                       "crc=%u icv=%u\n", offset, actual_length - offset,
+                       rtl8188eu_get_le32_early(data + offset),
+                       rtl8188eu_get_le32_early(data + offset) & 0x3fff,
+                       ((rtl8188eu_get_le32_early(data + offset) >> 16) &
+                        0x0f) * 8,
+                       (rtl8188eu_get_le32_early(data + offset) >> 24) & 0x03,
+                       24 + (((rtl8188eu_get_le32_early(data + offset) >> 16) &
+                              0x0f) * 8) +
+                       ((rtl8188eu_get_le32_early(data + offset) >> 24) & 0x03),
+                       (rtl8188eu_get_le32_early(data + offset) >> 14) & 1,
+                       (rtl8188eu_get_le32_early(data + offset) >> 15) & 1);
         invalid_items++;
         break;
     }
