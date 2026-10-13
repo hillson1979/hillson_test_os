@@ -622,14 +622,23 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
      * The AP transmitter (addr2) is the authoritative identity here; do not
      * discard an otherwise valid response merely because addr1/addr3 is not
      * an exact copy of the interface/BSSID tuple. */
-    if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu.connect_bssid) &&
-        !rtl8188eu_bssid_equal(frame + 16, rtl8188eu.connect_bssid))
+    if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid) &&
+        !rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid))
         return;
     if (subtype == 0xb0 && rtl8188eu.wifi_state ==
         RTL8188EU_WIFI_AUTHENTICATING && rtl8188eu_auth_tx_started) {
         uint16_t algorithm = rtl8188eu_get_le16(frame + 24);
         uint16_t sequence = rtl8188eu_get_le16(frame + 26);
         uint16_t status = rtl8188eu_get_le16(frame + 28);
+
+        usb_printk("rtl8188eu: auth response candidate alg=%u seq=%u "
+                   "status=%u DA=%02x:%02x:%02x:%02x:%02x:%02x "
+                   "SA=%02x:%02x:%02x:%02x:%02x:%02x "
+                   "BSSID=%02x:%02x:%02x:%02x:%02x:%02x\n",
+                   algorithm, sequence, status,
+                   frame[4], frame[5], frame[6], frame[7], frame[8], frame[9],
+                   frame[10], frame[11], frame[12], frame[13], frame[14], frame[15],
+                   frame[16], frame[17], frame[18], frame[19], frame[20], frame[21]);
 
         if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid) &&
             !rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid)) {
@@ -646,6 +655,8 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
             /* The shared ieee80211 parser is authoritative for state. */
         } else if (rtl8188eu_auth_status < 0) {
             rtl8188eu_auth_status = status;
+            usb_printk("rtl8188eu: auth status accepted=%d\n",
+                       rtl8188eu_auth_status);
         }
     } else if ((subtype == 0x10 || subtype == 0x30) &&
                rtl8188eu.wifi_state == RTL8188EU_WIFI_ASSOCIATING) {
