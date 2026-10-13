@@ -4126,35 +4126,35 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
             for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
                 usb_poll_interrupts();
-                // if (poll && (poll % 1000u) == 0 &&
-                //     rtl8188eu_auth_status < 0) {
-                //     if (!rtl8188eu_connection_binding_valid()) {
-                //         usb_printk("rtl8188eu: connect binding changed during auth\n");
-                //         goto connect_failed;
-                //     }
-                //     usb_printk("rtl8188eu: auth retry #%u\n",
-                //                poll / 1000u);
-                //     rtl8188eu_log_auth_rx_stats("before-retry");
-                //     if (rtl8188eu_bulk_out(&rtl8188eu,
-                //                            rtl8188eu.bulk_out,
-                //                            tx, tx_length) < 0) {
-                //         rtl8188eu_log_set_color(
-                //             RTL8188EU_LOG_COLOR_FAILURE);
-                //         usb_printk("rtl8188eu: auth retry TX failed\n");
-                //         rtl8188eu_log_reset_color();
-                //         /* A timed-out xHCI TD has already required Stop
-                //          * Endpoint + Set TR Dequeue recovery.  Repeating the
-                //          * same synchronous TX several more times accumulates
-                //          * late events and can starve unrelated MSC traffic on
-                //          * the shared controller.  Abort and quiesce RX at the
-                //          * first failed retry. */
-                //         goto connect_failed;
-                //     } else {
-                //         tick_delay(1000);
-                //         rtl8188eu_log_tx_state(rtl8188eu.usb,
-                //                                "after-auth-retry");
-                //     }
-                // }
+                if (poll && (poll % 1000u) == 0 &&
+                    rtl8188eu_auth_status < 0) {
+                    if (!rtl8188eu_connection_binding_valid()) {
+                        usb_printk("rtl8188eu: connect binding changed during auth\n");
+                        goto connect_failed;
+                    }
+                    usb_printk("rtl8188eu: auth retry #%u\n",
+                               poll / 1000u);
+                    rtl8188eu_log_auth_rx_stats("before-retry");
+                    if (rtl8188eu_bulk_out(&rtl8188eu,
+                                           rtl8188eu.bulk_out,
+                                           tx, tx_length) < 0) {
+                        rtl8188eu_log_set_color(
+                            RTL8188EU_LOG_COLOR_FAILURE);
+                        usb_printk("rtl8188eu: auth retry TX failed\n");
+                        rtl8188eu_log_reset_color();
+                        /* A timed-out xHCI TD has already required Stop
+                         * Endpoint + Set TR Dequeue recovery.  Repeating the
+                         * same synchronous TX several more times accumulates
+                         * late events and can starve unrelated MSC traffic on
+                         * the shared controller.  Abort and quiesce RX at the
+                         * first failed retry. */
+                        goto connect_failed;
+                    } else {
+                        tick_delay(1000);
+                        rtl8188eu_log_tx_state(rtl8188eu.usb,
+                                               "after-auth-retry");
+                    }
+                }
                 tick_delay(2000); /* 2ms polling interval */
             }
 
