@@ -4186,8 +4186,21 @@ static void xhci_setup_transfer(struct usb_transfer_t *transfer)
                 transfer->endpoint->type, transfer->endpoint->mps,
                 transfer->endpoint->interval);
         } else if (ep_state == EP_STATE_STOPPED) {
-            usb_printk("xhci: SETUP_TRANSFER ep=%d stopped; new TRB will restart it\n",
-                       ep_id);
+            /* A timeout recovery stops the endpoint and rebases its ring.
+             * A subsequent doorbell is not sufficient on all controllers;
+             * explicitly reconfigure this endpoint before queuing the next
+             * TD so its state returns to Running. */
+            uint8_t ep_addr = transfer->endpoint->addr;
+            if (transfer->endpoint->direction == USB_ENDPOINT_IN)
+                ep_addr |= 0x80;
+            usb_printk("xhci: SETUP_TRANSFER restarting stopped ep=%d addr=0x%02x\n",
+                       ep_id, ep_addr);
+            if (xhci_configure_endpoint(xhci, slot_id, ep_addr,
+                                         transfer->endpoint->type,
+                                         transfer->endpoint->mps,
+                                         transfer->endpoint->interval) < 0)
+                usb_printk("xhci: SETUP_TRANSFER stopped ep=%d restart failed\n",
+                           ep_id);
         } else if (ep_state != EP_STATE_RUNNING) {
             uint8_t ep_addr = transfer->endpoint->addr;
             if (transfer->endpoint->direction == USB_ENDPOINT_IN)
