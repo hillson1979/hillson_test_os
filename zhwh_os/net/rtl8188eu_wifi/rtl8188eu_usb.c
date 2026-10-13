@@ -625,14 +625,9 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
      * an exact copy of the interface/BSSID tuple. */
     if (!rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid) &&
         !rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid)) {
-        usb_printk("rtl8188eu: auth frame ignored target=%02x:%02x:%02x:%02x:%02x:%02x "
-                   "rx_sa=%02x:%02x:%02x:%02x:%02x:%02x "
-                   "rx_bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
-                   rtl8188eu_connect_bssid[0], rtl8188eu_connect_bssid[1],
-                   rtl8188eu_connect_bssid[2], rtl8188eu_connect_bssid[3],
-                   rtl8188eu_connect_bssid[4], rtl8188eu_connect_bssid[5],
-                   frame[10], frame[11], frame[12], frame[13], frame[14], frame[15],
-                   frame[16], frame[17], frame[18], frame[19], frame[20], frame[21]);
+        /* Frames from other APs are expected while the adapter is listening.
+         * Do not emit one log line per ignored frame: this floods both the
+         * console and USB log ring and hides the actual connection trace. */
         return;
     }
     if (subtype == 0xb0 && rtl8188eu.wifi_state ==
