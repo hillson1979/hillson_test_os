@@ -1967,9 +1967,43 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
 
         /* Management parsing is selected by the frame header, not by a
          * b0 00 byte appearing anywhere in an IP/EAPOL payload. */
-        if (frame_type == RTL8188EU_IEEE80211_FTYPE_MGMT)
+        if (frame_type == RTL8188EU_IEEE80211_FTYPE_MGMT) {
+            /* Keep the authentication handoff adjacent to the RX descriptor
+             * parser.  This is the first point where the USB RX payload is
+             * known to be an 802.11 management frame; a fast AP response must
+             * not depend on a later generic parser/callback being scheduled. */
+            if (packet_length >= 30 && (frame[0] & 0xf0) == 0xb0 &&
+                rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
+                rtl8188eu_auth_tx_started) {
+                uint16_t algorithm = rtl8188eu_get_le16(frame + 24);
+                uint16_t transaction = rtl8188eu_get_le16(frame + 26);
+                uint16_t status = rtl8188eu_get_le16(frame + 28);
+                int sa_match = rtl8188eu_bssid_equal(
+                    frame + 10, rtl8188eu_connect_bssid);
+                int bssid_match = rtl8188eu_bssid_equal(
+                    frame + 16, rtl8188eu_connect_bssid);
+                int da_match = rtl8188eu_bssid_equal(frame + 4,
+                                                     rtl8188eu.mac_addr);
+                usb_printk("rtl8188eu: auth RX dispatch type=00 subtype=11 "
+                           "alg=%u transaction=%u status=%u sa=%d bssid=%d da=%d\n",
+                           algorithm, transaction, status, sa_match,
+                           bssid_match, da_match);
+                if (transaction == 2 && (sa_match || bssid_match) &&
+                    rtl8188eu_auth_status < 0) {
+                    rtl8188eu_auth_status = status;
+                    rtl8188eu_auth_candidate_alg = algorithm;
+                    rtl8188eu_auth_candidate_seq = transaction;
+                    rtl8188eu_auth_candidate_status = status;
+                    rtl8188eu_auth_candidate_sa_match = sa_match;
+                    rtl8188eu_auth_candidate_bssid_match = bssid_match;
+                    rtl8188eu_auth_candidate_da_match = da_match;
+                    usb_printk("rtl8188eu: auth RX dispatch accepted "
+                               "status=%u auth_status=%d\n",
+                               status, rtl8188eu_auth_status);
+                }
+            }
             rtl8188eu_parse_management_ies(frame, packet_length);
-        else if (frame_type == RTL8188EU_IEEE80211_FTYPE_DATA)
+        } else if (frame_type == RTL8188EU_IEEE80211_FTYPE_DATA)
             rtl8188eu_deliver_data_frame(frame, packet_length);
     }
     return frame_offset + packet_length;
@@ -4375,7 +4409,7 @@ connect_failed:
         usb_printk("rtl8188eu: auth final status=%d\n",
                    rtl8188eu_auth_status);
         rtl8188eu_log_auth_tx_stats("===TX final");
-        rtl8188eu_log_auth_rxtx_stats("final");
+        //rtl8188eu_log_auth_rxtx_stats("final");
         rtl8188eu_log_auth_tx_queue("final");
         rtl8188eu_log_auth_rx_stats("===RX final");
         rtl8188eu_log_tx_state(rtl8188eu.usb, "auth-failed-final");
