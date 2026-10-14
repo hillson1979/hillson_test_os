@@ -293,6 +293,8 @@ static unsigned int rtl8188eu_auth_tx_success;
 static unsigned int rtl8188eu_auth_tx_failures;
 static unsigned int rtl8188eu_auth_tx_bytes;
 static int rtl8188eu_auth_tx_last_ret;
+static uint16_t rtl8188eu_auth_tx_empty_before;
+static uint16_t rtl8188eu_auth_tx_empty_after;
 static volatile unsigned int rtl8188eu_eapol_messages;
 static volatile unsigned int rtl8188eu_eapol_msg1_seen;
 static volatile unsigned int rtl8188eu_eapol_msg2_seen;
@@ -345,6 +347,41 @@ static void rtl8188eu_log_auth_tx_stats(const char *tag)
                rtl8188eu_auth_tx_success, rtl8188eu_auth_tx_failures,
                rtl8188eu_auth_tx_bytes, rtl8188eu_auth_tx_last_ret);
     rtl8188eu_log_reset_color();
+}
+
+static void rtl8188eu_log_auth_rxtx_stats(const char *tag)
+{
+    rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
+    usb_printk("rtl8188eu: auth RX/TX stats %s tx_attempts=%u tx_success=%u "
+               "tx_failures=%u tx_bytes=%u tx_last_ret=%d "
+               "rx_completions=%u rx_pending=%u rx_mgmt=%u rx_control=%u "
+               "rx_data=%u rx_other=%u rx_target=%u rx_target_beacon=%u "
+               "rx_target_probe=%u rx_auth_frames=%u\n",
+               tag ? tag : "", rtl8188eu_auth_tx_attempts,
+               rtl8188eu_auth_tx_success, rtl8188eu_auth_tx_failures,
+               rtl8188eu_auth_tx_bytes, rtl8188eu_auth_tx_last_ret,
+               rtl8188eu_auth_poll_completions, rtl8188eu_auth_poll_pending,
+               rtl8188eu_auth_rx_mgmt, rtl8188eu_auth_rx_control,
+               rtl8188eu_auth_rx_data, rtl8188eu_auth_rx_other,
+               rtl8188eu_auth_rx_target, rtl8188eu_auth_rx_target_beacon,
+               rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth);
+    rtl8188eu_log_reset_color();
+}
+
+static void rtl8188eu_log_auth_tx_queue(const char *tag)
+{
+    uint16_t empty;
+    if (!rtl8188eu.usb || rtl8188eu_read16(rtl8188eu.usb,
+                                           RTL8188EU_REG_TXPKT_EMPTY,
+                                           &empty) < 0)
+        return;
+    if (tag && tag[0] == 'b')
+        rtl8188eu_auth_tx_empty_before = empty;
+    else
+        rtl8188eu_auth_tx_empty_after = empty;
+    usb_printk("rtl8188eu: auth TX queue %s TXPKT_EMPTY=%04x before=%04x after=%04x\n",
+               tag ? tag : "", empty, rtl8188eu_auth_tx_empty_before,
+               rtl8188eu_auth_tx_empty_after);
 }
 
 /* Poll only the transfer owned by this synchronous caller.  On xHCI,
@@ -4139,6 +4176,7 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             tx_length = rtl8188eu_build_auth_request(tx, sizeof(tx), rtl8188eu_connect_bssid);
             if (!tx_length)
                 goto connect_failed;
+            rtl8188eu_log_auth_tx_queue("before");
             rtl8188eu_auth_tx_started = 1;
             rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_TX);
             rtl8188eu_log_tx_descriptor(tx);
@@ -4160,6 +4198,7 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
                 goto connect_failed;
             tick_delay(1000);
             rtl8188eu_log_tx_state(rtl8188eu.usb, "after-auth-usb");
+            rtl8188eu_log_auth_tx_queue("after");
 
             /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
             for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
@@ -4199,6 +4238,8 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             if (rtl8188eu_auth_status != 0) {
                 rtl8188eu_log_auth_rx_stats("RX final");
                 rtl8188eu_log_auth_tx_stats("TX final");
+                rtl8188eu_log_auth_rxtx_stats("final");
+                rtl8188eu_log_auth_tx_queue("final");
                 rtl8188eu_log_tx_state(rtl8188eu.usb,
                                        "auth-failed-final");
                 rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_FAILURE);
