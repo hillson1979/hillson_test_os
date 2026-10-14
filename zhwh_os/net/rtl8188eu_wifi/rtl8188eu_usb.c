@@ -1988,18 +1988,34 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
                            "alg=%u transaction=%u status=%u sa=%d bssid=%d da=%d\n",
                            algorithm, transaction, status, sa_match,
                            bssid_match, da_match);
-                if (transaction == 2 && (sa_match || bssid_match) &&
+                /* Keep the last target candidate even when it is not the
+                 * Open System response expected by this connection.  This
+                 * mirrors nl80211's event payload and makes the final log
+                 * distinguish a malformed/wrong-algorithm response from a
+                 * missing RX frame. */
+                rtl8188eu_auth_candidate_alg = algorithm;
+                rtl8188eu_auth_candidate_seq = transaction;
+                rtl8188eu_auth_candidate_status = status;
+                rtl8188eu_auth_candidate_sa_match = sa_match;
+                rtl8188eu_auth_candidate_bssid_match = bssid_match;
+                rtl8188eu_auth_candidate_da_match = da_match;
+                /* This connect path sends an Open System request.  Match
+                 * wpa_supplicant's SME: only an Open System response with
+                 * transaction 2 completes this authentication attempt.
+                 * SAE/FT/other algorithms have different exchanges and
+                 * must not be collapsed into rtl8188eu_auth_status. */
+                if (algorithm == 0 && transaction == 2 &&
+                    (sa_match || bssid_match) &&
                     rtl8188eu_auth_status < 0) {
                     rtl8188eu_auth_status = status;
-                    rtl8188eu_auth_candidate_alg = algorithm;
-                    rtl8188eu_auth_candidate_seq = transaction;
-                    rtl8188eu_auth_candidate_status = status;
-                    rtl8188eu_auth_candidate_sa_match = sa_match;
-                    rtl8188eu_auth_candidate_bssid_match = bssid_match;
-                    rtl8188eu_auth_candidate_da_match = da_match;
                     usb_printk("rtl8188eu: auth RX dispatch accepted "
                                "status=%u auth_status=%d\n",
                                status, rtl8188eu_auth_status);
+                } else if ((sa_match || bssid_match) &&
+                           (algorithm != 0 || transaction != 2)) {
+                    usb_printk("rtl8188eu: auth RX dispatch rejected "
+                               "alg=%u transaction=%u status=%u\n",
+                               algorithm, transaction, status);
                 }
             }
             rtl8188eu_parse_management_ies(frame, packet_length);
@@ -4304,6 +4320,9 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
                         goto connect_failed;
                     } else {
                         tick_delay(1000);
+                        usb_poll_interrupts();
+                        usb_printk("rtl8188eu: auth retry #%u after status=%d\n",
+                                   poll / 1000u, rtl8188eu_auth_status);
                         rtl8188eu_log_tx_state(rtl8188eu.usb,
                                                "after-auth-retry");
                     }
