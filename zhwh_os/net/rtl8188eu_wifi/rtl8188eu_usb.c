@@ -2100,6 +2100,22 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
             invalid_descriptor_logs++;
         }
         invalid_items++;
+        if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING) {
+            static unsigned int auth_invalid_logs;
+            if (auth_invalid_logs++ < 16) {
+                unsigned int i;
+                unsigned int dump_len = actual_length - offset;
+                if (dump_len > 24)
+                    dump_len = 24;
+                usb_printk("rtl8188eu: auth RX invalid descriptor "
+                           "offset=%u remaining=%u dw0=%08x head:",
+                           offset, actual_length - offset,
+                           rtl8188eu_get_le32_early(data + offset));
+                for (i = 0; i < dump_len; i++)
+                    usb_printk(" %02x", data[offset + i]);
+                usb_printk("\\n");
+            }
+        }
         break;
     }
     if (RTL8188EU_RX_DESCRIPTOR_DEBUG && packets > 1 &&
