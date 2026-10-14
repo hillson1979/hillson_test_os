@@ -370,14 +370,16 @@ static void rtl8188eu_log_auth_tx_stats(const char *tag)
 static void rtl8188eu_log_auth_rxtx_stats(const char *tag)
 {
     rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_STATS);
-    usb_printk("rtl8188eu: auth RX/TX stats %s tx_attempts=%u tx_success=%u "
+    usb_printk("rtl8188eu: auth RX/TX stats %s auth_status=%d "
+               "tx_attempts=%u tx_success=%u "
                "tx_failures=%u tx_bytes=%u tx_last_ret=%d "
                "rx_completions=%u rx_pending=%u rx_mgmt=%u rx_control=%u "
                "rx_data=%u rx_other=%u rx_target=%u rx_target_beacon=%u "
                "rx_target_probe=%u rx_auth_frames=%u "
                "candidate_alg=%u candidate_seq=%u candidate_status=%u "
                "candidate_sa=%u candidate_bssid=%u candidate_da=%u\n",
-               tag ? tag : "", rtl8188eu_auth_tx_attempts,
+               tag ? tag : "", rtl8188eu_auth_status,
+               rtl8188eu_auth_tx_attempts,
                rtl8188eu_auth_tx_success, rtl8188eu_auth_tx_failures,
                rtl8188eu_auth_tx_bytes, rtl8188eu_auth_tx_last_ret,
                rtl8188eu_auth_poll_completions, rtl8188eu_auth_poll_pending,
@@ -4243,50 +4245,42 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
             for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
                 usb_poll_interrupts();
-                // if (poll && (poll % 1000u) == 0 &&
-                //     rtl8188eu_auth_status < 0) {
-                //     if (!rtl8188eu_connection_binding_valid()) {
-                //         usb_printk("rtl8188eu: connect binding changed during auth\n");
-                //         goto connect_failed;
-                //     }
-                //     usb_printk("rtl8188eu: auth retry #%u\n",
-                //                poll / 1000u);
-                //     rtl8188eu_log_auth_rx_stats("before-retry");
-                //     if (rtl8188eu_bulk_out(&rtl8188eu,
-                //                            rtl8188eu.bulk_out,
-                //                            tx, tx_length) < 0) {
-                //         rtl8188eu_log_set_color(
-                //             RTL8188EU_LOG_COLOR_FAILURE);
-                //         usb_printk("rtl8188eu: auth retry TX failed\n");
-                //         rtl8188eu_log_reset_color();
-                //         /* A timed-out xHCI TD has already required Stop
-                //          * Endpoint + Set TR Dequeue recovery.  Repeating the
-                //          * same synchronous TX several more times accumulates
-                //          * late events and can starve unrelated MSC traffic on
-                //          * the shared controller.  Abort and quiesce RX at the
-                //          * first failed retry. */
-                //         goto connect_failed;
-                //     } else {
-                //         tick_delay(1000);
-                //         rtl8188eu_log_tx_state(rtl8188eu.usb,
-                //                                "after-auth-retry");
-                //     }
-                // }
+                if (poll && (poll % 1000u) == 0 &&
+                    rtl8188eu_auth_status < 0) {
+                    if (!rtl8188eu_connection_binding_valid()) {
+                        usb_printk("rtl8188eu: connect binding changed during auth\n");
+                        goto connect_failed;
+                    }
+                    usb_printk("rtl8188eu: auth retry #%u\n",
+                               poll / 1000u);
+                    rtl8188eu_log_auth_rx_stats("before-retry");
+                    if (rtl8188eu_bulk_out(&rtl8188eu,
+                                           rtl8188eu.bulk_out,
+                                           tx, tx_length) < 0) {
+                        rtl8188eu_log_set_color(
+                            RTL8188EU_LOG_COLOR_FAILURE);
+                        usb_printk("rtl8188eu: auth retry TX failed\n");
+                        rtl8188eu_log_reset_color();
+                        /* A timed-out xHCI TD has already required Stop
+                         * Endpoint + Set TR Dequeue recovery.  Repeating the
+                         * same synchronous TX several more times accumulates
+                         * late events and can starve unrelated MSC traffic on
+                         * the shared controller.  Abort and quiesce RX at the
+                         * first failed retry. */
+                        goto connect_failed;
+                    } else {
+                        tick_delay(1000);
+                        rtl8188eu_log_tx_state(rtl8188eu.usb,
+                                               "after-auth-retry");
+                    }
+                }
                 tick_delay(2000); /* 2ms polling interval */
             }
 
-            if (rtl8188eu_auth_status != 0) {
-                rtl8188eu_log_auth_rx_stats("RX final");
-                rtl8188eu_log_auth_tx_stats("TX final");
-                //rtl8188eu_log_auth_rxtx_stats("final");
-                rtl8188eu_log_auth_tx_queue("final");
-                rtl8188eu_log_tx_state(rtl8188eu.usb,
-                                       "auth-failed-final");
-                rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_FAILURE);
-                usb_printk("rtl8188eu: auth failed status=%d\n", rtl8188eu_auth_status);
-                rtl8188eu_log_reset_color();
+            /* Three-state result: <0 means no accepted response, 0 means
+             * Open System authentication succeeded, >0 is an AP rejection. */
+            if (rtl8188eu_auth_status < 0 || rtl8188eu_auth_status > 0)
                 goto connect_failed;
-            }
 
             /* Association Phase */
             rtl8188eu_assoc_status = -1;
@@ -4374,6 +4368,22 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
     return -ENOENT;
 
 connect_failed:
+    /* Keep the final AUTH diagnostics at the common failure label.  Earlier
+     * errors can jump here before the polling loop and must not bypass the
+     * TX/RX summary. */
+    if (rtl8188eu_auth_tx_started) {
+        usb_printk("rtl8188eu: auth final status=%d\n",
+                   rtl8188eu_auth_status);
+        rtl8188eu_log_auth_tx_stats("===TX final");
+        rtl8188eu_log_auth_rxtx_stats("final");
+        rtl8188eu_log_auth_tx_queue("final");
+        rtl8188eu_log_auth_rx_stats("===RX final");
+        rtl8188eu_log_tx_state(rtl8188eu.usb, "auth-failed-final");
+        rtl8188eu_log_set_color(RTL8188EU_LOG_COLOR_FAILURE);
+        usb_printk("rtl8188eu: auth failed status=%d\n",
+                   rtl8188eu_auth_status);
+        rtl8188eu_log_reset_color();
+    }
     /* Do not issue more WiFi control transfers on the shared controller
      * while handing ownership back to MSC. */
     if (rtl8188eu_stop_rx() < 0)
