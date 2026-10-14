@@ -1951,6 +1951,17 @@ static int xhci_stop_and_rebase_endpoint(volatile struct xhci_dev_t *xhci,
     struct xhci_trb_t cmd;
     int cc;
 
+    /* Keep timeout recovery diagnosable: a stopped endpoint is only useful
+     * if the controller accepts both Stop EP and Set TR Dequeue. */
+    if (xhci->slots[slot_id].dev_ctx) {
+        uint32_t *out = (uint32_t *)xhci->slots[slot_id].dev_ctx;
+        uint32_t *epc = xhci_output_ep_ctx(xhci, out, ep_id);
+        usb_printk("xhci: stop/rebase begin slot=%d dci=%d state=%d "
+                   "epctx0=%x epctx2=%x ring=%x enq=%d deq=%d\n",
+                   slot_id, ep_id, epc[0] & 0x7, epc[0], epc[2],
+                   (uint32_t)ring->phys, ring->enqueue, ring->dequeue);
+    }
+
     A_memset(&cmd, 0, sizeof(cmd));
     cmd.control = TRB_TYPE(TRB_TYPE_STOP_EP) |
                   ((uint32_t)ep_id << 16) |
@@ -1958,6 +1969,7 @@ static int xhci_stop_and_rebase_endpoint(volatile struct xhci_dev_t *xhci,
     if (xhci_post_cmd(xhci, &cmd) < 0)
         return -ENOMEM;
     cc = xhci_wait_cmd(xhci, 1000);
+    usb_printk("xhci: Stop EP slot=%d dci=%d cc=%d\n", slot_id, ep_id, cc);
     if (cc != CC_SUCCESS)
         return -EIO;
 
@@ -1978,6 +1990,8 @@ static int xhci_stop_and_rebase_endpoint(volatile struct xhci_dev_t *xhci,
     if (xhci_post_cmd(xhci, &cmd) < 0)
         return -ENOMEM;
     cc = xhci_wait_cmd(xhci, 1000);
+    usb_printk("xhci: Set TR Dequeue slot=%d dci=%d cc=%d ring=%x\n",
+               slot_id, ep_id, cc, (uint32_t)ring->phys);
     return cc == CC_SUCCESS ? 0 : -EIO;
 }
 
