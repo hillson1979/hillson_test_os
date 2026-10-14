@@ -31,6 +31,11 @@ static void rtl8188eu_log_reset_color(void)
     vga_setcolor(RTL8188EU_LOG_COLOR_DEFAULT, 0);
 }
 
+/* Register helpers are used by early diagnostic logging below their
+ * definitions in this translation unit. */
+static int rtl8188eu_read16(struct usb_dev_t *usb, uint16_t reg,
+                            uint16_t *value);
+
 #define RTL8188EU_USB_REQ_REGS  0x05
 #define RTL8188EU_USB_REQ_READ  0xC0
 #define RTL8188EU_USB_REQ_WRITE 0x40
@@ -293,6 +298,12 @@ static unsigned int rtl8188eu_auth_tx_success;
 static unsigned int rtl8188eu_auth_tx_failures;
 static unsigned int rtl8188eu_auth_tx_bytes;
 static int rtl8188eu_auth_tx_last_ret;
+static uint16_t rtl8188eu_auth_candidate_alg;
+static uint16_t rtl8188eu_auth_candidate_seq;
+static uint16_t rtl8188eu_auth_candidate_status;
+static unsigned int rtl8188eu_auth_candidate_sa_match;
+static unsigned int rtl8188eu_auth_candidate_bssid_match;
+static unsigned int rtl8188eu_auth_candidate_da_match;
 static uint16_t rtl8188eu_auth_tx_empty_before;
 static uint16_t rtl8188eu_auth_tx_empty_after;
 static volatile unsigned int rtl8188eu_eapol_messages;
@@ -331,6 +342,13 @@ static void rtl8188eu_log_auth_rx_stats(const char *tag)
     usb_printk(" target_beacon=%u target_probe=%u auth_frames=%u\n",
                rtl8188eu_auth_rx_target_beacon,
                rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth);
+    usb_printk(" auth_candidate alg=%u seq=%u status=%u sa_match=%u "
+               "bssid_match=%u da_match=%u\n",
+               rtl8188eu_auth_candidate_alg, rtl8188eu_auth_candidate_seq,
+               rtl8188eu_auth_candidate_status,
+               rtl8188eu_auth_candidate_sa_match,
+               rtl8188eu_auth_candidate_bssid_match,
+               rtl8188eu_auth_candidate_da_match);
     // usb_printk(" auth TX stats attempts=%u success=%u failures=%u bytes=%u last_ret=%d\n",
     //            rtl8188eu_auth_tx_attempts, rtl8188eu_auth_tx_success,
     //            rtl8188eu_auth_tx_failures, rtl8188eu_auth_tx_bytes,
@@ -356,7 +374,9 @@ static void rtl8188eu_log_auth_rxtx_stats(const char *tag)
                "tx_failures=%u tx_bytes=%u tx_last_ret=%d "
                "rx_completions=%u rx_pending=%u rx_mgmt=%u rx_control=%u "
                "rx_data=%u rx_other=%u rx_target=%u rx_target_beacon=%u "
-               "rx_target_probe=%u rx_auth_frames=%u\n",
+               "rx_target_probe=%u rx_auth_frames=%u "
+               "candidate_alg=%u candidate_seq=%u candidate_status=%u "
+               "candidate_sa=%u candidate_bssid=%u candidate_da=%u\n",
                tag ? tag : "", rtl8188eu_auth_tx_attempts,
                rtl8188eu_auth_tx_success, rtl8188eu_auth_tx_failures,
                rtl8188eu_auth_tx_bytes, rtl8188eu_auth_tx_last_ret,
@@ -364,7 +384,12 @@ static void rtl8188eu_log_auth_rxtx_stats(const char *tag)
                rtl8188eu_auth_rx_mgmt, rtl8188eu_auth_rx_control,
                rtl8188eu_auth_rx_data, rtl8188eu_auth_rx_other,
                rtl8188eu_auth_rx_target, rtl8188eu_auth_rx_target_beacon,
-               rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth);
+               rtl8188eu_auth_rx_target_probe, rtl8188eu_auth_rx_auth,
+               rtl8188eu_auth_candidate_alg, rtl8188eu_auth_candidate_seq,
+               rtl8188eu_auth_candidate_status,
+               rtl8188eu_auth_candidate_sa_match,
+               rtl8188eu_auth_candidate_bssid_match,
+               rtl8188eu_auth_candidate_da_match);
     rtl8188eu_log_reset_color();
 }
 
@@ -694,6 +719,15 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
         uint16_t algorithm = rtl8188eu_get_le16(frame + 24);
         uint16_t sequence = rtl8188eu_get_le16(frame + 26);
         uint16_t status = rtl8188eu_get_le16(frame + 28);
+        rtl8188eu_auth_candidate_alg = algorithm;
+        rtl8188eu_auth_candidate_seq = sequence;
+        rtl8188eu_auth_candidate_status = status;
+        rtl8188eu_auth_candidate_sa_match =
+            rtl8188eu_bssid_equal(frame + 10, rtl8188eu_connect_bssid);
+        rtl8188eu_auth_candidate_bssid_match =
+            rtl8188eu_bssid_equal(frame + 16, rtl8188eu_connect_bssid);
+        rtl8188eu_auth_candidate_da_match =
+            rtl8188eu_bssid_equal(frame + 4, rtl8188eu.mac_addr);
 
         usb_printk("rtl8188eu: auth response candidate alg=%u seq=%u "
                    "status=%u DA=%02x:%02x:%02x:%02x:%02x:%02x "
@@ -4162,6 +4196,12 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             rtl8188eu_auth_tx_failures = 0;
             rtl8188eu_auth_tx_bytes = 0;
             rtl8188eu_auth_tx_last_ret = 0;
+            rtl8188eu_auth_candidate_alg = 0xffff;
+            rtl8188eu_auth_candidate_seq = 0xffff;
+            rtl8188eu_auth_candidate_status = 0xffff;
+            rtl8188eu_auth_candidate_sa_match = 0;
+            rtl8188eu_auth_candidate_bssid_match = 0;
+            rtl8188eu_auth_candidate_da_match = 0;
             rtl8188eu.wifi_state = RTL8188EU_WIFI_AUTHENTICATING;
 
             if (rtl8188eu_stop_rx() < 0)
@@ -4203,42 +4243,42 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
             for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
                 usb_poll_interrupts();
-                if (poll && (poll % 1000u) == 0 &&
-                    rtl8188eu_auth_status < 0) {
-                    if (!rtl8188eu_connection_binding_valid()) {
-                        usb_printk("rtl8188eu: connect binding changed during auth\n");
-                        goto connect_failed;
-                    }
-                    usb_printk("rtl8188eu: auth retry #%u\n",
-                               poll / 1000u);
-                    rtl8188eu_log_auth_rx_stats("before-retry");
-                    if (rtl8188eu_bulk_out(&rtl8188eu,
-                                           rtl8188eu.bulk_out,
-                                           tx, tx_length) < 0) {
-                        rtl8188eu_log_set_color(
-                            RTL8188EU_LOG_COLOR_FAILURE);
-                        usb_printk("rtl8188eu: auth retry TX failed\n");
-                        rtl8188eu_log_reset_color();
-                        /* A timed-out xHCI TD has already required Stop
-                         * Endpoint + Set TR Dequeue recovery.  Repeating the
-                         * same synchronous TX several more times accumulates
-                         * late events and can starve unrelated MSC traffic on
-                         * the shared controller.  Abort and quiesce RX at the
-                         * first failed retry. */
-                        goto connect_failed;
-                    } else {
-                        tick_delay(1000);
-                        rtl8188eu_log_tx_state(rtl8188eu.usb,
-                                               "after-auth-retry");
-                    }
-                }
+                // if (poll && (poll % 1000u) == 0 &&
+                //     rtl8188eu_auth_status < 0) {
+                //     if (!rtl8188eu_connection_binding_valid()) {
+                //         usb_printk("rtl8188eu: connect binding changed during auth\n");
+                //         goto connect_failed;
+                //     }
+                //     usb_printk("rtl8188eu: auth retry #%u\n",
+                //                poll / 1000u);
+                //     rtl8188eu_log_auth_rx_stats("before-retry");
+                //     if (rtl8188eu_bulk_out(&rtl8188eu,
+                //                            rtl8188eu.bulk_out,
+                //                            tx, tx_length) < 0) {
+                //         rtl8188eu_log_set_color(
+                //             RTL8188EU_LOG_COLOR_FAILURE);
+                //         usb_printk("rtl8188eu: auth retry TX failed\n");
+                //         rtl8188eu_log_reset_color();
+                //         /* A timed-out xHCI TD has already required Stop
+                //          * Endpoint + Set TR Dequeue recovery.  Repeating the
+                //          * same synchronous TX several more times accumulates
+                //          * late events and can starve unrelated MSC traffic on
+                //          * the shared controller.  Abort and quiesce RX at the
+                //          * first failed retry. */
+                //         goto connect_failed;
+                //     } else {
+                //         tick_delay(1000);
+                //         rtl8188eu_log_tx_state(rtl8188eu.usb,
+                //                                "after-auth-retry");
+                //     }
+                // }
                 tick_delay(2000); /* 2ms polling interval */
             }
 
             if (rtl8188eu_auth_status != 0) {
                 rtl8188eu_log_auth_rx_stats("RX final");
                 rtl8188eu_log_auth_tx_stats("TX final");
-                rtl8188eu_log_auth_rxtx_stats("final");
+                //rtl8188eu_log_auth_rxtx_stats("final");
                 rtl8188eu_log_auth_tx_queue("final");
                 rtl8188eu_log_tx_state(rtl8188eu.usb,
                                        "auth-failed-final");
