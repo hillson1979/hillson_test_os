@@ -186,6 +186,9 @@ static int rtl8188eu_read16(struct usb_dev_t *usb, uint16_t reg,
 #define RTL8188EU_MAX_SCAN_RESULTS    32
 #define RTL8188EU_MAX_SSID_LEN        32
 #define RTL8188EU_SCAN_HASH_BUCKETS   64
+#define RTL8188EU_AUTH_POLL_INTERVAL_US 2000u
+#define RTL8188EU_AUTH_TIMEOUT_POLLS    250u  /* 500 ms */
+#define RTL8188EU_AUTH_RETRY_POLLS     125u  /* 250 ms */
 #define RTL8188EU_BB_CCK_ENABLE       (1u << 24)
 #define RTL8188EU_BB_OFDM_ENABLE      (1u << 25)
 #define RTL8188EU_RXDMA_AGG_ENABLE    (1u << 2)
@@ -749,7 +752,11 @@ static void rtl8188eu_handle_connection_management(const uint8_t *frame,
 
         usb_printk("rtl8188eu: authentication response alg=%u seq=%u "
                    "status=%u\n", algorithm, sequence, status);
-        if (algorithm != 0 || sequence != 2) {
+        if ((rtl8188eu_get_le16(frame + 22) & 0x000f) != 0) {
+            usb_printk("rtl8188eu: authentication response fragmented "
+                       "seq_ctrl=%04x\n",
+                       rtl8188eu_get_le16(frame + 22));
+        } else if (algorithm != 0 || sequence != 2) {
             usb_printk("rtl8188eu: authentication response invalid "
                        "alg=%u seq=%u\n", algorithm, sequence);
             /* The shared ieee80211 parser is authoritative for state. */
@@ -1661,6 +1668,7 @@ static void rtl8188eu_parse_management_ies(const uint8_t *frame,
                                    rtl8188eu_connect_bssid) ||
              rtl8188eu_bssid_equal(common_info.addr3,
                                    rtl8188eu_connect_bssid)) &&
+            (rtl8188eu_get_le16(frame + 22) & 0x000f) == 0 &&
             common_info.auth_algorithm == 0 &&
             common_info.auth_transaction == 2) {
             usb_printk("rtl8188eu: common 80211 auth response status=%u\n",
@@ -1978,6 +1986,8 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
                 uint16_t algorithm = rtl8188eu_get_le16(frame + 24);
                 uint16_t transaction = rtl8188eu_get_le16(frame + 26);
                 uint16_t status = rtl8188eu_get_le16(frame + 28);
+                uint16_t seq_ctrl = rtl8188eu_get_le16(frame + 22);
+                unsigned int frag_num = seq_ctrl & 0x000f;
                 int sa_match = rtl8188eu_bssid_equal(
                     frame + 10, rtl8188eu_connect_bssid);
                 int bssid_match = rtl8188eu_bssid_equal(
@@ -1985,9 +1995,11 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
                 int da_match = rtl8188eu_bssid_equal(frame + 4,
                                                      rtl8188eu.mac_addr);
                 usb_printk("rtl8188eu: auth RX dispatch type=00 subtype=11 "
-                           "alg=%u transaction=%u status=%u sa=%d bssid=%d da=%d\n",
+                           "alg=%u transaction=%u status=%u sa=%d bssid=%d da=%d "
+                           "seq_ctrl=%04x seq_num=%u frag=%u\n",
                            algorithm, transaction, status, sa_match,
-                           bssid_match, da_match);
+                           bssid_match, da_match, seq_ctrl,
+                           (unsigned int)(seq_ctrl >> 4), frag_num);
                 /* Keep the last target candidate even when it is not the
                  * Open System response expected by this connection.  This
                  * mirrors nl80211's event payload and makes the final log
@@ -2004,7 +2016,7 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
                  * transaction 2 completes this authentication attempt.
                  * SAE/FT/other algorithms have different exchanges and
                  * must not be collapsed into rtl8188eu_auth_status. */
-                if (algorithm == 0 && transaction == 2 &&
+                if (algorithm == 0 && transaction == 2 && frag_num == 0 &&
                     (sa_match || bssid_match) &&
                     rtl8188eu_auth_status < 0) {
                     rtl8188eu_auth_status = status;
@@ -2012,10 +2024,11 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
                                "status=%u auth_status=%d\n",
                                status, rtl8188eu_auth_status);
                 } else if ((sa_match || bssid_match) &&
-                           (algorithm != 0 || transaction != 2)) {
+                           (algorithm != 0 || transaction != 2 ||
+                            frag_num != 0)) {
                     usb_printk("rtl8188eu: auth RX dispatch rejected "
-                               "alg=%u transaction=%u status=%u\n",
-                               algorithm, transaction, status);
+                               "alg=%u transaction=%u status=%u frag=%u\n",
+                               algorithm, transaction, status, frag_num);
                 }
             }
             rtl8188eu_parse_management_ies(frame, packet_length);
@@ -4293,16 +4306,23 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             rtl8188eu_log_auth_tx_queue("after");
 
             /* æµ¼æ¨ºå¯²æžî†¿î‡—éˆå“„åŸ—é”›å²€ç¼‰é­î…¢æ£¿é—…æ—€å½é—å›§æ·æ´æ–¿è‹Ÿé—„å¶„ç¶† CPU å¯®â‚¬é–¿â‚¬ */
-            for (poll = 0; poll < 5000 && rtl8188eu_auth_status < 0; poll++) {
+            usb_printk("rtl8188eu: auth wait timeout=%u ms retry=%u ms\n",
+                       (RTL8188EU_AUTH_TIMEOUT_POLLS *
+                        RTL8188EU_AUTH_POLL_INTERVAL_US) / 1000u,
+                       (RTL8188EU_AUTH_RETRY_POLLS *
+                        RTL8188EU_AUTH_POLL_INTERVAL_US) / 1000u);
+            for (poll = 0;
+                 poll < RTL8188EU_AUTH_TIMEOUT_POLLS &&
+                 rtl8188eu_auth_status < 0; poll++) {
                 usb_poll_interrupts();
-                if (poll && (poll % 1000u) == 0 &&
+                if (poll == RTL8188EU_AUTH_RETRY_POLLS &&
                     rtl8188eu_auth_status < 0) {
                     if (!rtl8188eu_connection_binding_valid()) {
                         usb_printk("rtl8188eu: connect binding changed during auth\n");
                         goto connect_failed;
                     }
                     usb_printk("rtl8188eu: auth retry #%u\n",
-                               poll / 1000u);
+                               1u);
                     rtl8188eu_log_auth_rx_stats("before-retry");
                     if (rtl8188eu_bulk_out(&rtl8188eu,
                                            rtl8188eu.bulk_out,
@@ -4322,12 +4342,12 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
                         tick_delay(1000);
                         usb_poll_interrupts();
                         usb_printk("rtl8188eu: auth retry #%u after status=%d\n",
-                                   poll / 1000u, rtl8188eu_auth_status);
+                                   1u, rtl8188eu_auth_status);
                         rtl8188eu_log_tx_state(rtl8188eu.usb,
                                                "after-auth-retry");
                     }
                 }
-                tick_delay(2000); /* 2ms polling interval */
+                tick_delay(RTL8188EU_AUTH_POLL_INTERVAL_US);
             }
 
             /* Three-state result: <0 means no accepted response, 0 means
@@ -4347,6 +4367,8 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             A_memset(rtl8188eu_eapol_anonce, 0,
                      sizeof(rtl8188eu_eapol_anonce));
             rtl8188eu.wifi_state = RTL8188EU_WIFI_ASSOCIATING;
+            usb_printk("rtl8188eu: auth success status=0; "
+                       "state AUTHENTICATING -> ASSOCIATING\n");
 
             if (!rtl8188eu_connection_binding_valid()) {
                 usb_printk("rtl8188eu: connect binding invalid before assoc\n");
@@ -4359,6 +4381,7 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             if (!tx_length || rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out, tx, tx_length) < 0) {
                 goto connect_failed;
             }
+            usb_printk("rtl8188eu: association request sent after auth\n");
 
             for (poll = 0; poll < 1000 && rtl8188eu_assoc_status < 0; poll++) {
                 usb_poll_interrupts();
