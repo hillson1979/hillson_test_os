@@ -1888,22 +1888,6 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
 #endif
         return 0;
     }
-    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_AUTHENTICATING &&
-        rtl8188eu_auth_tx_started && packet_length >= 24 &&
-        (data[frame_offset] & 0x0c) == 0 &&
-        ((data[frame_offset] & 0xfc) == 0xb0 ||
-         (data[frame_offset] & 0xfc) == 0x10 ||
-         (data[frame_offset] & 0xfc) == 0x30 ||
-         (data[frame_offset] & 0xfc) == 0xc0 ||
-         (data[frame_offset] & 0xfc) == 0xa0)) {
-        const uint8_t *frame = data + frame_offset;
-        unsigned int head = packet_length < 12 ? packet_length : 12;
-        usb_printk("rtl8188eu: auth RX frame len=%u offset=%u head:",
-                   packet_length, frame_offset);
-        for (unsigned int i = 0; i < head; i++)
-            usb_printk(" %02x", frame[i]);
-        usb_printk("\n");
-    }
 #if RTL8188EU_RX_DESCRIPTOR_DEBUG
     rtl8188eu_log_rx_descriptor(data, packet_length, driver_info_length,
                                 shift, frame_offset);
@@ -1928,6 +1912,24 @@ static unsigned int rtl8188eu_parse_rx_item(const uint8_t *data,
             rtl8188eu_auth_tx_started) {
             if (frame_type == RTL8188EU_IEEE80211_FTYPE_MGMT) {
                 uint8_t subtype = frame[0] & 0xf0;
+                static unsigned int auth_mgmt_hex_logs;
+
+                /* Dump the actual bytes at the parser's chosen MAC-header
+                 * offset.  This is intentionally before subtype filtering:
+                 * it exposes descriptor/shift mistakes even when FC does
+                 * not look like an authentication frame. */
+                if (auth_mgmt_hex_logs++ < 64) {
+                    unsigned int head = packet_length < 32 ?
+                        packet_length : 32;
+                    usb_printk("rtl8188eu: auth RX mgmt raw len=%u "
+                               "offset=%u dw0=%08x drvinfo=%u shift=%u "
+                               "fc=%02x%02x:",
+                               packet_length, frame_offset, dw0,
+                               driver_info_length, shift, frame[0], frame[1]);
+                    for (unsigned int i = 0; i < head; i++)
+                        usb_printk(" %02x", frame[i]);
+                    usb_printk("\n");
+                }
                 int from_target = packet_length >= 24 &&
                     (rtl8188eu_bssid_equal(frame + 10,
                                            rtl8188eu_connect_bssid) ||
