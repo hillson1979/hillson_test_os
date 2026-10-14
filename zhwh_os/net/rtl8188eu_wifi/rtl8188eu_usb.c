@@ -2113,7 +2113,7 @@ static void rtl8188eu_parse_rx_packet(const uint8_t *data,
                            rtl8188eu_get_le32_early(data + offset));
                 for (i = 0; i < dump_len; i++)
                     usb_printk(" %02x", data[offset + i]);
-                usb_printk("\\n");
+                usb_printk("\n");
             }
         }
         break;
@@ -2858,7 +2858,11 @@ static int rtl8188eu_configure_rx_aggregation(struct usb_dev_t *usb)
                         &usb_old) < 0)
         return -EIO;
     dma_new = dma_old & (uint8_t)~RTL8188EU_RXDMA_AGG_ENABLE;
-    usb_new = usb_old | RTL8188EU_USB_AGG_ENABLE;
+    /* Keep both RXDMA page aggregation and USB packet aggregation disabled
+     * while validating the per-frame RX descriptor path.  With USB
+     * aggregation enabled, repeated zero-length/padding descriptors caused
+     * the parser to lose the rest of an aggregate before AUTH responses. */
+    usb_new = usb_old & (uint8_t)~RTL8188EU_USB_AGG_ENABLE;
     if (rtl8188eu_write8(usb, RTL8188EU_REG_TRXDMA_CTRL, dma_new) < 0 ||
         rtl8188eu_write8(usb, RTL8188EU_REG_USB_SPECIAL_OPTION,
                          usb_new) < 0 ||
@@ -2870,7 +2874,7 @@ static int rtl8188eu_configure_rx_aggregation(struct usb_dev_t *usb)
         rtl8188eu_read8(usb, RTL8188EU_REG_USB_SPECIAL_OPTION,
                         &usb_readback) < 0 ||
         (dma_readback & RTL8188EU_RXDMA_AGG_ENABLE) ||
-        !(usb_readback & RTL8188EU_USB_AGG_ENABLE)) {
+        (usb_readback & RTL8188EU_USB_AGG_ENABLE)) {
         rtl8188eu_write8(usb, RTL8188EU_REG_TRXDMA_CTRL, dma_old);
         rtl8188eu_write8(usb, RTL8188EU_REG_USB_SPECIAL_OPTION, usb_old);
         usb_printk("rtl8188eu: RX aggregation setup failed; "
@@ -2878,8 +2882,8 @@ static int rtl8188eu_configure_rx_aggregation(struct usb_dev_t *usb)
                    dma_readback, usb_readback);
         return -EIO;
     }
-    usb_printk("rtl8188eu: RX aggregation USB mode TRXDMA=%02x->%02x "
-               "USB_SPECIAL=%02x->%02x threshold=8 timeout=6\n",
+    usb_printk("rtl8188eu: RX aggregation disabled TRXDMA=%02x->%02x "
+               "USB_SPECIAL=%02x->%02x USB_AGG=off\n",
                dma_old, dma_readback, usb_old, usb_readback);
     return 0;
 }
