@@ -2511,6 +2511,49 @@ static size_t rtl8188eu_build_auth_request(uint8_t *packet, size_t capacity,
                                             frame, (size_t)frame_length);
 }
 
+/* Best-effort departure notification for this driver's non-PMF WPA2 path.
+ * USB completion does not prove that the AP received or accepted it. */
+static size_t rtl8188eu_build_deauth(uint8_t *packet, size_t capacity,
+                                     const uint8_t bssid[6])
+{
+    uint8_t frame[26];
+    unsigned int i;
+
+    if (!packet || !bssid || capacity < RTL8188EU_TX_DESC_SIZE + sizeof(frame))
+        return 0;
+    A_memset(frame, 0, sizeof(frame));
+    frame[0] = 0xc0; /* Management, Deauthentication. */
+    for (i = 0; i < 6; i++) {
+        frame[4 + i] = bssid[i];
+        frame[10 + i] = rtl8188eu.mac_addr[i];
+        frame[16 + i] = bssid[i];
+    }
+    frame[24] = 3; /* reason: station is leaving / is deauthenticated */
+    frame[25] = 0;
+    return rtl8188eu_wrap_management_frame(packet, capacity,
+                                            frame, sizeof(frame));
+}
+
+static void rtl8188eu_send_deauth_for_reset(void)
+{
+    uint8_t tx[RTL8188EU_TX_DESC_SIZE + 26];
+    size_t tx_length;
+
+    if (!rtl8188eu.usb || !rtl8188eu.bulk_out ||
+        !rtl8188eu_connection_binding_valid())
+        return;
+    tx_length = rtl8188eu_build_deauth(tx, sizeof(tx), rtl8188eu_connect_bssid);
+    if (!tx_length)
+        return;
+    usb_printk("rtl8188eu: reset send deauth BSSID=%02x:%02x:%02x:%02x:%02x:%02x\n",
+               rtl8188eu_connect_bssid[0], rtl8188eu_connect_bssid[1],
+               rtl8188eu_connect_bssid[2], rtl8188eu_connect_bssid[3],
+               rtl8188eu_connect_bssid[4], rtl8188eu_connect_bssid[5]);
+    if (rtl8188eu_bulk_out(&rtl8188eu, rtl8188eu.bulk_out,
+                           tx, tx_length) < 0)
+        usb_printk("rtl8188eu: reset deauth TX failed\n");
+}
+
 static size_t rtl8188eu_build_assoc_request(uint8_t *packet, size_t capacity,
                                             const uint8_t bssid[6],
                                             const uint8_t *ssid,
@@ -4199,6 +4242,19 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
         return -EBUSY;
     }
 
+    /* A failed attempt may have reached association on the AP.  Release
+     * the old RX owner before notifying that peer or rebinding the target. */
+    if (rtl8188eu.wifi_state == RTL8188EU_WIFI_FAILED) {
+        if (rtl8188eu_stop_rx() < 0)
+            return -EIO;
+        if (rtl8188eu.associated || rtl8188eu_auth_status == 0)
+            rtl8188eu_send_deauth_for_reset();
+        rtl8188eu_clear_connection_context();
+        rtl8188eu_auth_tx_started = 0;
+        rtl8188eu_auth_status = -1;
+        rtl8188eu_assoc_status = -1;
+    }
+
     scan_index = rtl8188eu_find_scanned_ssid((const uint8_t *)ssid,
                                              ssid_length);
     if (scan_index >= 0) {
@@ -4209,6 +4265,7 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
             unsigned int poll;
 
             rtl8188eu_bind_connection_result((unsigned int)scan_index);
+            rtl8188eu_auth_tx_started = 0;
             if (!rtl8188eu_connection_binding_valid()) {
                 usb_printk("rtl8188eu: connect binding invalid before channel set\n");
                 goto connect_failed;
@@ -4238,6 +4295,11 @@ int rtl8188eu_wifi_connect(const char *ssid, const char *password)
                 rtl8188eu_program_bssid(rtl8188eu.usb, rtl8188eu_connect_bssid) < 0) {
                 goto connect_failed;
             }
+
+            /* disconnect() disables these engines; a fresh connect must
+             * enable them even when reusing the existing scan snapshot. */
+            if (rtl8188eu_enable_mac_tx_rx(rtl8188eu.usb) < 0)
+                goto connect_failed;
 
             rtl8188eu_log_channel_state(rtl8188eu.usb, "before-auth");
 
@@ -4478,7 +4540,17 @@ int rtl8188eu_wifi_disconnect(void)
 {
     if (!rtl8188eu.usb)
         return -ENODEV;
+    if (rtl8188eu_stop_rx() < 0) {
+        rtl8188eu.last_error = -EIO;
+        return -EIO;
+    }
+    if (rtl8188eu.associated || rtl8188eu_auth_status == 0)
+        rtl8188eu_send_deauth_for_reset();
     rtl8188eu_quiesce_radio();
+    rtl8188eu_clear_connection_context();
+    rtl8188eu_auth_tx_started = 0;
+    rtl8188eu_auth_status = -1;
+    rtl8188eu_assoc_status = -1;
     rtl8188eu.selected_result = -1;
     rtl8188eu.last_error = 0;
     rtl8188eu.wifi_state = rtl8188eu.firmware_loaded ?
