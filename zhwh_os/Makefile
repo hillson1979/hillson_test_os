@@ -17,10 +17,12 @@ ASFLAGS = $(TARGET_ARCH)
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T linker/os.ld -Wl,-Map=kernel.map
 
 # 包含目录
-INCLUDES = -I./include -I./include/fs
+INCLUDES = -I./include -I./include/fs -I./graph/include -I./graph/framebuffer/include
 
+# Native graphics foundation. OpenGL and Minecraft remain user-space targets.
 # 源文件
 C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c klog.c
+C_SOURCES += graph/src/graph.c graph/src/context.c graph/src/window.c graph/src/system.c graph/backends/framebuffer_backend.c
 C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += driver/vbe.c  # 添加 VBE 驱动
 C_SOURCES += driver/uart.c  # 添加串口驱动
@@ -103,6 +105,8 @@ OFFSET_HEADER = task_offsets.s
 
 # 默认目标（依赖自动生成的偏移量文件）
 all: $(OFFSET_HEADER) $(TARGET) $(RAW_TARGET) desktop
+
+graph-objects: graph/src/graph.o graph/src/context.o graph/src/window.o graph/src/system.o graph/backends/framebuffer_backend.o
 
 # 自动生成汇编偏移量文件（推荐方式）
 $(OFFSET_HEADER): gen_asm_offsets.c include/task.h
