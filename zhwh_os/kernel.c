@@ -20,6 +20,7 @@
 #include "x86/io.h"
 #include "net/wifi/atheros.h"
 #include "fs.h"
+#include "graph/selftest.h"
 
 /* Keep physical NIC access out of the critical desktop boot path. */
 #define BOOT_AUTO_NETWORK 0
@@ -48,7 +49,7 @@ extern void* _kernel_start_virtual;
 extern void* _kernel_end_virtual;
 extern void* data;
 
-/* 杞�?multiboot2 鐗╃悊鍦板潃鍒拌櫄鎷熷湴鍧€ */
+/* æžî„å´?multiboot2 é—â•ƒæ‚Šé¦æ¿æ½ƒé’æ‹Œæ«„éŽ·ç†·æ¹´é§â‚¬ */
 static inline void* mb2_phys_to_virt(uint32_t phys_addr) {
     return (void*)((uint8_t*)0xC0000000 + phys_addr);
 }
@@ -64,7 +65,7 @@ void dump_multiboot2_modules(uint32_t mb_info_addr) {
     multiboot_tag_t *tag = (multiboot_tag_t *)((uint8_t *)mod_info_ptr + 8);
     int found_modules = 0;
 
-    // 閬嶅巻鎵€鏈夋爣�?
+    // é–¬å¶…å·»éŽµâ‚¬éˆå¤‹çˆ£ç»?
     int tag_count = 0;
     while (tag->type != MULTIBOOT_TAG_TYPE_END) {
         printf("Tag %d: type=%d, size=%d\n", tag_count++, tag->type, tag->size);
@@ -77,7 +78,7 @@ void dump_multiboot2_modules(uint32_t mb_info_addr) {
                    mod_tag->cmdline);
             found_modules++;
         }
-        // 绉诲姩鍒颁笅涓€涓爣绛?(澶у皬蹇呴』鏄?瀛楄妭瀵归�?
+        // ç»‰è¯²å§©é’é¢ç¬…æ¶“â‚¬æ¶“î…çˆ£ç»›?(æ¾¶Ñƒçš¬è¹‡å‘´ã€é„?ç€›æ¥„å¦­ç€µå½’ç¶?
         tag = (multiboot_tag_t *)((uint8_t *)tag + ((tag->size + 7) & ~7));
     }
 
@@ -470,7 +471,7 @@ static void boot_framebuffer_init(uint32_t mb_info_addr)
 int
 kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 {
-        // 馃敟 鐪熸満璋冭瘯锛氭渶鏃￢GA杈撳嚭锛屽啓鍦╲ga_init娓呭睆涔嬪墠
+        // é¦ƒæ•Ÿ éªç†¸æº€ç’‹å†­ç˜¯é”›æ°­æ¸¶éƒï¿¢GAæˆæ’³åš­é”›å±½å•“é¦â•²ga_initå¨“å‘­ç†æ¶”å¬ªå¢ 
         volatile uint16_t *vega = (volatile uint16_t *)0xC00B8000;
         for (int i = 0; i < 80*25; i++) vega[i] = (0x2F << 8) | ' ';
         vega[0] = (0x4F << 8) | 'K';
@@ -478,13 +479,13 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         vega[2] = (0x4F << 8) | 'K';
 
 
-        // 馃敟 鍐呮牳鏍堟孩鍑烘娴嬶細鍦ㄦ爤搴曡缃摠鍏?
+        // é¦ƒæ•Ÿ éå‘®ç‰³éå Ÿå­©é‘çƒ˜î—…å¨´å¬¶ç´°é¦ã„¦çˆ¤æ´æ›¡î†•ç¼ƒî†¼æ‘ é?
         extern uint32_t stack_base;
         extern uint32_t stack_top;
         uint32_t *stack_sentinel = &stack_base;
-        *stack_sentinel = 0xDEADBEEF;  // 鍝ㄥ叺鍊?
+        *stack_sentinel = 0xDEADBEEF;  // éã„¥åºéŠ?
 
-        // 鈿狅�?淇濆瓨鍐呮牳椤电洰褰曠墿鐞嗗湴鍧€锛堝湪鍒囨崲鍒扮敤鎴疯繘绋嬩箣鍓嶏�?
+        // éˆ¿ç‹…ç¬?æ·‡æ¿†ç“¨éå‘®ç‰³æ¤¤ç”µæ´°è¤°æ› å¢¿éžå——æ¹´é§â‚¬é”›å æ¹ªé’å›¨å´²é’æ‰®æ•¤éŽ´ç–¯ç¹˜ç»‹å¬©ç®£é“å¶ç´?
         extern uint32_t kernel_page_directory_phys;
         uint32_t cr3_value;
         __asm__ volatile("movl %%cr3, %0" : "=r"(cr3_value));
@@ -494,16 +495,16 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         //printf("[kernel_main] Saved kernel CR3 phys=0x%x\n", kernel_page_directory_phys);
 
 
-        // 鏄剧ず鍐呮牳鏍堜俊鎭?
+        // é„å‰§ãšéå‘®ç‰³éå œä¿ŠéŽ­?
         printf("[kernel_main] Stack: base=0x%x top=0x%x size=%u KB\n",
                (uint32_t)&stack_base, (uint32_t)&stack_top,
                ((uint32_t)&stack_top - (uint32_t)&stack_base) / 1024);
 
-        // 馃敟 涓存椂绂佺敤鎵€�?UART 鍜屽鏉傚垵濮嬪寲锛屾祴璇曟渶灏忓惎�?
+        // é¦ƒæ•Ÿ æ¶“å­˜æ¤‚ç»‚ä½ºæ•¤éŽµâ‚¬é?UART éœå±½î˜²é‰å‚šåžµæ¿®å¬ªå¯²é”›å±¾ç¥´ç’‡æ›Ÿæ¸¶çå¿“æƒŽé?
         // uart_init();
         // uart_puts("[UART] Serial port initialized at 115200 baud\n");
 
-        // 馃敟 鍒濆鍖栦互澶綉璋冭瘯鎺ュ�?
+        // é¦ƒæ•Ÿ é’æ¿†îé–æ ¦äº’æ¾¶î†ç¶‰ç’‹å†­ç˜¯éŽºãƒ¥å½?
         //netdebug_init();
 
         
@@ -514,7 +515,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("Kernel Booted with Multiboot 2!\n");
 
         // ================================
-        // 鎵撳�?TASK_IFRAME 鍊硷紙璋冭瘯鍋忕Щ閲忎竴鑷存€э�?
+        // éŽµæ’³åµ?TASK_IFRAME éŠç¡·ç´™ç’‹å†­ç˜¯é‹å¿•Ð©é–²å¿Žç«´é‘·å­˜â‚¬Ñç´?
         // ================================
         printf("==================== TASK_IFRAME OFFSET CHECK ====================\n");
         printf("[include/task.h]  TASK_IFRAME (OFFSETOF) = %d\n", TASK_IFRAME);
@@ -536,33 +537,33 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("Info addr: 0x%x\n", mb_info_addr);
         // uart_debug("[KERNEL] Magic: 0x%x, Info: 0x%x\n", mb_magic, mb_info_addr);
 
-        // 楠岃�?multiboot2 榄旀�?
+        // æ¥ å²ƒç˜?multiboot2 æ¦„æ—€æš?
         if (mb_magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
             printf("ERROR: Invalid multiboot2 magic: 0x%x\n", mb_magic);
-            // uart_panic("ERROR: Invalid multiboot2 magic!");  // 馃敟 娉ㄩ噴鎺夛紝閬垮厤鏈垵濮嬪寲鐨勪覆鍙ｈ闂鑷撮噸鍚?
+            // uart_panic("ERROR: Invalid multiboot2 magic!");  // é¦ƒæ•Ÿ å¨‰ã„©å™´éŽºå¤›ç´é–¬åž®åŽ¤éˆî„åžµæ¿®å¬ªå¯²é¨å‹ªè¦†é™ï½ˆî†–é—‚î†¼î‡±é‘·æ’®å™¸éš?
             return -1;
         }
 
         mpinit();
-        // 馃敟 鍏抽敭淇锛氬繀椤诲�?init_highmem_mapping() 涔嬪墠璁剧疆 GDT
-        // 鍥犱�?init_highmem_mapping() 浼氳皟鐢?kmalloc_early �?map_4k_page
-        // 杩欎簺鍑芥暟璋冪敤闇€瑕佹纭殑娈甸€夋嫨�?
+        // é¦ƒæ•Ÿ éæŠ½æ•­æ·‡î†¼î˜²é”›æ°¬ç¹€æ¤¤è¯²æ¹?init_highmem_mapping() æ¶”å¬ªå¢ ç’å‰§ç–† GDT
+        // é¥çŠ±è´?init_highmem_mapping() æµ¼æ°³çšŸé¢?kmalloc_early é?map_4k_page
+        // æ©æ¬Žç°ºé‘èŠ¥æšŸç’‹å†ªæ•¤é—‡â‚¬ç‘•ä½¹î„œçº­î†¾æ®‘å¨ˆç”¸â‚¬å¤‹å«¨é?
         
 
         init_highmem_mapping();
         //acpi_init();
 
-        // 淇濆�?multiboot2 淇℃�?渚涘唴瀛樼鐞嗕娇�?
+        // æ·‡æ¿†ç“?multiboot2 æ·‡â„ƒä¼?æ¸šæ¶˜å”´ç€›æ¨¼î…¸éžå—•å¨‡é?
         multiboot2_info_addr = mb_info_addr;
 
-        // 瑙ｆ瀽鍩烘湰鍐呭瓨淇℃伅
+        // ç‘™ï½†ç€½é©çƒ˜æ¹°éå‘­ç“¨æ·‡â„ƒä¼…
         uint32_t mem_lower = 0, mem_upper = 0;
 
-        // �?Multiboot 2 涓紝ebx 鎸囧悜淇℃伅缁撴瀯鐨勫紑濮嬪湴鍧�?
-        // 淇℃伅缁撴瀯浠庡ぇ灏忓瓧娈靛紑�?4瀛楄�?锛岀劧鍚庢槸淇濈暀瀛楁�?4瀛楄�?锛屽啀鐒跺悗鏄爣绛炬暟缁?
+        // é?Multiboot 2 æ¶“î…¨ç´ebx éŽ¸å›§æ‚œæ·‡â„ƒä¼…ç¼æ’´ç€¯é¨å‹«ç´‘æ¿®å¬ªæ¹´é§â‚?
+        // æ·‡â„ƒä¼…ç¼æ’´ç€¯æµ åº¡ã‡çå¿“ç“§å¨ˆé›ç´‘æ¿?4ç€›æ¥„å¦?é”›å²€åŠ§éšåº¢æ§¸æ·‡æ¿ˆæš€ç€›æ¥î†?4ç€›æ¥„å¦?é”›å±½å•€é’è·ºæ‚—é„îˆ›çˆ£ç»›ç‚¬æšŸç¼?
         uint32_t *mb_info_ptr = (uint32_t *)mb2_phys_to_virt(mb_info_addr);
 
-        // 绗竴涓爣绛句粠鍋忕�?瀛楄妭寮€濮?
+        // ç»—îƒ¿ç«´æ¶“î…çˆ£ç»›å¥ç² é‹å¿•Ð?ç€›æ¥„å¦­å¯®â‚¬æ¿®?
         multiboot_tag_t *tag = (multiboot_tag_t *)((uint8_t *)mb_info_ptr + 8);
 
         while (tag->type != MULTIBOOT_TAG_TYPE_END) {
@@ -586,12 +587,19 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         printf("After mm_init, before hardware init\n");
         boot_framebuffer_init(mb_info_addr);
+#if GRAPH_ENABLE_SELFTEST
+        if (graph_selftest() != 0) {
+                printf("[graph] selftest failed\n");
+        } else {
+                printf("[graph] selftest passed\n");
+        }
+#endif
         boot_color(1, 0x00FF0000); /* 1 red: memory/framebuffer */
 
-        // 蹇呴』鍒濆�?LAPIC锛屽洜涓?logical_cpu_id() 渚濊禆�?
+        // è¹‡å‘´ã€é’æ¿†îé?LAPICé”›å±½æ´œæ¶“?logical_cpu_id() æ¸šæ¿Šç¦†ç€?
         lapicinit();
 
-        // 馃敟 鍒濆鍖?IOAPIC锛堝繀椤诲湪閿洏鍒濆鍖栦箣鍓嶏紒锛?
+        // é¦ƒæ•Ÿ é’æ¿†îé–?IOAPICé”›å ç¹€æ¤¤è¯²æ¹ªé–¿î†¾æ´é’æ¿†îé–æ ¦ç®£é“å¶ç´’é”›?
         extern void ioapicinit(void);
         ioapicinit();
         printf("IOAPIC initialized\n");
@@ -607,7 +615,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         boot_color(3, 0x0000FFFF); /* 3 cyan: segmentation/TSS */
 
         printf("Before tvinit\n");
-        // 馃敟 璋冭瘯锛氬湪 tvinit() 鍓嶅悗妫€鏌?vectors[128]
+        // é¦ƒæ•Ÿ ç’‹å†­ç˜¯é”›æ°¬æ¹ª tvinit() é“å¶…æ‚—å¦«â‚¬éŒ?vectors[128]
         extern uint32_t vectors[];
         printf("[KERNEL] BEFORE tvinit: vectors[127] = 0x%x, vectors[128] = 0x%x, vectors[129] = 0x%x\n",
                vectors[127], vectors[128], vectors[129]);
@@ -621,17 +629,17 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         boot_color(5, 0x000000FF); /* 5 blue: IDTR loaded */
         printf("segment idt init is ok\n");
 
-        // 馃敟馃敟 鍦ㄥ紑涓柇鍓嶅啀娆＄‘淇?FPU 宸插垵濮嬪寲锛堥槻姝?Trap 19�?
+        // é¦ƒæ•Ÿé¦ƒæ•Ÿ é¦ã„¥ç´‘æ¶“î…ŸæŸ‡é“å¶…å•€å¨†ï¼„â€˜æ·‡?FPU å®¸æ’åžµæ¿®å¬ªå¯²é”›å ¥æ§»å§?Trap 19é”?
         __asm__ volatile("fninit");
         __asm__ volatile("fnclex");
         uint32_t cr0_check;
         __asm__ volatile("movl %%cr0, %0" : "=r"(cr0_check));
-        cr0_check &= ~(1 << 3);  // 娓呴�?TS
-        cr0_check &= ~(1 << 2);  // 娓呴�?EM
+        cr0_check &= ~(1 << 3);  // å¨“å‘´æ«?TS
+        cr0_check &= ~(1 << 2);  // å¨“å‘´æ«?EM
         __asm__ volatile("movl %0, %%cr0" : : "r"(cr0_check));
         boot_color(6, 0x00FF00FF); /* 6 magenta: FPU/CR0 ready */
 
-        // 馃敟 璋冭瘯锛氭墦鍗板綋鍓嶆爤鎸囬�?
+        // é¦ƒæ•Ÿ ç’‹å†­ç˜¯é”›æ°­å¢¦é—æ¿ç¶‹é“å¶†çˆ¤éŽ¸å›¬æ‹?
         uint32_t current_esp;
         uint32_t current_ebp;
         __asm__ volatile("movl %%esp, %0" : "=r"(current_esp));
@@ -639,7 +647,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("[DEBUG] Current ESP=0x%x, EBP=0x%x\n", current_esp, current_ebp);
         printf("[FPU] Re-initialized before STI\n");
 
-        // 鍚敤鍏ㄥ眬涓柇锛堥噸瑕侊紒USB 榧犳爣闇€瑕佷腑鏂�?
+        // éšîˆœæ•¤éã„¥çœ¬æ¶“î…ŸæŸ‡é”›å ¥å™¸ç‘•ä¾Šç´’USB æ¦§çŠ³çˆ£é—‡â‚¬ç‘•ä½·è…‘é‚î…¨ç´?
         /* Keep every legacy PIC source masked while the IDT and kernel
          * runtime are still coming up. On AC power, a pending firmware
          * power/SCI event can otherwise arrive immediately after STI. */
@@ -664,19 +672,19 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         outb(0x21, 0xFF);
         outb(0xA1, 0xFF);
 
-        // 鍦ㄥ惎鐢ㄤ腑鏂悗鍒濆鍖栭敭鐩橀┍鍔?
+        // é¦ã„¥æƒŽé¢ã„¤è…‘é‚î…žæ‚—é’æ¿†îé–æ ­æ•­é©æ©€â”é”?
         extern void keyboard_init(void);
         keyboard_init();
         printf("Keyboard driver initialized\n");
 
-        // 鈿狅笍鈿狅笍鈿狅�?鍏抽敭淇锛氬湪鍚敤涓柇鍚庨噸鏂伴厤缃甈IC
-        // 鍘熷洜锛歅IC鍙兘鍦ㄥ垵濮嬪寲杩囩▼涓閲嶇疆
+        // éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?éæŠ½æ•­æ·‡î†¼î˜²é”›æ°¬æ¹ªéšîˆœæ•¤æ¶“î…ŸæŸ‡éšåº¨å™¸é‚ä¼´åŽ¤ç¼ƒç”ˆIC
+        // é˜ç†·æ´œé”›æ­…ICé™îˆå…˜é¦ã„¥åžµæ¿®å¬ªå¯²æ©å›©â–¼æ¶“î…¡î¦é–²å¶‡ç–†
         printf("Re-configuring PIC after enabling interrupts...\n");
         unsigned char mask1_after = inb(0x21);
         printf("PIC mask before keyboard enable: 0x%x\n", mask1_after);
-        mask1_after &= 0xFD;  // 娓呴櫎bit 1 (IRQ1)锛屼娇鐢?0xFD = 11111101
+        mask1_after &= 0xFD;  // å¨“å‘´æ«Žbit 1 (IRQ1)é”›å±¼å¨‡é¢?0xFD = 11111101
 
-        // 鈿狅笍鈿狅笍鈿狅�?寮哄埗浣跨敤鍐呰仈姹囩紪锛岀‘淇?outb 涓嶄細琚紭�?
+        // éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?å¯®å“„åŸ—æµ£è·¨æ•¤éå‘°ä»ˆå§¹å›©ç´ªé”›å²€â€˜æ·‡?outb æ¶“å¶„ç´°çšî‚¡ç´­é?
         __asm__ volatile (
             "outb %0, %1"
             :
@@ -684,32 +692,32 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             : "memory"
         );
 
-        // 鍐嶆楠岃瘉
+        // éå¶†î‚¼æ¥ å²ƒç˜‰
         unsigned char mask1_final = inb(0x21);
         printf("PIC mask after keyboard enable: 0x%x (expected: 0x%x)\n", mask1_final, mask1_after);
         printf("IRQ1 (keyboard) %s\n", (mask1_final & 0x02) ? "DISABLED" : "ENABLED");
 
-        // 濡傛灉杩樻槸娌″彉锛岃鏄?outb 瀹屽叏涓嶅伐�?
+        // æ¿¡å‚›ç‰æ©æ¨»æ§¸å¨Œâ€³å½‰é”›å²ƒî‡©é„?outb ç€¹å±½åæ¶“å¶…ä¼æµ?
         if (mask1_final == mask1_after && (mask1_final & 0x02)) {
-            printf("鈿狅笍鈿狅笍鈿狅�?WARNING: outb() is not working! PIC mask unchanged!\n");
+            printf("éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?WARNING: outb() is not working! PIC mask unchanged!\n");
         } else if (mask1_final != mask1_after) {
-            printf("鈿狅笍鈿狅笍鈿狅�?WARNING: PIC mask changed unexpectedly!\n");
+            printf("éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?WARNING: PIC mask changed unexpectedly!\n");
         }
 
-        // 馃敟馃敟馃敟 鍏抽敭淇锛氱鐢?8254 PIT 瀹氭椂鍣?
-        // PIT 鐨勮緭鍑鸿繛鎺ュ�?IRQ 0锛屽嵆浣?LAPIC Timer 琚鐢紝PIT 浠嶄細瑙﹀彂涓柇
+        // é¦ƒæ•Ÿé¦ƒæ•Ÿé¦ƒæ•Ÿ éæŠ½æ•­æ·‡î†¼î˜²é”›æ°±î›¦é¢?8254 PIT ç€¹æ°­æ¤‚é£?
+        // PIT é¨å‹®ç·­é‘é¸¿ç¹›éŽºãƒ¥åŸ?IRQ 0é”›å±½åµ†æµ£?LAPIC Timer çšî‚¤î›¦é¢îŸ’ç´PIT æµ å¶„ç´°ç‘™ï¹€å½‚æ¶“î…ŸæŸ‡
         /* Interrupt handlers and controller masks are now configured. */
         boot_color(7, 0x00FFFFFF); /* 7 white: ready to enable interrupts */
         __asm__ volatile("sti; nop" ::: "memory");
         printf("Global interrupts ENABLED\n");
 
         printf("Disabling 8254 PIT Timer...\n");
-        // 璇诲彇褰撳墠 PIT 閰嶇�?
+        // ç’‡è¯²å½‡è¤°æ’³å¢  PIT é–°å¶‡ç–?
         unsigned char pit_ctrl = inb(0x43);
         printf("PIT control port (0x43): 0x%x\n", pit_ctrl);
 
-        // 绂佺�?PIT 閫氶�?0锛堣繛鎺ュ埌 IRQ 0�?
-        // 鍐欏叆鎺у埗瀛楋細閫氶亾 0锛屼綆瀛楄�?楂樺瓧鑺傦紝妯″紡 0锛堝崟娆′腑鏂�?
+        // ç»‚ä½ºæ•?PIT é–«æ°¶äº?0é”›å £ç¹›éŽºãƒ¥åŸŒ IRQ 0é”?
+        // éæ¬å†éŽºÑƒåŸ—ç€›æ¥‹ç´°é–«æ°¶äº¾ 0é”›å±¼ç¶†ç€›æ¥„å¦?æ¥‚æ¨ºç“§é‘ºå‚¦ç´å¦¯â€³ç´¡ 0é”›å å´Ÿå¨†â€²è…‘é‚î…¨ç´?
         __asm__ volatile (
             "outb %0, %1"
             :
@@ -717,7 +725,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             : "memory"
         );
 
-        // 璁剧疆璁℃暟鍣ㄤ�?0锛堝仠姝㈣鏁帮�?
+        // ç’å‰§ç–†ç’â„ƒæšŸé£ã„¤è´?0é”›å ä» å§ãˆ£î…¸éå¸®ç´?
         __asm__ volatile (
             "outb %0, %1\n"
             "outb %0, %1"
@@ -726,13 +734,13 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             : "memory"
         );
 
-        // 鍐嶆璇诲彇 PIT 鎺у埗绔彛楠岃瘉
+        // éå¶†î‚¼ç’‡è¯²å½‡ PIT éŽºÑƒåŸ—ç»”îˆšå½›æ¥ å²ƒç˜‰
         unsigned char pit_ctrl_after = inb(0x43);
         printf("PIT control after disable: 0x%x\n", pit_ctrl_after);
-        printf("8254 PIT Timer disabled 鉁匼n");
+        printf("8254 PIT Timer disabled é‰åŒ¼n");
 
-        // 馃敟馃敟馃敟 棰濆淇濋櫓锛氱‘淇?LAPIC Timer 涔熷畬鍏ㄧ�?
-        // 娉ㄩ噴鎺?�?鐗╃悊鏈哄啓 LAPIC timer 瀵勫瓨鍣ㄥ彲鑳藉崱浣忥紝�?timer 宸叉�?masked
+        // é¦ƒæ•Ÿé¦ƒæ•Ÿé¦ƒæ•Ÿ æ£°æ¿†î˜»æ·‡æ¿‹æ«“é”›æ°±â€˜æ·‡?LAPIC Timer æ¶”ç†·ç•¬éã„§î›¦é?
+        // å¨‰ã„©å™´éŽº?éˆ?é—â•ƒæ‚Šéˆå“„å•“ LAPIC timer ç€µå‹«ç“¨é£ã„¥å½²é‘³è—‰å´±æµ£å¿¥ç´æ¶?timer å®¸å‰æ§?masked
         /* extern volatile uint32_t* lapic;
         if (lapic) {
             printf("Disabling LAPIC Timer (additional safety)...\n");
@@ -744,19 +752,19 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             *lapic_ticr = 0;
             uint32_t timer_after = *lapic_timer;
             printf("LAPIC Timer after disable: 0x%x\n", timer_after);
-            printf("LAPIC Timer disabled 鉁匼n");
+            printf("LAPIC Timer disabled é‰åŒ¼n");
         } */
 
-        // 鍒濆鍖栨枃浠剁郴缁?
+        // é’æ¿†îé–æ ¨æžƒæµ å‰éƒ´ç¼?
         extern void fs_init(void);
         extern void vfs_set_root(struct super_block *sb);
         extern struct super_block *ramfs_mount(void);
 
         printf("Initializing file system...\n");
-        fs_init();  // 杩欎細璋冪敤 ramfs_mount 骞惰缃牴鏂囦欢绯荤粺
+        fs_init();  // æ©æ¬Žç´°ç’‹å†ªæ•¤ ramfs_mount éªžæƒ°î†•ç¼ƒî†½ç‰´é‚å›¦æ¬¢ç»¯è¤ç²º
         printf("File system initialized\n");
 
-        // 鍒濆鍖?PCI 鎬荤�?
+        // é’æ¿†îé–?PCI éŽ¬è¤åš?
         extern int pci_init(void);
         printf("Initializing PCI...\n");
         pci_init();
@@ -789,7 +797,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 #endif
 
         /* USB stack initialized */
-        /* 鐢ㄦ埛鎺у埗鍙拌緭�?*/
+        /* é¢ã„¦åŸ›éŽºÑƒåŸ—é™æ‹Œç·­é?*/
         {
             extern void *console_get_buf(void);
             extern int console_get_len(void);
@@ -806,8 +814,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             }
         }
 
-        // ---- �?multiboot 妯″潡瀵煎�?ramfs ----
-        // 閬嶅巻鎵€鏈夋ā鍧楁爣�? �?cmdline 浣滀负璺緞, 妯″潡鏁版嵁浣滀负鏂囦欢鍐呭�?
+        // ---- ç?multiboot å¦¯â€³æ½¡ç€µç…Žå?ramfs ----
+        // é–¬å¶…å·»éŽµâ‚¬éˆå¤‹Äé§æ¥çˆ£ç»? ç?cmdline æµ£æ»€è´Ÿç’ºîˆšç·ž, å¦¯â€³æ½¡éç‰ˆåµæµ£æ»€è´Ÿé‚å›¦æ¬¢éå‘­î†?
         {
             extern uint32_t multiboot2_info_addr;
             extern void *map_highmem_physical(uint32_t, uint32_t, uint32_t);
@@ -817,7 +825,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             extern void *kmalloc(unsigned int);
             extern void kfree(void*);
 
-            // 纭�?/boot 鐩綍瀛樺�?
+            // çº­î†»ç¹?/boot é©î†¼ç¶ç€›æ¨ºæ¹?
             {
                 struct inode *root = path_lookup("/");
                 if (root && !path_lookup("/boot")) {
@@ -839,7 +847,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                     printf("[ramfs] Module import: tag type=%u size=%u\n", tag->type, tag->size);
                     if (tag->type == MULTIBOOT_TAG_TYPE_MODULE) {
                         multiboot_tag_module_t *mod = (multiboot_tag_module_t*)tag;
-                        // cmdline 绱ц窡鍦ㄦā鍧楀ご閮ㄧ粨鏋勪箣鍚?
+                        // cmdline ç»±Ñ†çª¡é¦ã„¦Äé§æ¥€ã”é–®ã„§ç²¨é‹å‹ªç®£éš?
                         char *cmdline = (char*)mod + sizeof(multiboot_tag_module_t);
                         uint8_t *raw = (uint8_t*)cmdline;
                         printf("[ramfs] Module: start=0x%x end=0x%x size=%u sizeof=%u\n",
@@ -856,8 +864,8 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                             printf("[ramfs] Importing module: '%s' (%u bytes)\n",
                                    cmdline, mod_size);
 
-                            // 瑙ｆ瀽瀹屾暣璺緞: "java/classes/HelloWorld.class"
-                            // 鍘绘帀鏈熬鐨勭┖�?鍙傛�?
+                            // ç‘™ï½†ç€½ç€¹å±¾æš£ç’ºîˆšç·ž: "java/classes/HelloWorld.class"
+                            // é˜ç»˜å¸€éˆî‚¢ç†¬é¨å‹­â”–é?é™å‚›æš?
                             char path[256];
                             int pi = 0;
                             for (char *p = cmdline; *p && *p != ' ' && pi < 254; p++)
@@ -866,7 +874,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
                             if (pi == 0) goto next_module;
 
-                            // 閫愮骇鍒涘缓鐩�?
+                            // é–«æ„®éª‡é’æ¶˜ç¼“é©î†¼ç¶?
                             struct inode *dir = path_lookup("/");
                             if (!dir) goto next_module;
 
@@ -875,16 +883,16 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                             while (*next) {
                                 if (*next == '/') {
                                     *next = 0;
-                                    if (*(next + 1)) {  // 闈炴湯灏? 鍒涘缓鐩綍
-                                        struct inode *sub = path_lookup(part[0]=='/' ? part+1 : part); // TODO: 绠€�?
-                                        // 鐩存帴浣跨敤瀹屾暣璺緞閫愮�?mkdir
+                                    if (*(next + 1)) {  // é—ˆç‚´æ¹¯ç? é’æ¶˜ç¼“é©î†¼ç¶
+                                        struct inode *sub = path_lookup(part[0]=='/' ? part+1 : part); // TODO: ç» â‚¬é?
+                                        // é©å­˜å¸´æµ£è·¨æ•¤ç€¹å±¾æš£ç’ºîˆšç·žé–«æ„®éª?mkdir
                                     }
                                     *next = '/';
                                 }
                                 next++;
                             }
 
-                            // 绠€�? 浠庢牴寮€濮? 閫愮骇鍒涘缓璺緞涓殑鐩�?
+                            // ç» â‚¬é? æµ åº¢ç‰´å¯®â‚¬æ¿®? é–«æ„®éª‡é’æ¶˜ç¼“ç’ºîˆšç·žæ¶“î… æ®‘é©î†¼ç¶?
                             {
                                 char tmp[256];
                                 int ti = 0;
@@ -893,15 +901,15 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                                 if (*s == '/') s++; // skip leading /
 
                                 while (*s && dir) {
-                                    // 澶嶅埗鍒颁笅涓€�?/
+                                    // æ¾¶å¶…åŸ—é’é¢ç¬…æ¶“â‚¬æ¶?/
                                     ti = 0;
                                     while (s[ti] && s[ti] != '/') { tmp[ti] = s[ti]; ti++; }
                                     tmp[ti] = 0;
 
                                     if (s[ti] == '/') {
-                                        // 杩欐槸鐩綍
-                                        struct inode *sub = path_lookup(tmp); // FIXME: 闇€瑕佸畬鏁磋矾�?
-                                        // 鐢ㄧ畝鏄撴柟�? �?dir 涓嬫煡鎵炬垨鍒涘�?
+                                        // æ©æ¬æ§¸é©î†¼ç¶
+                                        struct inode *sub = path_lookup(tmp); // FIXME: é—‡â‚¬ç‘•ä½¸ç•¬éç£‹çŸ¾å¯?
+                                        // é¢ã„§ç•é„æ’´æŸŸå¯? é?dir æ¶“å¬«ç…¡éŽµç‚¬åž¨é’æ¶˜ç¼?
                                         struct dentry *de;
                                         extern int ramfs_lookup(struct inode*, const char*, struct dentry**);
                                         if (ramfs_lookup(dir, tmp, &de) == 0 && de && de->d_inode) {
@@ -909,7 +917,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                                         } else {
                                             extern int ramfs_mkdir(struct inode*, const char*, int);
                                             ramfs_mkdir(dir, tmp, 0755);
-                                            // 閲嶆柊lookup
+                                            // é–²å¶†æŸŠlookup
                                             struct dentry *de2;
                                             if (ramfs_lookup(dir, tmp, &de2) == 0 && de2 && de2->d_inode) {
                                                 dir = de2->d_inode;
@@ -919,7 +927,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                                         }
                                         s += ti + 1;
                                     } else {
-                                        // 杩欐槸鏂囦欢�?�?鍒涘缓鏂囦欢
+                                        // æ©æ¬æ§¸é‚å›¦æ¬¢é?éˆ?é’æ¶˜ç¼“é‚å›¦æ¬¢
                                         struct dentry *de;
                                         extern int ramfs_create(struct inode*, const char*, int, struct dentry**);
                                         if (ramfs_create(dir, tmp, 0644|S_IFREG, &de) == 0 && de) {
@@ -943,17 +951,17 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             printf("[ramfs] Module import done\n");
         }
 
-        // PS/2 touchpad hangs on some systems �?disabled
+        // PS/2 touchpad hangs on some systems éˆ?disabled
         // extern int ps2mouse_init(void); ps2mouse_init();
         // USB mouse/MSC tests moved to after USB init
 
-        // 鍒濆鍖栫綉缁滃崗璁爤
+        // é’æ¿†îé–æ «ç¶‰ç¼æ»ƒå´—ç’î†½çˆ¤
         extern void net_init(void);
         extern int loopback_init(void);
         extern int loopback_send_test(void);
         net_init();
         loopback_init();
-        /* 鑷姩鍒濆鍖栫綉鍗?�?klog UDP闇€瑕佺綉缁? 鐩存帴鎵弿PCI */
+        /* é‘·î„å§©é’æ¿†îé–æ «ç¶‰é—?éˆ?klog UDPé—‡â‚¬ç‘•ä½ºç¶‰ç¼? é©å­˜å¸´éŽµî‚£å¼¿PCI */
         int network_online = 0;
 #if BOOT_AUTO_NETWORK
         {
@@ -961,29 +969,29 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             printf("[klog] auto-initializing network...\n");
             printf("USB tests deferred until init completes\n");
         }
-        // 鍙戦€佺綉缁滄祴璇曞�?
+        // é™æˆ¦â‚¬ä½ºç¶‰ç¼æ»„ç¥´ç’‡æ›žå¯?
 #else
         printf("[net] hardware network initialization deferred\n");
 #endif
 
         printf("\n=== Network Test ===\n");
 
-        // 馃敟 妫€鏌ュ唴鏍告爤婧㈠�?
+        // é¦ƒæ•Ÿ å¦«â‚¬éŒãƒ¥å”´éå‘Šçˆ¤å©§ãˆ åš?
         extern uint32_t stack_base;
         if (*(uint32_t*)&stack_base != 0xDEADBEEF) {
-            printf("鈿狅笍鈿狅笍鈿狅�?WARNING: Stack overflow detected! Sentinel corrupted!\n");
+            printf("éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?WARNING: Stack overflow detected! Sentinel corrupted!\n");
             printf("Expected 0xDEADBEEF, got 0x%x\n", *(uint32_t*)&stack_base);
         } else {
-            printf("�?Stack sentinel OK\n");
+            printf("é‰?Stack sentinel OK\n");
         }
 
         loopback_send_test();
         printf("=== Network Test Complete ===\n\n");
 
-        // 鈿狅笍鈿狅笍鈿狅�?娉ㄩ噴鎺?WiFi 鑷姩娴嬭瘯锛岄伩鍏嶆湭鍒濆鍖栬闂鑷撮噸�?
-        // WiFi 鍒濆鍖栧繀椤荤敱鐢ㄦ埛绋嬪簭閫氳繃 syscall 鎵嬪姩瑙﹀�?
+        // éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?å¨‰ã„©å™´éŽº?WiFi é‘·î„å§©å¨´å¬­ç˜¯é”›å²„ä¼©éå¶†æ¹­é’æ¿†îé–æ ¬î†–é—‚î†¼î‡±é‘·æ’®å™¸é?
+        // WiFi é’æ¿†îé–æ §ç¹€æ¤¤è¤æ•±é¢ã„¦åŸ›ç»‹å¬ªç°­é–«æ°³ç¹ƒ syscall éŽµå¬ªå§©ç‘™ï¹€å½?
         /*
-        // WiFi 鏁版嵁鍖呮祴�?
+        // WiFi éç‰ˆåµé–å‘®ç¥´ç’?
         extern int wifi_send_test_packet(void);
         extern void wifi_show_stats(void);
         printf("\n=== WiFi Data Packet Test ===\n");
@@ -993,10 +1001,10 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("=== WiFi Test Complete ===\n\n");
         */
 
-        // 鈿狅笍鈿狅笍鈿狅�?娉ㄦ剰锛歅IC宸茬粡鍦ㄥ惎鐢ㄤ腑鏂悗閰嶇疆瀹屾�?
-        // 涓嶈鍦ㄨ繖閲岄噸澶嶉厤缃紝閬垮厤瑕嗙洊涔嬪墠鐨勮缃?
+        // éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?å¨‰ã„¦å‰°é”›æ­…ICå®¸èŒ¬ç²¡é¦ã„¥æƒŽé¢ã„¤è…‘é‚î…žæ‚—é–°å¶‡ç–†ç€¹å±¾ç˜?
+        // æ¶“å¶ˆî›¦é¦ã„¨ç¹–é–²å²„å™¸æ¾¶å¶‰åŽ¤ç¼ƒî‡†ç´é–¬åž®åŽ¤ç‘•å—™æ´Šæ¶”å¬ªå¢ é¨å‹®î†•ç¼ƒ?
 
-        // 鍦╒GA涓婃樉绀烘祴璇曟秷鎭紝纭绯荤粺姝ｅ父杩愯
+        // é¦â•’GAæ¶“å©ƒæ¨‰ç»€çƒ˜ç¥´ç’‡æ›Ÿç§·éŽ­îˆ¤ç´çº­î†¿î…»ç»¯è¤ç²ºå§ï½…çˆ¶æ©æ„¯î”‘
         volatile uint16_t* vga = (volatile uint16_t*)0xC00B8000;
         vga[10] = (0x0E << 8) | 'T';
         vga[11] = (0x0E << 8) | 'E';
@@ -1004,10 +1012,10 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         vga[13] = (0x0E << 8) | 'T';
         printf("VGA test: wrote TEST to screen at position 10-13\n");
 
-        // 瀹為�?锛氭娴嬪苟鍒濆鍖?VBE/Framebuffer锛堜�?Multiboot2 璇诲彇锛?
+        // ç€¹ç‚ºç?é”›æ°­î—…å¨´å¬ªè‹Ÿé’æ¿†îé–?VBE/Framebufferé”›å œç²?Multiboot2 ç’‡è¯²å½‡é”›?
         printf("\n=== VBE/Framebuffer Initialization ===\n");
 
-        // 閬嶅�?multiboot2 鏍囩鏌ユ壘 framebuffer 淇℃�?
+        // é–¬å¶…å·?multiboot2 éå›©î„·éŒãƒ¦å£˜ framebuffer æ·‡â„ƒä¼?
         {
             // Multiboot 2 info: [0-3] size, [4-7] reserved, [8+] tags
             uint32_t *fb_info_ptr = (uint32_t *)mb2_phys_to_virt(mb_info_addr);
@@ -1017,10 +1025,10 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             while (fb_tag->type != MULTIBOOT_TAG_TYPE_END) {
                 if (fb_tag->type == MULTIBOOT_TAG_TYPE_FRAMEBUFFER) {
                     multiboot_tag_framebuffer_t *fb = (multiboot_tag_framebuffer_t *)fb_tag;
-                    printf("�?Framebuffer info available!\n");
+                    printf("é‰?Framebuffer info available!\n");
                     printf("=== Framebuffer Tag Structure (Hex Dump) ===\n");
 
-                    // 鎵撳嵃鏁翠釜缁撴瀯浣撶殑鍗佸叚杩涘埗dump
+                    // éŽµæ’³åµƒéç¿ é‡œç¼æ’´ç€¯æµ£æ’¶æ®‘é—ä½¸åšæ©æ¶˜åŸ—dump
                     uint8_t *fb_bytes = (uint8_t *)fb;
                     printf("Raw bytes (%d bytes):\n", sizeof(multiboot_tag_framebuffer_t));
                     for (int i = 0; i < sizeof(multiboot_tag_framebuffer_t); i++) {
@@ -1034,7 +1042,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                     }
                     printf("\n");
 
-                    // 鎵嬪姩瑙ｆ瀽姣忎釜瀛楁鏉ラ獙�?
+                    // éŽµå¬ªå§©ç‘™ï½†ç€½å§£å¿Žé‡œç€›æ¥î†Œé‰ãƒ©ç™ç’?
                     printf("Manual field parsing:\n");
                     printf("  type (offset 0x00):     0x%02x%02x%02x%02x -> %d\n",
                            fb_bytes[3], fb_bytes[2], fb_bytes[1], fb_bytes[0],
@@ -1063,7 +1071,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                            *(uint16_t*)&fb_bytes[30]);
                     printf("\n");
 
-                    // 缁撴瀯浣撹В鏋愬€?
+                    // ç¼æ’´ç€¯æµ£æ’¹Ð’é‹æ„¬â‚¬?
                     printf("Structure field values:\n");
                     printf("  framebuffer_addr:   0x%08x%08x\n",
                            (uint32_t)(fb->framebuffer_addr >> 32),
@@ -1075,7 +1083,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                     printf("  framebuffer_type:   0x%02x (%d)\n", fb->framebuffer_type, fb->framebuffer_type);
                     printf("=========================================\n");
 
-                    // 鈿狅�?涓存椂淇锛氭墜鍔ㄨВ鏋愬瓧�?閬垮厤缁撴瀯浣撳榻愰棶棰?
+                    // éˆ¿ç‹…ç¬?æ¶“å­˜æ¤‚æ·‡î†¼î˜²é”›æ°­å¢œé”ã„¨Ð’é‹æ„¬ç“§å¨?é–¬åž®åŽ¤ç¼æ’´ç€¯æµ£æ’³î‡®æ¦»æ„°æ£¶æ£°?
                     uint64_t fb_addr = *(uint64_t*)&fb_bytes[8];
                     uint32_t fb_pitch = *(uint32_t*)&fb_bytes[16];
                     uint32_t fb_width = *(uint32_t*)&fb_bytes[20];
@@ -1083,18 +1091,18 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                     uint8_t fb_bpp = fb_bytes[28];
                     uint8_t fb_type = fb_bytes[29];
 
-                    printf("�?Manual parsing successful!\n");
+                    printf("é‰?Manual parsing successful!\n");
                     printf("  Parsed values: addr_hi=0x%x addr_lo=0x%x, %dx%d, bpp=%d, type=%d\n",
                            (uint32_t)(fb_addr >> 32), (uint32_t)fb_addr,
                            fb_width, fb_height, fb_bpp, fb_type);
 
-                    // 妫€娴嬫槸鍚︿负鏂囨湰妯″紡 (浣跨敤鎵嬪姩瑙ｆ瀽鐨勬纭�?
-                    if (fb_type != 1) {  // 蹇呴』鏄?RGB 鍥惧舰妯″紡
-                        printf("�?ERROR: Not RGB framebuffer mode!\n");
+                    // å¦«â‚¬å¨´å¬«æ§¸éšï¸¿è´Ÿé‚å›¨æ¹°å¦¯â€³ç´¡ (æµ£è·¨æ•¤éŽµå¬ªå§©ç‘™ï½†ç€½é¨å‹¬î„œçº­î†¼â‚?
+                    if (fb_type != 1) {  // è¹‡å‘´ã€é„?RGB é¥æƒ§èˆ°å¦¯â€³ç´¡
+                        printf("é‰?ERROR: Not RGB framebuffer mode!\n");
                         printf("  framebuffer_type=%d (must be 1 for RGB)\n", fb_type);
                         printf("  Type meanings:\n");
                         printf("    0 = Indexed color\n");
-                        printf("    1 = RGB (required for graphics) 鉁匼n");
+                        printf("    1 = RGB (required for graphics) é‰åŒ¼n");
                         printf("    2 = EGA text\n");
                         printf("    3 = VBE text (current)\n");
                         printf("\n");
@@ -1112,27 +1120,27 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                         break;
                     }
 
-                    // 棰濆妫€鏌ワ細bpp �?pitch 蹇呴』鏈夋晥
+                    // æ£°æ¿†î˜»å¦«â‚¬éŒãƒ¯ç´°bpp é?pitch è¹‡å‘´ã€éˆå¤‹æ™¥
                     if (fb_bpp == 0 || fb_pitch == 0) {
-                        printf("�?ERROR: Invalid framebuffer parameters!\n");
+                        printf("é‰?ERROR: Invalid framebuffer parameters!\n");
                         printf("  bpp=%d (must be > 0)\n", fb_bpp);
                         printf("  pitch=%d (must be > 0)\n", fb_pitch);
                         found_framebuffer = 0;
                         break;
                     }
 
-                    printf("�?RGB framebuffer mode detected!\n");
+                    printf("é‰?RGB framebuffer mode detected!\n");
 
                     found_framebuffer = 1;
 
-                    // 鍒濆鍖?VBE 椹卞姩锛堜娇鐢ㄦ墜鍔ㄨВ鏋愮殑姝ｇ‘鍊硷級
+                    // é’æ¿†îé–?VBE æ¤¹åžå§©é”›å œå¨‡é¢ã„¦å¢œé”ã„¨Ð’é‹æ„®æ®‘å§ï½‡â€˜éŠç¡·ç´š
                     extern void vbe_init_from_multiboot(uint64_t fb_addr, uint32_t width,
                                                         uint32_t height, uint32_t pitch, uint8_t bpp);
                     vbe_init_from_multiboot(fb_addr, fb_width, fb_height, fb_pitch, fb_bpp);
-                    printf("�?VBE driver initialized from Multiboot2 info\n");
+                    printf("é‰?VBE driver initialized from Multiboot2 info\n");
 
-                    // 馃敟 鍐呮牳鎵ц杩涘害鎸囩�?
-                    // 闃舵�?锛歏BE鍒濆鍖栨垚�?- 鏄剧ず缁胯壊�?
+                    // é¦ƒæ•Ÿ éå‘®ç‰³éŽµÑ†î”‘æ©æ¶˜å®³éŽ¸å›©ã?
+                    // é—ƒèˆµî†?é”›æ­BEé’æ¿†îé–æ ¨åžšé?- é„å‰§ãšç¼èƒ¯å£Šé?
                     if (vbe_is_available()) {
                         volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
                         uint16_t w, h;
@@ -1140,13 +1148,13 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
                         uint16_t pitch = vbe_get_pitch();
                         uint32_t pitch_pixels = pitch / 4;
 
-                        // 缁樺埗灏忕殑缁胯壊鏂瑰潡鍦ㄥ彸涓婅锛岃〃绀篤BE鍒濆鍖栨垚�?
+                        // ç¼æ¨ºåŸ—çå¿•æ®‘ç¼èƒ¯å£Šé‚ç‘°æ½¡é¦ã„¥å½¸æ¶“å©…î—é”›å²ƒã€ƒç»€ç¯¤BEé’æ¿†îé–æ ¨åžšé?
                         for (int y = 0; y < 30; y++) {
                             for (int x = w - 30; x < w; x++) {
-                                fb[y * pitch_pixels + x] = 0xFF00FF00;  // 缁胯�?
+                                fb[y * pitch_pixels + x] = 0xFF00FF00;  // ç¼èƒ¯å£?
                             }
                         }
-                        printf("�?Progress indicator: VBE initialized (green square)\n");
+                        printf("é‰?Progress indicator: VBE initialized (green square)\n");
                     }
                     break;
                 }
@@ -1154,10 +1162,10 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             }
 
             if (!found_framebuffer) {
-                printf("�?No valid framebuffer info available from GRUB\n");
+                printf("é‰?No valid framebuffer info available from GRUB\n");
                 printf("  Note: GRUB did not provide RGB framebuffer (type=1)\n");
                 printf("\n");
-                printf("�?WARNING: GUI functions will NOT work!\n");
+                printf("éˆ?WARNING: GUI functions will NOT work!\n");
                 printf("\n");
                 printf("Real-mode VBE thunk is disabled due to complexity.\n");
                 printf("Please fix GRUB configuration instead:\n");
@@ -1174,57 +1182,57 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 
         printf("=============================================\n\n");
 
-        // 鈿狅笍鈿狅笍鈿狅�?涓存椂淇锛氭敞閲婃帀 PID=1 鍐呮牳浠诲姟锛岄伩鍏嶅垏鎹㈠洖瀹冩椂宕╂簝
-        // 鍘熷洜锛歅ID=1 鍐呮牳浠诲姟鐨勬爤绌洪棿涓嶈冻锛屽垏鎹㈠洖瀹冩椂浼氳Е鍙?triple fault
-        // 璇﹁锛歅ID1_CRASH_FIX.md
+        // éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬éˆ¿ç‹…ç¬?æ¶“å­˜æ¤‚æ·‡î†¼î˜²é”›æ°­æ•žé–²å©ƒå¸€ PID=1 éå‘®ç‰³æµ è¯²å§Ÿé”›å²„ä¼©éå¶…åžéŽ¹ãˆ æ´–ç€¹å†©æ¤‚å®•â•‚ç°
+        // é˜ç†·æ´œé”›æ­…ID=1 éå‘®ç‰³æµ è¯²å§Ÿé¨å‹¬çˆ¤ç»Œæ´ªæ£¿æ¶“å¶ˆå†»é”›å±½åžéŽ¹ãˆ æ´–ç€¹å†©æ¤‚æµ¼æ°³Ð•é™?triple fault
+        // ç’‡ï¹î†é”›æ­…ID1_CRASH_FIX.md
         // task_t *th_k=init_task(0);
         // printf("start kernel task\n");
         // start_task_kernel(th_k,kernel_task_main);
 
-        // 鐩存帴鍒涘缓鐢ㄦ埛浠诲姟浣滀负绗竴涓换鍔?
+        // é©å­˜å¸´é’æ¶˜ç¼“é¢ã„¦åŸ›æµ è¯²å§Ÿæµ£æ»€è´Ÿç»—îƒ¿ç«´æ¶“îƒæ¢é”?
         task_t *th_u=init_task(1);
 
-        // 娉ㄩ噴鎺塳malloc娴嬭�?閬垮厤褰卞搷鐢ㄦ埛杩涚▼鍔犺�?
+        // å¨‰ã„©å™´éŽºå¡³mallocå¨´å¬­ç˜?é–¬åž®åŽ¤è¤°åžæ·é¢ã„¦åŸ›æ©æ¶šâ–¼é”çŠºæµ?
         /*
-        // 杈撳嚭鍐呭瓨妫€娴嬬粨鏋?
+        // æˆæ’³åš­éå‘­ç“¨å¦«â‚¬å¨´å¬¬ç²¨é‹?
         print_memory_detection_result();
 
-        // 杈撳�?PMM 缁熻淇℃伅
+        // æˆæ’³åš?PMM ç¼ç†»î…¸æ·‡â„ƒä¼…
         pmm_print_stats();
 
-        // 娴嬭�?kmalloc �?kfree 鍔熻�?
+        // å¨´å¬­ç˜?kmalloc é?kfree é”ç†»å…?
         printf("\n=== Testing kmalloc/kfree functionality ===\n");
 
-        // 娴嬭�?1: 灏忓唴瀛樺垎閰嶏紙浣跨�?early pool�?
+        // å¨´å¬­ç˜?1: çå¿“å”´ç€›æ¨ºåžŽé–°å¶ç´™æµ£è·¨æ•?early poolé”?
         printf("\nTest 1: Small allocation (early pool)\n");
         void *ptr1 = kmalloc(128);
         printf("  Allocated 128 bytes at: 0x%x\n", (uint32_t)ptr1);
 
-        // 娴嬭�?2: 涓瓑鍐呭瓨鍒嗛厤锛堜娇�?early pool�?
+        // å¨´å¬­ç˜?2: æ¶“î… ç“‘éå‘­ç“¨é’å—›åŽ¤é”›å œå¨‡é?early poolé”?
         printf("\nTest 2: Medium allocation (early pool)\n");
         void *ptr2 = kmalloc(1024);
         printf("  Allocated 1024 bytes at: 0x%x\n", (uint32_t)ptr2);
 
-        // 娴嬭�?3: 澶у唴瀛樺垎閰嶏紙浣跨�?PMM�?
+        // å¨´å¬­ç˜?3: æ¾¶Ñƒå”´ç€›æ¨ºåžŽé–°å¶ç´™æµ£è·¨æ•?PMMé”?
         printf("\nTest 3: Large allocation (PMM)\n");
         void *ptr3 = kmalloc(8192);  // 8KB = 2 pages
         printf("  Allocated 8192 bytes at: 0x%x\n", (uint32_t)ptr3);
 
-        // 娴嬭�?4: 瓒呭ぇ鍐呭瓨鍒嗛厤锛堜娇�?PMM�?
+        // å¨´å¬­ç˜?4: ç“’å‘­ã‡éå‘­ç“¨é’å—›åŽ¤é”›å œå¨‡é?PMMé”?
         printf("\nTest 4: Extra large allocation (PMM)\n");
         void *ptr4 = kmalloc(16384);  // 16KB = 4 pages
         printf("  Allocated 16384 bytes at: 0x%x\n", (uint32_t)ptr4);
 
-        // 娴嬭�?5: kzalloc 鍒嗛厤骞舵竻�?
+        // å¨´å¬­ç˜?5: kzalloc é’å—›åŽ¤éªžèˆµç«»é—?
         printf("\nTest 5: kzalloc (zero-initialized)\n");
         void *ptr5 = kzalloc(512);
         printf("  Allocated 512 zero-initialized bytes at: 0x%x\n", (uint32_t)ptr5);
 
-        // 鏄剧ず鍒嗛厤缁熻�?
+        // é„å‰§ãšé’å—›åŽ¤ç¼ç†»î…?
         printf("\n");
         kmalloc_print_stats();
 
-        // 娴嬭�?6: kfree 娴嬭�?
+        // å¨´å¬­ç˜?6: kfree å¨´å¬­ç˜?
         printf("\nTest 6: Testing kfree\n");
         printf("  Freeing ptr2 (1024 bytes)\n");
         kfree(ptr2);
@@ -1232,15 +1240,15 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("  Freeing ptr4 (16384 bytes)\n");
         kfree(ptr4);
 
-        // 鍐嶆鏄剧ず缁熻�?
+        // éå¶†î‚¼é„å‰§ãšç¼ç†»î…?
         printf("\nAfter freeing:\n");
         kmalloc_print_stats();
 
         printf("=== kmalloc/kfree tests completed ===\n\n");
         */
 
-        // 馃敟 鍐呮牳鎵ц杩涘害鎸囩�?
-        // 闃舵�?锛氬噯澶囧惎鍔ㄧ敤鎴蜂换�?- 鏄剧ず钃濊壊�?
+        // é¦ƒæ•Ÿ éå‘®ç‰³éŽµÑ†î”‘æ©æ¶˜å®³éŽ¸å›©ã?
+        // é—ƒèˆµî†?é”›æ°¬å™¯æ¾¶å›§æƒŽé”ã„§æ•¤éŽ´èœ‚æ¢é?- é„å‰§ãšé’ƒæ¿Šå£Šé?
         if (vbe_is_available()) {
             volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
             uint16_t w, h;
@@ -1248,37 +1256,37 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             uint16_t pitch = vbe_get_pitch();
             uint32_t pitch_pixels = pitch / 4;
 
-            // 缁樺埗灏忕殑钃濊壊鏂瑰潡鍦ㄥ乏涓嬭锛岃〃绀哄噯澶囧惎鍔ㄧ敤鎴蜂换鍔?
+            // ç¼æ¨ºåŸ—çå¿•æ®‘é’ƒæ¿Šå£Šé‚ç‘°æ½¡é¦ã„¥ä¹æ¶“å¬­î—é”›å²ƒã€ƒç»€å“„å™¯æ¾¶å›§æƒŽé”ã„§æ•¤éŽ´èœ‚æ¢é”?
             for (int y = h - 30; y < h; y++) {
                 for (int x = 0; x < 30; x++) {
-                    fb[y * pitch_pixels + x] = 0xFF0000FF;  // 钃濊�?
+                    fb[y * pitch_pixels + x] = 0xFF0000FF;  // é’ƒæ¿Šå£?
                 }
             }
-            printf("�?Progress indicator: Ready to start user task (blue square)\n");
+            printf("é‰?Progress indicator: Ready to start user task (blue square)\n");
         }
 
-        // 鍚姩鐢ㄦ埛杩涚�?
+        // éšîˆšå§©é¢ã„¦åŸ›æ©æ¶šâ–?
         printf("start user task \n");
-        // 鍚姩鐢ㄦ埛杩涚�?
+        // éšîˆšå§©é¢ã„¦åŸ›æ©æ¶šâ–?
         printf("start user task \n");
 
-        // 璋冭瘯锛氳緭鍑簃ultiboot2妯″潡淇℃伅锛堝凡绂佺敤锛岄伩鍏嶇郴缁熷穿婧冿�?
+        // ç’‹å†­ç˜¯é”›æ°³ç·­é‘ç°ƒultiboot2å¦¯â€³æ½¡æ·‡â„ƒä¼…é”›å å‡¡ç»‚ä½ºæ•¤é”›å²„ä¼©éå¶‡éƒ´ç¼ç†·ç©¿å©§å†¿ç´?
         // dump_multiboot2_modules(mb_info_addr);
 
-        // 閲嶈锛氬厛鎵嬪姩璋冪敤 user_task_main 杩涜鍒濆鍖栵紙椤佃〃銆佹ā鍧楀姞杞界瓑�?
-        // 鍒濆鍖栧畬鎴愬悗锛寀ser_task_main 浼氳繑鍥?
+        // é–²å¶ˆî›¦é”›æ°¬åŽ›éŽµå¬ªå§©ç’‹å†ªæ•¤ user_task_main æ©æ¶œî”‘é’æ¿†îé–æ µç´™æ¤¤ä½ƒã€ƒéŠ†ä½¹Äé§æ¥€å§žæžç•Œç“‘é”?
+        // é’æ¿†îé–æ §ç•¬éŽ´æ„¬æ‚—é”›å¯€ser_task_main æµ¼æ°³ç¹‘é¥?
         user_task_main(th_u);
 
-        // 鍒濆鍖栧畬鎴愬悗锛屽皢鐢ㄦ埛浠诲姟娣诲姞鍒拌皟搴﹀櫒闃熷垪
-        // start_task 浼氬�?th_u 娣诲姞鍒?sched_root 閾捐〃锛岃繖鏍疯皟搴﹀櫒鎵嶈兘鎵惧埌�?
+        // é’æ¿†îé–æ §ç•¬éŽ´æ„¬æ‚—é”›å±½çš¢é¢ã„¦åŸ›æµ è¯²å§Ÿå¨£è¯²å§žé’æ‹ŒçšŸæ´ï¹€æ«’é—ƒç†·åžª
+        // start_task æµ¼æ°¬çš?th_u å¨£è¯²å§žé’?sched_root é–¾æã€ƒé”›å²ƒç¹–éç–¯çšŸæ´ï¹€æ«’éŽµå¶ˆå…˜éŽµæƒ§åŸŒç€?
         start_task(th_u, user_task_main);
 
-        // 璁剧疆浠诲姟鐘舵€佷�?PS_CREATED锛岃璋冨害鍣ㄧ煡閬撻渶瑕佽烦杞埌鐢ㄦ埛�?
+        // ç’å‰§ç–†æµ è¯²å§Ÿé˜èˆµâ‚¬ä½·è´?PS_CREATEDé”›å²ƒî†€ç’‹å†¨å®³é£ã„§ç…¡é–¬æ’»æ¸¶ç‘•ä½½çƒ¦æžî„€åŸŒé¢ã„¦åŸ›éŽ?
         th_u->state = PS_CREATED;
         printf("[kernel_main] User task initialized, state=PS_CREATED\n");
 
-        // 馃敟 鍐呮牳鎵ц杩涘害鎸囩�?
-        // 闃舵�?锛氱敤鎴蜂换鍔″惎鍔ㄦ垚鍔?- 鏄剧ず榛勮壊�?
+        // é¦ƒæ•Ÿ éå‘®ç‰³éŽµÑ†î”‘æ©æ¶˜å®³éŽ¸å›©ã?
+        // é—ƒèˆµî†?é”›æ°±æ•¤éŽ´èœ‚æ¢é”â€³æƒŽé”ã„¦åžšé”?- é„å‰§ãšæ¦›å‹®å£Šé?
         if (vbe_is_available()) {
             volatile uint32_t *fb = (volatile uint32_t *)0xF0000000;
             uint16_t w, h;
@@ -1286,73 +1294,73 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             uint16_t pitch = vbe_get_pitch();
             uint32_t pitch_pixels = pitch / 4;
 
-            // 缁樺埗灏忕殑榛勮壊鏂瑰潡鍦ㄥ彸涓嬭锛岃〃绀虹敤鎴蜂换鍔″惎鍔ㄦ垚鍔?
+            // ç¼æ¨ºåŸ—çå¿•æ®‘æ¦›å‹®å£Šé‚ç‘°æ½¡é¦ã„¥å½¸æ¶“å¬­î—é”›å²ƒã€ƒç»€è™¹æ•¤éŽ´èœ‚æ¢é”â€³æƒŽé”ã„¦åžšé”?
             for (int y = h - 30; y < h; y++) {
                 for (int x = w - 30; x < w; x++) {
-                    fb[y * pitch_pixels + x] = 0xFFFFFF00;  // 榛勮�?
+                    fb[y * pitch_pixels + x] = 0xFFFFFF00;  // æ¦›å‹®å£?
                 }
             }
-            printf("�?Progress indicator: User task ready (yellow square)\n");
+            printf("é‰?Progress indicator: User task ready (yellow square)\n");
         }
 
         /*
-        // 鍒涘缓绗簩涓敤鎴疯繘绋嬶紙娴嬭瘯璋冨害锛? 宸插純鐢?
-        // 鐜板湪浣跨敤 fork() 绯荤粺璋冪敤鏇夸�?
+        // é’æ¶˜ç¼“ç»—îƒ¿ç°©æ¶“î†æ•¤éŽ´ç–¯ç¹˜ç»‹å¬¶ç´™å¨´å¬­ç˜¯ç’‹å†¨å®³é”›? å®¸æ’ç´”é¢?
+        // éœæ¿æ¹ªæµ£è·¨æ•¤ fork() ç»¯è¤ç²ºç’‹å†ªæ•¤é‡å¤¸å”?
         printf("=== Creating second user task for scheduler testing ===\n");
         printf("th_u = 0x%x, th_u->pde = 0x%x, th_u->cr3 = 0x%x\n",
                th_u, th_u->pde, th_u->cr3);
 
-        task_t *th_u2 = init_task(true);  // 鍒涘缓绗簩涓换鍔?
+        task_t *th_u2 = init_task(true);  // é’æ¶˜ç¼“ç»—îƒ¿ç°©æ¶“îƒæ¢é”?
         if (th_u2) {
             printf("th_u2 created: 0x%x\n", th_u2);
 
-            // 瀹炵幇绠€鍗曠殑 fork 鏈哄埗锛氫负绗簩涓繘绋嬪垱寤虹嫭绔嬬殑椤电洰�?
-            // 鍙傝€冿�?
+            // ç€¹ç‚µå¹‡ç» â‚¬é—æ› æ®‘ fork éˆå“„åŸ—é”›æ°«è´Ÿç»—îƒ¿ç°©æ¶“î‡ç¹˜ç»‹å¬ªåž±å¯¤è™¹å«­ç»”å¬¬æ®‘æ¤¤ç”µæ´°è¤?
+            // é™å‚â‚¬å†¿ç´?
             // - Brown University CS: "fork() clones user-space processes with full address space copies"
             // - Reddit r/osdev: "fork() and copy-on-write in Linux"
             //
-            // 鍏抽敭鐐癸細
-            // 1. 姣忎釜杩涚▼闇€瑕佺嫭绔嬬殑椤电洰褰曪紙CR3�?
-            // 2. 椤电洰褰曢」鎸囧悜鐩稿悓鐨勭墿鐞嗛〉锛堝叡浜唴瀛橈�?
-            // 3. 鍐呮牳鏄犲皠�?xC0000000+锛夐渶瑕佸鍒跺埌姣忎釜椤电洰褰?
+            // éæŠ½æ•­éç™¸ç´°
+            // 1. å§£å¿Žé‡œæ©æ¶šâ–¼é—‡â‚¬ç‘•ä½ºå«­ç»”å¬¬æ®‘æ¤¤ç”µæ´°è¤°æ›ªç´™CR3é”?
+            // 2. æ¤¤ç”µæ´°è¤°æ›¢ã€éŽ¸å›§æ‚œé©ç¨¿æ‚“é¨å‹­å¢¿éžå—›ã€‰é”›å å¡æµœî‚¢å”´ç€›æ©ˆç´?
+            // 3. éå‘®ç‰³é„çŠ²çš é”?xC0000000+é”›å¤æ¸¶ç‘•ä½¸î˜²é’è·ºåŸŒå§£å¿Žé‡œæ¤¤ç”µæ´°è¤°?
 
             extern page_t alloc_page_table_();
             extern void copy_kernel_mappings_to_pd(uint32_t *pd_user);
 
             extern uint32_t pmm_alloc_page(void);
 
-            // 1. 鍒嗛厤鏂扮殑椤电洰褰?
+            // 1. é’å—›åŽ¤é‚æ‰®æ®‘æ¤¤ç”µæ´°è¤°?
             page_t pde2 = alloc_page_table_();
             th_u2->pde = (uint32_t*)pde2.phys;
-            th_u2->cr3 = (uint32_t*)pde2.phys;  // CR3 瀛楁瀛樺偍鐗╃悊鍦板�?
+            th_u2->cr3 = (uint32_t*)pde2.phys;  // CR3 ç€›æ¥î†Œç€›æ¨ºåé—â•ƒæ‚Šé¦æ¿æ½?
             uint32_t *pd_user2 = pde2.virt;
 
             printf("[fork] Allocated new page dir: phys=0x%x, virt=0x%x\n",
                    pde2.phys, pd_user2);
 
-            // 2. 澶嶅埗鍐呮牳楂樼鏄犲皠�?68-1023锛屽�?0xC0000000-0xFFFFFFFF�?
-            // 杩欐牱鍐呮牳浠ｇ爜鍦ㄦ墍鏈夎繘绋嬩腑閮藉彲璁块棶
+            // 2. æ¾¶å¶…åŸ—éå‘®ç‰³æ¥‚æ¨¼î¬é„çŠ²çš é”?68-1023é”›å±½åµ?0xC0000000-0xFFFFFFFFé”?
+            // æ©æ¬ç‰±éå‘®ç‰³æµ ï½‡çˆœé¦ã„¦å¢éˆå¤Žç¹˜ç»‹å¬©è…‘é–®è—‰å½²ç’å—æ£¶
             copy_kernel_mappings_to_pd(pd_user2);
             printf("[fork] Copied kernel mappings to new page dir\n");
 
-            // 3. 澶嶅埗鐢ㄦ埛绌洪棿鏄犲皠�?-767锛屽�?0x00000000-0xBFFFFFFF�?
-            // 杩欐槸绠€鍗曠殑椤佃〃澶嶅埗锛屼笉鏄?Copy-on-Write
-            // 涓や釜杩涚▼浼氬叡浜浉鍚岀殑鐗╃悊椤碉紝浣嗘湁鐙珛鐨勯〉琛ㄧ粨�?
+            // 3. æ¾¶å¶…åŸ—é¢ã„¦åŸ›ç»Œæ´ªæ£¿é„çŠ²çš é”?-767é”›å±½åµ?0x00000000-0xBFFFFFFFé”?
+            // æ©æ¬æ§¸ç» â‚¬é—æ› æ®‘æ¤¤ä½ƒã€ƒæ¾¶å¶…åŸ—é”›å±¼ç¬‰é„?Copy-on-Write
+            // æ¶“ã‚„é‡œæ©æ¶šâ–¼æµ¼æ°¬å¡æµœî‚¤æµ‰éšå²€æ®‘é—â•ƒæ‚Šæ¤¤ç¢‰ç´æµ£å—˜æ¹é™î„‚ç›é¨å‹¯ã€‰ç›ã„§ç²¨é?
 
-            // 鑾峰彇绗竴涓换鍔＄殑椤电洰褰曡櫄鎷熷湴鍧�?
+            // é‘¾å³°å½‡ç»—îƒ¿ç«´æ¶“îƒæ¢é”ï¼„æ®‘æ¤¤ç”µæ´°è¤°æ›¡æ«„éŽ·ç†·æ¹´é§â‚?
             extern uint32_t pd[];
             uint32_t *pd_user1 = (uint32_t*)phys_to_virt((uint32_t)th_u->pde);
 
             int copied_entries = 0;
-            for (int i = 0; i < 768; i++) {  // 鐢ㄦ埛绌洪棿�?-767
+            for (int i = 0; i < 768; i++) {  // é¢ã„¦åŸ›ç»Œæ´ªæ£¿é”?-767
                 if (pd_user1[i] & PAGE_PRESENT) {
-                    pd_user2[i] = pd_user1[i];  // 澶嶅埗椤佃〃椤规寚�?
+                    pd_user2[i] = pd_user1[i];  // æ¾¶å¶…åŸ—æ¤¤ä½ƒã€ƒæ¤¤è§„å¯šé–?
                     copied_entries++;
                 }
             }
             printf("[fork] Copied %d user space page table entries\n", copied_entries);
 
-            // 4. 鍒嗛厤鏂扮殑鍐呮牳鏍?
+            // 4. é’å—›åŽ¤é‚æ‰®æ®‘éå‘®ç‰³é?
             uint32_t kstack2 = pmm_alloc_page();
             th_u2->kstack = (uint32_t*)kstack2;
             th_u2->esp0 = (uint32_t)(kstack2 + PAGE_SIZE);
@@ -1360,7 +1368,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
             printf("[fork] Task2: pde=0x%x, cr3=0x%x, kstack=0x%x\n",
                    th_u2->pde, th_u2->cr3, th_u2->kstack);
 
-            // 5. 澶嶅�?trapframe
+            // 5. æ¾¶å¶…åŸ?trapframe
             if (!th_u2->tf) {
                 printf("[fork] ERROR: th_u2->tf is NULL!\n");
             } else {
@@ -1377,7 +1385,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         printf("=== Second user task creation completed ===\n");
         */
 
-        // 鍚姩璋冨害�?
+        // éšîˆšå§©ç’‹å†¨å®³é?
         // printf("Starting scheduler with multiple tasks...\n");
         efficient_scheduler_loop();
         // printf("Kernel main completed successfully!\n");
@@ -1385,7 +1393,7 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
 }
 
 /*
- * usb_periodic_poll_callback �?called from the scheduler idle loop
+ * usb_periodic_poll_callback éˆ?called from the scheduler idle loop
  * (handle_idle_state in task.c) to service USB host controllers.
  *
  * Replaces the old fork_poller() hack that tried to spawn a kernel

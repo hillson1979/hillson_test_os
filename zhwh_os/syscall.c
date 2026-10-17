@@ -22,6 +22,8 @@
 #define SYS_USB_LOG_SAVE 84
 #define SYS_USB_STATUS 85
 #define SYS_USB_LOG_DISPLAY 86
+#define SYS_GRAPH_GET_DISPLAY_INFO 87
+#define SYS_GRAPH_PRESENT 88
 
 // PCI ???????????? I/O ??????
 #define CONFIG_ADDRESS 0xCF8
@@ -1937,6 +1939,43 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         // ==================== GUI ???????????? ====================
+        case SYS_GRAPH_GET_DISPLAY_INFO: {
+            struct graph_display_info {
+                uint32_t width, height, pitch, bytes_per_pixel;
+            } info;
+            extern int vbe_is_available(void);
+            extern void vbe_get_resolution(uint16_t*, uint16_t*);
+            extern uint16_t vbe_get_pitch(void);
+            extern uint8_t vbe_get_bpp(void);
+            uint16_t width, height;
+            if (!vbe_is_available() || !tf->ebx) { tf->eax = -1; break; }
+            vbe_get_resolution(&width, &height);
+            info.width = width; info.height = height; info.pitch = vbe_get_pitch();
+            info.bytes_per_pixel = vbe_get_bpp() / 8;
+            tf->eax = copy_to_user((void*)tf->ebx, &info, sizeof(info));
+            break;
+        }
+        case SYS_GRAPH_PRESENT: {
+            const uint8_t *src = (const uint8_t*)tf->ebx;
+            uint32_t width = tf->ecx, height = tf->edx, src_pitch = tf->esi;
+            extern int vbe_is_available(void);
+            extern void vbe_get_resolution(uint16_t*, uint16_t*);
+            extern uint16_t vbe_get_pitch(void);
+            uint16_t fb_width, fb_height; uint32_t y, row_bytes;
+            uint8_t *dst = (uint8_t*)0xF0000000u;
+            if (!src || !vbe_is_available() || !width || !height ||
+                src_pitch < width * 4u) { tf->eax = -1; break; }
+            vbe_get_resolution(&fb_width, &fb_height);
+            if (width > fb_width || height > fb_height) { tf->eax = -1; break; }
+            row_bytes = width * 4u;
+            for (y = 0; y < height; ++y) {
+                if (copy_from_user(dst + y * vbe_get_pitch(), src + y * src_pitch,
+                                   row_bytes) != 0) { tf->eax = -1; goto graph_present_done; }
+            }
+            tf->eax = 0;
+        graph_present_done:
+            break;
+        }
         case SYS_GUI_FB_INFO: {
             // ????????????????????????
             // ?????????ebx = fb_info_t* (???????????????

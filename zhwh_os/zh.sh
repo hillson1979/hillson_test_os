@@ -20,6 +20,7 @@ cp kernel.bin iso/boot/
 [ -f qt/fb_test.elf ] && cp qt/fb_test.elf iso/boot/
 [ -f qt/qt_embedded_test.elf ] && cp qt/qt_embedded_test.elf iso/boot/
 [ -f hillsonOs_desktop/desktop.elf ] && cp hillsonOs_desktop/desktop.elf iso/boot/
+[ -f opengl/gl_test.elf ] && cp opengl/gl_test.elf iso/boot/
 [ -f test/syscall_test.elf ] && cp test/syscall_test.elf iso/boot/
 [ -f test/simple_keyboard.elf ] && cp test/simple_keyboard.elf iso/boot/
 [ -f test/text_test.elf ] && cp test/text_test.elf iso/boot/
@@ -39,6 +40,12 @@ menuentry "HillsonOS Desktop" {
     multiboot2 /boot/kernel.bin
     module2 /boot/desktop.elf
     
+    boot
+}
+
+menuentry "OpenGL Graph Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/gl_test.elf
     boot
 }
 

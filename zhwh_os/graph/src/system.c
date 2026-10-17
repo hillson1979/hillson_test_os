@@ -20,6 +20,6 @@ int graph_system_get_context(graph_context_t **context) {
 }
 
 void graph_system_shutdown(void) {
-    system_context.framebuffer.address = 0;
+    system_context.framebuffer.virtual_address = 0;
     system_ready = 0;
 }

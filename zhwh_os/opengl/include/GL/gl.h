@@ -2,7 +2,6 @@
 #define HILLSON_GL_H
 
 #include <stdint.h>
-#include "graph/context.h"
 
 typedef unsigned int GLenum;
 typedef unsigned int GLuint;
@@ -20,6 +19,6 @@ void glClear(GLenum mask);
 void glEnable(GLenum capability);
 void glViewport(int x, int y, int width, int height);
 void glDrawArrays(GLenum mode, int first, GLsizei count);
-void glSetContext(graph_context_t* context);
+int glPresent(void);
 
 #endif

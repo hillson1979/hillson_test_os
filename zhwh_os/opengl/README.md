@@ -23,4 +23,6 @@ Planned order:
 5. Depth testing and triangle rasterization.
 6. Optional TinyGL or GPU backend integration.
 
-The application dependency must remain `Minecraft -> OpenGL -> graph -> framebuffer`.
+The application dependency remains `Minecraft -> OpenGL`. Access to the
+kernel-side `graph` layer will be added through a syscall/ABI; the user-space
+targets must not link kernel graph objects directly.
