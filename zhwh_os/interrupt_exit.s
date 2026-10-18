@@ -19,7 +19,7 @@
 # task_t 偏移量（匹配 include/task.h 的结构体定义）
 # ⚠️ tf 在 task_t 结构体中的偏移量是 156 (TASK_IFRAME)
 #    根据 GDB 内存 dump 验证和 calc_task_offset.c 计算
-.set TASK_TF, 156
+.set TASK_TF, 164
 
 .equ TRAPFRAME_DS, 0       # ⚠️ ds = offset 0 (alltraps最先压入)
 .equ TRAPFRAME_ES, 4       # ⚠️ es = offset 4

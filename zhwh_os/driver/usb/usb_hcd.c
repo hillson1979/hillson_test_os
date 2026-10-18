@@ -1,6 +1,6 @@
 /**
  * @file usb_hcd.c
- * @brief USB HCD bridge â€?public API for Hillson OS
+ * @brief USB HCD bridge ï¿½?public API for Hillson OS
  *
  * Focus: EHCI controller bringup.
  */
@@ -19,6 +19,7 @@
 #include <kernel/errno.h>
 #include <kernel/ata.h>
 #include <mm/kheap.h>
+#include <usb_mouse.h>
 
 #include <pci.h>
 #include <usb.h>
@@ -31,9 +32,12 @@ int g_usb_uhci_count   = 0;
 int g_usb_ehci_count   = 0;
 int g_usb_uhci2_count  = 0;
 int g_usb_mouse_count  = 0;
-/* 0 off, 1 PCI scan, 2 xHCI found/start pending, 3 controller ready,
- * 4 port scan complete, -1 no supported controller/failed. */
+/* 0 off, 1 PCI scan, 2 controller start or boot mouse wait, 3 controller
+ * ready, 4 port scan complete, -1 no supported controller/failed. */
 static int g_usb_init_state = 0;
+#define USB_BOOT_MOUSE_WAIT_POLL_LIMIT 18000U
+static unsigned g_usb_boot_init_polls;
+static int g_usb_boot_mouse_gate;
 static unsigned g_usb_scan_bus;
 static unsigned g_usb_scan_dev;
 static unsigned g_usb_xhci_bus;
@@ -46,8 +50,21 @@ void usb_init_poll(void);
 
 int usb_get_init_state(void)
 {
-    if (g_usb_init_state == 3 && xhci_all_ports_enabled())
-        g_usb_init_state = 4;
+    if (g_usb_init_state == 3) {
+        if (xhci_all_ports_enabled()) {
+            g_usb_init_state = 4;
+            g_usb_boot_mouse_gate = 0;
+        } else if (g_usb_boot_mouse_gate) {
+            if (usb_mouse_get_count() > 0 ||
+                g_usb_boot_init_polls >= USB_BOOT_MOUSE_WAIT_POLL_LIMIT) {
+                g_usb_boot_mouse_gate = 0;
+            } else {
+                return 2;
+            }
+        }
+        if (!g_usb_boot_mouse_gate && g_usb_init_state == 3)
+            return 4;
+    }
     return g_usb_init_state;
 }
 
@@ -88,6 +105,8 @@ int usb_request_init(void)
             return -1;
         }
 
+        g_usb_boot_init_polls = 0;
+        g_usb_boot_mouse_gate = 1;
         g_usb_init_state = 2;
         usb_printk("usb: cached xHCI at %02x:%02x.%x; async start pending\n",
                    dev->bus_id, dev->dev_id, dev->fn_id);
@@ -105,10 +124,16 @@ void usb_init_poll(void)
     if (poll_busy) return;
     poll_busy = 1;
 
+    if (g_usb_boot_mouse_gate &&
+        g_usb_boot_init_polls < USB_BOOT_MOUSE_WAIT_POLL_LIMIT)
+        g_usb_boot_init_polls++;
+
     if (g_usb_init_state == 3) {
-        xhci_init_ports_step();
-        if (xhci_all_ports_enabled())
+        xhci_poll();
+        if (xhci_all_ports_enabled()) {
             g_usb_init_state = 4;
+            g_usb_boot_mouse_gate = 0;
+        }
         poll_busy = 0;
         return;
     }
@@ -222,11 +247,16 @@ char g_ehci_debug_buf[256] = {0};
 void uhci_irq_handler(void) {}
 
 /* ================================================================
- * usb_init(void) â€?scans PCI for USB HC, initializes each
+ * usb_init(void) ï¿½?scans PCI for USB HC, initializes each
  * ================================================================ */
 int usb_init(void)
 {
+    unsigned int controller_count = 0;
+    int last_error = 0;
+
     if (g_usb_init_state == 4)
+        return 0;
+    if (g_usb_init_state == 3)
         return 0;
     if (g_usb_init_state > 0 && g_usb_init_state < 4)
         return g_usb_init_state;
@@ -254,10 +284,10 @@ int usb_init(void)
         }
 
         if (!bar) {
-            usb_printk("usb: xHCI %02x:%02x.%x has no MMIO BAR\n",
+            usb_printk("usb: xHCI %02x:%02x.%x has no MMIO BAR; continuing\n",
                        dev->bus_id, dev->dev_id, dev->fn_id);
-            g_usb_init_state = -1;
-            return -1;
+            last_error = -ENODEV;
+            continue;
         }
 
         g_usb_init_state = 2;
@@ -266,19 +296,38 @@ int usb_init(void)
 
         int ret = xhci_install(&pci, bar);
         if (ret == 0) {
-            g_usb_init_state = 4;
-            usb_printk("usb: synchronous xHCI init complete\n");
-            return 0;
+            controller_count++;
+            if (!xhci_controller_present()) {
+                usb_printk("usb: xHCI install returned success without a controller\n");
+                last_error = -EIO;
+            }
+        } else {
+            last_error = ret;
+            usb_printk("usb: synchronous xHCI init failed (%d); continuing\n", ret);
         }
-
-        g_usb_init_state = -1;
-        usb_printk("usb: synchronous xHCI init failed (%d)\n", ret);
-        return ret;
     }
 
-    g_usb_init_state = -1;
-    usb_printk("usb: no xHCI controller in cached PCI table\n");
-    return -1;
+    if (controller_count == 0) {
+        if (last_error < 0) {
+            g_usb_init_state = -1;
+            return last_error;
+        }
+        g_usb_init_state = 4;
+        usb_printk("usb: no xHCI controller present; continuing boot\n");
+        return 0;
+    }
+
+    g_usb_init_state = 3;
+    usb_printk("usb: xHCI controllers ready; root-port enumeration deferred "
+               "controllers=%u\n", controller_count);
+    if (!xhci_controller_present()) {
+        g_usb_init_state = -EIO;
+        usb_printk("usb: xHCI controller list is empty after install\n");
+        return -EIO;
+    }
+    usb_printk("usb: xHCI controller initialization complete; "
+               "ports will be serviced asynchronously\n");
+    return 0;
 }
 
 /* ================================================================
@@ -300,19 +349,19 @@ int usb_interrupt_transfer(int cid, uint8_t addr, uint8_t ep,
 int usb_interrupt_poll(int cid) { (void)cid; return 0; }
 
 /* ================================================================
- * usb_mouse_periodic_init â€?The real interrupt transfer is set up
- * by init_hid() â†?usb_schedule_inttransfer().  Here we just record
+ * usb_mouse_periodic_init ï¿½?The real interrupt transfer is set up
+ * by init_hid() ï¿½?usb_schedule_inttransfer().  Here we just record
  * that the init was requested so usb_mouse_init() succeeds.
  * ================================================================ */
 int usb_mouse_periodic_init(int cid, uint8_t addr, uint8_t ep, int ls) {
     (void)cid; (void)addr; (void)ep; (void)ls;
     usb_printk("usb_mouse_periodic_init: ctrl=%d addr=%d ep=0x%02x ls=%d\n",
                cid, addr, ep, ls);
-    return 0;  /* OK â€?actual transfer set up by init_hid */
+    return 0;  /* OK ï¿½?actual transfer set up by init_hid */
 }
 
 /* ================================================================
- * usb_mouse_periodic_poll â€?Read latest mouse report from the HID
+ * usb_mouse_periodic_poll ï¿½?Read latest mouse report from the HID
  * device that was set up by init_hid().  The polling task
  * (usb_task_func) handles the actual EHCI transfer; we just read
  * the last-known-good data from g_first_mouse_hid->buf.

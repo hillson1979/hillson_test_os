@@ -6,6 +6,7 @@
 #include "interrupt.h"
 #include "elf.h"
 #include "highmem_mapping.h"
+#include "mm/user_vm.h"
 
 extern void interrupt_exit(void);
 extern uint32_t multiboot2_info_addr;
@@ -27,7 +28,8 @@ extern uint32_t multiboot2_info_addr;
 
 #define USER_STACK_PAGES 129
 #define USER_STACK_SIZE (PAGE_SIZE * USER_STACK_PAGES)
-#define VIRT_USER_STACK_TOP 0xC0000000
+#define VIRT_USER_STACK_TOP 0xBFFFF000
+#define VIRT_USER_FRAMEBUFFER 0xF0000000u
 
 int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
     printf("[load_module_to_user] Starting...\n");
@@ -108,8 +110,7 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
                 for (uint32_t j = 0; j < copy_size; j++) dst_virt[j] = src_virt[j];
             }
 
-            extern uint32_t kernel_page_directory_phys;
-            map_page(kernel_page_directory_phys, dst_va, dst_pa, USER_PTE_FLAGS);
+            user_vm_map_page(task, dst_va, dst_pa, USER_PTE_FLAGS);
         }
     }
 
@@ -123,8 +124,7 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
             uint32_t hp_va = heap_start + i * PAGE_SIZE;
             uint32_t hp_pa = pmm_alloc_page();
             if (!hp_pa) break;
-            extern uint32_t kernel_page_directory_phys;
-            map_page(kernel_page_directory_phys, hp_va, hp_pa, USER_PTE_FLAGS);
+            user_vm_map_page(task, hp_va, hp_pa, USER_PTE_FLAGS);
         }
     }
 
@@ -142,15 +142,43 @@ int load_module_to_user(struct task_t *task, uint32_t *pd_user) {
         uint32_t stack_pa = pmm_alloc_page();
         uint32_t stack_va = VIRT_USER_STACK_TOP - (i + 1) * PAGE_SIZE;
         last_stack_va = (i == 0) ? stack_va : last_stack_va;
-        extern uint32_t kernel_page_directory_phys;
-        map_page(kernel_page_directory_phys, stack_va, stack_pa, USER_PTE_FLAGS);
+        user_vm_map_page(task, stack_va, stack_pa, USER_PTE_FLAGS);
+        if (stack_pa) {
+            uint8_t *stack_mem = (uint8_t *)map_highmem_physical(stack_pa, PAGE_SIZE, 0x3);
+            if (stack_mem) memset(stack_mem, 0, PAGE_SIZE);
+        }
+    }
+
+    /* Map the physical VBE framebuffer into the user address space.  The
+     * desktop and graph clients intentionally use the stable VA 0xF0000000.
+     * This PDE is marked user-accessible by map_page for the framebuffer PT. */
+    {
+        multiboot_tag_framebuffer_common_t *fb = NULL;
+        multiboot_tag_t *scan = (multiboot_tag_t *)((uint8_t *)mb_info_ptr + 8);
+        while (scan->type != MULTIBOOT_TAG_TYPE_END) {
+            if (scan->type == MULTIBOOT_TAG_TYPE_FRAMEBUFFER) {
+                fb = (multiboot_tag_framebuffer_common_t *)scan;
+                break;
+            }
+            scan = (multiboot_tag_t *)((uint8_t *)scan + ((scan->size + 7) & ~7));
+        }
+        if (fb && fb->framebuffer_addr && fb->framebuffer_pitch && fb->framebuffer_height) {
+            uint32_t bytes = fb->framebuffer_pitch * fb->framebuffer_height;
+            uint32_t pages = (bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+            printf("[load_module_to_user] Mapping framebuffer: phys=0x%x pages=%u va=0x%x\n",
+                   (uint32_t)fb->framebuffer_addr, pages, VIRT_USER_FRAMEBUFFER);
+            for (uint32_t i = 0; i < pages; ++i)
+                user_vm_map_page(task, VIRT_USER_FRAMEBUFFER + i * PAGE_SIZE,
+                                 (uint32_t)fb->framebuffer_addr + i * PAGE_SIZE,
+                                 USER_PTE_FLAGS);
+        }
     }
 
     task->user_stack = VIRT_USER_STACK_TOP;
 
     // 填充栈顶NULL，防止argv/envp访问越界
-    uint32_t *stack_top_virt = (uint32_t *)last_stack_va;
-    for (int i = 1; i <= 32; i++) stack_top_virt[PAGE_SIZE/4 - i] = 0;
+    /* The target CR3 is not active while loading; stack pages are already
+     * zeroed through their temporary kernel mappings. */
 
     // ESP 在栈顶下方 64 字节，避免 _start 访问边界外的内存
     tf->esp = VIRT_USER_STACK_TOP - 64;

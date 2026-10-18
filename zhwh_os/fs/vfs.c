@@ -167,6 +167,19 @@ static int vfs_num_mounts = 0;
 int vfs_mount(const char *mount_path, inode_t *root_inode) {
     if (!mount_path || !root_inode) return -1;
 
+    /* Remounting an existing path must replace its root.  USB enumeration can
+     * retry after a transient BOT read failure; consuming one mount-table slot
+     * per retry would eventually make the real /usb mount fail. */
+    for (int existing = 0; existing < vfs_num_mounts; existing++) {
+        if (strcmp(vfs_mounts[existing].mount_path, mount_path) == 0) {
+            vfs_mounts[existing].root_inode = root_inode;
+            root_inode->i_sb = root_sb;
+            root_inode->i_parent = root_sb ? root_sb->s_root : NULL;
+            printf("[vfs] mount: '%s' updated\n", mount_path);
+            return 0;
+        }
+    }
+
     if (vfs_num_mounts >= VFS_MAX_MOUNTS) {
         printf("[vfs] mount: table full\n");
         return -1;
@@ -181,7 +194,7 @@ int vfs_mount(const char *mount_path, inode_t *root_inode) {
     vfs_mounts[i].mount_path[j] = '\0';
     vfs_mounts[i].root_inode = root_inode;
     root_inode->i_sb = root_sb;  /* share superblock with ramfs */
-    root_inode->i_parent = root_sb->s_root;
+    root_inode->i_parent = root_sb ? root_sb->s_root : NULL;
 
     printf("[vfs] mount: '%s' registered\n", mount_path);
     return 0;
@@ -205,6 +218,15 @@ inode_t *vfs_get_mount_root(const char *path, const char **remainder) {
     }
     *remainder = NULL;
     return NULL;
+}
+
+int vfs_mount_active(const char *mount_path)
+{
+    if (!mount_path) return 0;
+    for (int i = 0; i < vfs_num_mounts; i++)
+        if (strcmp(vfs_mounts[i].mount_path, mount_path) == 0)
+            return 1;
+    return 0;
 }
 
 // ================================
@@ -497,6 +519,8 @@ int vfs_list_dir(const char *path, char *buf, int max) {
     }
 
     int ret = dir->i_op->listdir(dir, buf, max);
+    if (ret < 0)
+        printf("[vfs] list_dir: filesystem I/O failed path='%s'\n", path);
 
     /*
      * Mount points live in the VFS mount table.  They are not necessarily

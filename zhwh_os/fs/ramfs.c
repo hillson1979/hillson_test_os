@@ -565,6 +565,12 @@ void fs_init(void) {
     // 获取根目录 inode
     inode_t *root = sb->s_root;
 
+    /* Keep the removable-media mount point visible before a USB disk is
+     * ready.  Once FAT32 mounts, VFS mount lookup takes precedence over this
+     * empty ramfs placeholder. */
+    if (ramfs_mkdir(root, "usb", 0755) == 0)
+        printf("[fs] Created /usb mount-point directory\n");
+
     // Save kernel log: point i_data at klog buffer directly
     {
         extern void klog_read(char *buf, int max);

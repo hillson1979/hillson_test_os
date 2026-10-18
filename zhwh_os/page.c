@@ -3,6 +3,7 @@
 #include "highmem_mapping.h"
 #include "memlayout.h"
 #include "x86/mmu.h"
+#include "string.h"
 
 uint32_t high_page_directory[1024] __attribute__((aligned(4096)));
 // 1. 内存常量定义（需根据实际硬件内存布局调整）
@@ -24,69 +25,6 @@ extern pt3[1024],pt4[1024];
 extern map_flag;
 
 
-/**
- * 使用 4KB 页恒等映射 8MB 空间
- *
- * @param pd      : 页目录表基地址（物理地址，1024 项）
- * @param addr    : 起始虚拟地址（建议 4KB 对齐）
- * @param pt1     : 第一个页表基地址（物理地址，映射前 4MB）
- * @param pt2     : 第二个页表基地址（物理地址，映射后 4MB）
- *
- * 注意：
- * - pt1 和 pt2 必须是 4KB 对齐的物理地址
- * - 调用者负责分配这两个页表（如 memset(pt1, 0, 4096)）
- */
-void identity_map_8m_4k( uint32_t addr)
-{
-    uint32_t i;
-    uint32_t *pd=page_directory;
-    
-    uint32_t start = addr & ~0xFFF;  // 4KB 对齐起始地址
-    uint32_t end   = start + 0x800000; // 8MB 结束地址
-
-    // 页目录索引范围
-    uint32_t pde_idx1 = (start >> 22) & 0x3FF; // 第一个 PDE
-    uint32_t pde_idx2 = (end - 1 >> 22) & 0x3FF; // 最后一个 PDE（应为 pde_idx1 或 +1）
-
-    // 清空两个页表（可选，确保无残留）
-    for (i = 0; i < 1024; i++) {
-        pt3[i] = 0;
-        pt4[i] = 0;
-    }
-
-    // 填写第一个页表（映射前 4MB）
-    for (i = 0; i < 1024; i++) {
-        uint32_t phys_addr = start + (i << 12); // 每项 4KB
-        pt3[i] = phys_addr | 0x03; // P=1, R/W=1
-    }
-
-    // 填写第二个页表（映射后 4MB）
-    for (i = 0; i < 1024; i++) {
-        uint32_t phys_addr = start + 0x400000 + (i << 12);
-        pt4[i] = phys_addr | 0x03; // P=1, R/W=1
-    }
-
-    // 构造页目录项：指向页表，P=1, R/W=1, US=0
-    uint32_t pde1 = ((uint32_t)pt3) | 0x03; // 指向第一个页表
-    uint32_t pde2 = ((uint32_t)pt4) | 0x03; // 指向第二个页表
-
-    // 使用内联汇编写入页目录
-    __asm__ volatile (
-        "movl %0, %%eax\n\t"
-        "movl %%eax, %1\n\t"         // pd[pde_idx1] = pde1
-        "movl %2, %%eax\n\t"
-        "movl %%eax, %3\n\t"         // pd[pde_idx2] = pde2
-        :
-        : "r"(pde1), "m"(pd[pde_idx1]),
-          "r"(pde2), "m"(pd[pde_idx2])
-        : "eax", "memory"
-    );
-
-    // 注意：TLB 不会自动更新
-    // 建议在启用分页后使用 invlpg 或 reload cr3
-    // 刷新TLB
-    __asm__ volatile ("invlpg (%0)" : : "r" (addr) : "memory");
-}
 // 常量定义（x86 32位）
 //#define PAGE_SIZE        0x1000       // 4KB页大小
 #define PAGE_MASK        ~0xFFF       // 页对齐掩码
@@ -112,14 +50,82 @@ void identity_map_8m_4k( uint32_t addr)
 #define PAGE_USER    0x4
 
 extern uint32_t pmm_alloc_page();
+extern bool pmm_is_ready(void);
 //extern void* phys_to_virt(uintptr_t phys);
 
 // 前置声明
 static uint32_t alloc_early_page_table(void);
 
+/* Runtime page-table pages come from the buddy allocator.  The dynamic
+ * highmem window cannot be used to access its own new PDE, so use the last
+ * bootstrap direct-map PTE as a serialized scratch mapping. */
+static void *kernel_scratch_phys(uint32_t phys)
+{
+    extern uint32_t kernel_page_directory_phys;
+    const uint32_t va = KERNEL_VIRT_BASE + IDENTITY_MAP_SIZE - PAGE_SIZE;
+    uint32_t *pd = (uint32_t *)phys_to_virt(kernel_page_directory_phys);
+    uint32_t pdi = va >> 22;
+    uint32_t pti = (va >> 12) & 0x3ff;
+    if (!(pd[pdi] & PAGE_PRESENT)) return NULL;
+    uint32_t *pt = (uint32_t *)phys_to_virt(pd[pdi] & ~0xfff);
+    pt[pti] = (phys & ~0xfff) | PAGE_PRESENT | PAGE_WRITE;
+    __asm__ volatile ("invlpg (%0)" : : "r" (va) : "memory");
+    return (void *)va;
+}
+
+void *map_physical_scratch(uint32_t phys)
+{
+    return kernel_scratch_phys(phys);
+}
+
 // 在页目录 pde_phys 里，把 vaddr -> paddr 建立映射
-void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags) {
-    // ⚠️⚠️⚠️ 关键修复：确保 pde_phys 在内核 CR3 中可访问
+static void map_page_impl(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags) {
+    /* pde_phys is always a physical page-directory address.  User mappings
+     * must be installed in that address space, never in the kernel CR3. */
+    uint32_t *target_pd = (uint32_t *)map_highmem_physical(pde_phys, PAGE_SIZE, 0x3);
+    if (!target_pd) {
+        printf("[map_page] cannot access PD phys=0x%x\n", pde_phys);
+        return;
+    }
+
+    uint32_t pd_index = vaddr >> 22;
+    uint32_t pt_index = (vaddr >> 12) & 0x3ff;
+    uint32_t user = (flags & PAGE_USER) ? PAGE_USER : 0;
+    uint32_t pt_phys = target_pd[pd_index] & ~0xfff;
+    uint32_t *pt;
+
+    if (!(target_pd[pd_index] & PAGE_PRESENT)) {
+        pt_phys = pmm_alloc_page();
+        if (!pt_phys) {
+            printf("[map_page] no memory for PT (vaddr=0x%x)\n", vaddr);
+            return;
+        }
+        pt = (uint32_t *)map_highmem_physical(pt_phys, PAGE_SIZE, 0x3);
+        if (!pt) {
+            printf("[map_page] cannot access new PT phys=0x%x\n", pt_phys);
+            return;
+        }
+        memset(pt, 0, PAGE_SIZE);
+        target_pd[pd_index] = pt_phys | PAGE_PRESENT | PAGE_WRITE | user;
+    } else {
+        /* x86 requires U/S=1 in both PDE and PTE for user access. */
+        if (user && !(target_pd[pd_index] & PAGE_USER))
+            target_pd[pd_index] |= PAGE_USER;
+        pt = (uint32_t *)map_highmem_physical(pt_phys, PAGE_SIZE, 0x3);
+        if (!pt) {
+            printf("[map_page] cannot access PT phys=0x%x\n", pt_phys);
+            return;
+        }
+    }
+
+    pt[pt_index] = (paddr & ~0xfff) | (flags & 0xfff) | PAGE_PRESENT;
+    /* The target CR3 may not be active; its next load will flush non-global
+     * translations.  invlpg handles the active address space case. */
+    __asm__ volatile ("invlpg (%0)" : : "r" (vaddr) : "memory");
+    return;
+    /* Legacy implementation retained temporarily for reference; its scope
+     * prevents declarations from colliding with the active implementation. */
+    {
     uint32_t pd_virt_addr = (uint32_t)phys_to_virt(pde_phys);
     uint32_t kernel_pd_index = pd_virt_addr >> 22;
     uint32_t kernel_pt_index = (pd_virt_addr >> 12) & 0x3FF;
@@ -133,17 +139,11 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
     // 检查内核页目录是否有对应的页表
     if (!(kernel_pd[kernel_pd_index] & PAGE_PRESENT)) {
         // 先试早期分配器, 再用 buddy
-        uint32_t kernel_pt_phys = alloc_early_page_table();
-        if (kernel_pt_phys == 0) {
-            kernel_pt_phys = pmm_alloc_page();
-            if (kernel_pt_phys == 0) {
-                printf("[map_page] ERROR: No mem for kernel PT\n");
-                return;
-            }
-            // 清零新页表
-            void *tmp = map_highmem_physical(kernel_pt_phys, 4096, 0x3);
-            if (tmp) { uint8_t *p = (uint8_t*)tmp; for (int i = 0; i < 4096; i++) p[i] = 0; }
-        }
+        uint32_t kernel_pt_phys = pmm_alloc_page();
+        if (kernel_pt_phys == 0) { printf("[map_page] ERROR: No mem for kernel PT\n"); return; }
+        void *tmp = kernel_scratch_phys(kernel_pt_phys);
+        if (!tmp) return;
+        memset(tmp, 0, PAGE_SIZE);
         // 填写内核页目录
         kernel_pd[kernel_pd_index] = kernel_pt_phys | 0x3;
     }
@@ -165,7 +165,11 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
     }
 
     // 现在可以安全地访问 pd_user 了
-    uint32_t *pd_user = (uint32_t*)pd_virt_addr;
+    uint32_t *pd_user = (uint32_t*)map_highmem_physical(pde_phys, PAGE_SIZE, 0x3);
+    if (!pd_user) {
+        printf("[map_page] Cannot access target page directory phys=0x%x\n", pde_phys);
+        return;
+    }
 
     // 页目录索引和页表索引
     uint32_t pd_index = vaddr >> 22;
@@ -185,12 +189,15 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
         // 检查内核页目录是否有对应的页表（使用前面获取的 kernel_pd）
         if (!(kernel_pd[pt_kernel_pd_index] & PAGE_PRESENT)) {
             // 内核页目录也没有页表，使用早期页表分配器创建一个
-            uint32_t kernel_pt_phys = alloc_early_page_table();
+            uint32_t kernel_pt_phys = pmm_alloc_page();
             if (kernel_pt_phys == 0) {
                 printf("[map_page] ERROR: Failed to allocate kernel page table!\n");
                 return;
             }
 
+            void *tmp = kernel_scratch_phys(kernel_pt_phys);
+            if (!tmp) return;
+            memset(tmp, 0, PAGE_SIZE);
             // 填写内核页目录
             kernel_pd[pt_kernel_pd_index] = kernel_pt_phys | 0x3;
         }
@@ -252,6 +259,24 @@ void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
     
     // 🔥 关键修复：刷新 TLB，确保新映射生效
     __asm__ volatile ("invlpg (%0)" : : "r" (vaddr) : "memory");
+    }
+}
+
+/* Page-table edits may allocate a new kernel highmem-window PDE.  A user task
+ * runs with a private CR3, so perform the edit while the kernel CR3 is active
+ * and restore the caller's address space afterwards. */
+void map_page(uint32_t pde_phys, uint32_t vaddr, uint32_t paddr, uint32_t flags)
+{
+    extern uint32_t kernel_page_directory_phys;
+    uint32_t old_cr3;
+    __asm__ volatile ("movl %%cr3, %0" : "=r"(old_cr3));
+    if (pde_phys != kernel_page_directory_phys && old_cr3 != kernel_page_directory_phys) {
+        __asm__ volatile ("movl %0, %%cr3" :: "r"(kernel_page_directory_phys) : "memory");
+        map_page_impl(pde_phys, vaddr, paddr, flags);
+        __asm__ volatile ("movl %0, %%cr3" :: "r"(old_cr3) : "memory");
+        return;
+    }
+    map_page_impl(pde_phys, vaddr, paddr, flags);
 }
 
 
@@ -298,7 +323,7 @@ void* alloc_page_table(uint32_t virt_addr, uint32_t phys_addr,uint32_t flags) {
     if (!(pd[pd_index] & 0x1)) {
         // 页表不存在,需要分配
         printf("  Page table not present, allocating...\n");
-        uint32_t pt_phys = alloc_early_page_table();
+        uint32_t pt_phys = pmm_is_ready() ? pmm_alloc_page() : alloc_early_page_table();
         printf("  Allocated PT at phys=0x%x\n", pt_phys);
 
         if (pt_phys == 0) {
@@ -352,30 +377,37 @@ void* alloc_page_table(uint32_t virt_addr, uint32_t phys_addr,uint32_t flags) {
 void map_4k_page(uint32_t phys_addr, uint32_t virt_addr, uint32_t flags) {
     uint32_t pd_index = (virt_addr >> 22) & 0x3FF;
     uint32_t pt_index = (virt_addr >> 12) & 0x3FF;
-    uint32_t* high_page_directory = (uint32_t*)pd;
+    /* User tasks share the kernel CR3.  Do not use the legacy `pd` symbol
+     * here: it may refer to the bootstrap/linked address rather than the
+     * physical page directory currently loaded in CR3. */
+    extern uint32_t kernel_page_directory_phys;
+    uint32_t* high_page_directory =
+        (uint32_t*)phys_to_virt(kernel_page_directory_phys);
 
     // 确保页目录项存在
     if (!(high_page_directory[pd_index] & 0x1)) {
         // 分配新页表（在above 8MB）
         printf("Allocating new page table for directory entry %u\n", pd_index);
 
-        uint32_t pt_phys = alloc_early_page_table();
+        uint32_t pt_phys = pmm_is_ready() ? pmm_alloc_page() : alloc_early_page_table();
         if (pt_phys == 0) {
             printf("ERROR: Failed to allocate page table!\n");
             return;
         }
 
         // 清零新页表
-        uint32_t* new_pt = (uint32_t*)phys_to_virt(pt_phys);
-        for (int i = 0; i < 1024; i++) {
-            new_pt[i] = 0;
-        }
+        uint32_t* new_pt = (uint32_t*)kernel_scratch_phys(pt_phys);
+        if (!new_pt) return;
+        memset(new_pt, 0, PAGE_SIZE);
 
         // 设置单个页表项（只映射当前页，不是整个4MB）
         new_pt[pt_index] = (phys_addr & ~0xFFF) | flags;
 
         // 填写页目录项
-        high_page_directory[pd_index] = pt_phys | 0x3;
+        /* Propagate the caller's user permission to the PDE.  Kernel mappings
+         * pass 0x3 and remain supervisor-only; sbrk() passes 0x7 and needs a
+         * user-accessible PDE as well as user PTEs. */
+        high_page_directory[pd_index] = pt_phys | 0x3 | (flags & 0x4);
 
         printf("Allocated new page table for pd_idx=%u: pt_phys=0x%x, mapped virt=0x%x -> phys=0x%x\n",
                pd_index, pt_phys, virt_addr, phys_addr);
@@ -388,7 +420,14 @@ void map_4k_page(uint32_t phys_addr, uint32_t virt_addr, uint32_t flags) {
 
     // 获取已存在的页表（需要转换为虚拟地址）
     uint32_t pt_phys = high_page_directory[pd_index] & ~0xFFF;
-    uint32_t* page_table = (uint32_t*)phys_to_virt(pt_phys);
+    uint32_t* page_table = (uint32_t*)kernel_scratch_phys(pt_phys);
+    if (!page_table) return;
+
+    /* A page table may have been created by a kernel mapping first and later
+     * reused for a user mapping.  Upgrade only the PDE user bit when the
+     * caller explicitly requests it; never downgrade an existing mapping. */
+    if (flags & 0x4)
+        high_page_directory[pd_index] |= 0x4;
 
     // 设置页表项
     page_table[pt_index] = (phys_addr & ~0xFFF) | flags;
@@ -529,8 +568,10 @@ void *dma_alloc_coherent(size_t size, uint32_t *dma_handle) {
     void *vaddr = (void *)(DMA_VIRT_BASE + dma_alloc_ptr);
     uint32_t paddr = DMA_PHYS_BASE + dma_alloc_ptr;
 
+#if DMA_ALLOC_VERBOSE
     printf("[dma] alloc: size=%u, virt=0x%x, phys=0x%x\n",
            (uint32_t)size, (uint32_t)vaddr, paddr);
+#endif
 
     // 更新分配指针
     dma_alloc_ptr += size;

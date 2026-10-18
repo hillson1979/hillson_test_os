@@ -275,7 +275,10 @@ int net_rx_packet(net_device_t *dev, uint8_t *data, uint32_t len) {
         //        (our_ip >> 8) & 0xFF, our_ip & 0xFF);
 
         // 如果目标 IP 不是本机 IP，且不是广播 (255.255.255.255)
-        if (dst_ip != our_ip && dst_ip != 0xFFFFFFFF) {
+        /* During DHCP the interface has no address yet; accept both
+         * broadcast and the offered unicast address so the UDP layer can
+         * deliver the lease response. */
+        if (local_ip != 0 && dst_ip != our_ip && dst_ip != 0xFFFFFFFF) {
             //printf("[net] RX: NOT for us (dst IP != our IP), dropping\n");
             return 0;  // 不是错误，只是不是给我们的
         }
@@ -405,7 +408,8 @@ int ip_input(net_device_t *dev, uint8_t *data, uint32_t len) {
     uint32_t dst_ip = ntohl(ip->ip_dst);
     uint32_t our_ip = dev->ip_addr;  // dev->ip_addr 已经是主机字节序
 
-    if (dst_ip != our_ip && dst_ip != 0xFFFFFFFF) {
+    /* A zero interface address is the DHCP discovery/request state. */
+    if (dev->ip_addr != 0 && dst_ip != our_ip && dst_ip != 0xFFFFFFFF) {
         printf("[net] IP not for us (dst=%d.%d.%d.%d, our=%d.%d.%d.%d), dropping\n",
                (dst_ip >> 24) & 0xFF, (dst_ip >> 16) & 0xFF,
                (dst_ip >> 8) & 0xFF, dst_ip & 0xFF,

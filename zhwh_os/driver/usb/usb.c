@@ -34,6 +34,7 @@
 #include <kernel/usb_hid.h>
 #include <kernel/usb_hub.h>
 #include <kernel/usb_xhci.h>
+#include <kernel/rtl8188eu_wifi.h>
 #include <mm/kheap.h>
 
 extern void kernel_usb_status_line(const char *stage, const char *detail);
@@ -47,6 +48,45 @@ pci_compat_t *usbbus[MAX_USB_BUSES + 1];
 
 static struct usb_transfer_t inttransfer_head;
 static kernel_mutex_t inttransfer_list_lock;
+
+#define USB_TRANSACTION_POOL_SIZE 128
+static struct usb_transaction_t usb_transaction_pool[USB_TRANSACTION_POOL_SIZE];
+static volatile uint8_t usb_transaction_pool_used[USB_TRANSACTION_POOL_SIZE];
+
+static struct usb_transaction_t *usb_alloc_transaction(void)
+{
+    unsigned int i;
+
+    for(i = 0; i < USB_TRANSACTION_POOL_SIZE; i++)
+    {
+        if(__sync_bool_compare_and_swap(&usb_transaction_pool_used[i], 0, 1))
+        {
+            A_memset(&usb_transaction_pool[i], 0,
+                     sizeof(usb_transaction_pool[i]));
+            return &usb_transaction_pool[i];
+        }
+    }
+
+    usb_printk("usb: transaction pool exhausted\n");
+    return NULL;
+}
+
+static void usb_free_transaction(volatile struct usb_transaction_t *transaction)
+{
+    unsigned int index;
+
+    if(!transaction || transaction < usb_transaction_pool ||
+       transaction >= usb_transaction_pool + USB_TRANSACTION_POOL_SIZE)
+    {
+        kfree((void *)transaction);
+        return;
+    }
+
+    index = (unsigned int)(transaction - usb_transaction_pool);
+    A_memset((void *)&usb_transaction_pool[index], 0,
+             sizeof(usb_transaction_pool[index]));
+    __sync_lock_release(&usb_transaction_pool_used[index]);
+}
 
 
 static void print_device(struct usb_dev_t *dev)
@@ -292,6 +332,8 @@ void usb_destroy_dev(struct usb_dev_t *dev)
         return;
     }
 
+    rtl8188eu_usb_remove(dev);
+
     // remove USB hub
     if(dev->class == 0x09)
     {
@@ -376,13 +418,13 @@ void usb_schedule_inttransfer(struct usb_dev_t *usb, struct usb_endpoint_t *endp
     transfer->callback_arg = callback_arg;
     transfer->freq = freq;
 
-    usb_in_transaction(transfer, 0, buf, bufsz);
-    usb_schedule_transfer(transfer);
-
     kernel_mutex_lock(&inttransfer_list_lock);
     transfer->next_inttransfer = inttransfer_head.next_inttransfer;
     inttransfer_head.next_inttransfer = transfer;
     kernel_mutex_unlock(&inttransfer_list_lock);
+
+    usb_in_transaction(transfer, 0, buf, bufsz);
+    usb_schedule_transfer(transfer);
 }
 
 
@@ -429,7 +471,7 @@ int usb_poll_transfer(struct usb_transfer_t *transfer)
                    (transfer->dev && transfer->dev->ops) ?
                        (void*)transfer->dev->ops->poll_transfer : NULL);
 
-    /* Bypass vtable for XHCI â€?linker sometimes corrupts the function pointer */
+    /* Bypass vtable for XHCI ï¿½?linker sometimes corrupts the function pointer */
     if (transfer->dev && transfer->dev->type == USB_TYPE_XHCI) {
         extern int xhci_poll_transfer(struct usb_transfer_t *transfer);
         if (cnt <= 3)
@@ -494,7 +536,7 @@ void usb_delete_transfer(struct usb_transfer_t *transfer)
             trans->data = NULL;
         }
 
-        kfree((void *)trans);
+        usb_free_transaction(trans);
         trans = next;
     }
 
@@ -521,12 +563,10 @@ uint8_t usb_setup_transaction(struct usb_transfer_t *transfer,
     struct usb_transaction_t *transaction;
     uint8_t res = 0;
 
-    if(!(transaction = kmalloc(sizeof(struct usb_transaction_t))))
+    if(!(transaction = usb_alloc_transaction()))
     {
         return 0;
     }
-
-    A_memset(transaction, 0, sizeof(struct usb_transaction_t));
 
     transaction->dev = transfer->dev;
     transaction->type = USB_TRANS_SETUP;
@@ -568,9 +608,13 @@ void usb_in_transaction(struct usb_transfer_t *transfer,
     size_t minlen;
     int remaining;
 
-    if(transfer->type == USB_TRANSFER_CTRL && transfer->dev &&
-       transfer->dev->type == USB_TYPE_XHCI)
+    if(transfer->dev && transfer->dev->type == USB_TYPE_XHCI &&
+       (transfer->type == USB_TRANSFER_CTRL ||
+        transfer->type == USB_TRANSFER_BULK))
     {
+        /* xHCI Normal TRBs describe the complete Bulk IN buffer.  Splitting
+         * at endpoint MPS would create independent, unchained TDs and the
+         * first 512-byte TRB could not receive an RTL8188EUS USB aggregate. */
         minlen = len;
         len = 0;
         remaining = 0;
@@ -593,12 +637,10 @@ void usb_in_transaction(struct usb_transfer_t *transfer,
         }
     }
 
-    if(!(transaction = kmalloc(sizeof(struct usb_transaction_t))))
+    if(!(transaction = usb_alloc_transaction()))
     {
         return;
     }
-
-    A_memset(transaction, 0, sizeof(struct usb_transaction_t));
 
     transaction->dev = transfer->dev;
     transaction->type = USB_TRANS_IN;
@@ -658,12 +700,10 @@ void usb_out_transaction(struct usb_transfer_t *transfer,
             remaining++;
     }
 
-    if(!(transaction = kmalloc(sizeof(struct usb_transaction_t))))
+    if(!(transaction = usb_alloc_transaction()))
     {
         return;
     }
-
-    A_memset(transaction, 0, sizeof(struct usb_transaction_t));
 
     transaction->dev = transfer->dev;
     transaction->type = USB_TRANS_OUT;
@@ -797,7 +837,7 @@ int usb_get_device_descriptor(struct usb_dev_t *dev, uint8_t len)
 
         /* Decode bMaxPacketSize0:
          *   USB 1.x / 2.0 (bcdUSB < 0x0300): literal value (8, 16, 32, 64)
-         *   USB 3.0  (bcdUSB >= 0x0300): exponent â€?real MPS = 2^exp (9 => 512)
+         *   USB 3.0  (bcdUSB >= 0x0300): exponent ï¿½?real MPS = 2^exp (9 => 512)
          */
         if (desc.bcd_usb >= 0x0300 && desc.mps >= 7 && desc.mps <= 12) {
             real_mps = 1u << desc.mps;   /* 9 -> 512, 10 -> 1024, etc. */
@@ -993,10 +1033,14 @@ int usb_get_config_descriptor(struct usb_dev_t *dev)
                 if (current_iface) {
                     if (endpoint->type == USB_ENDPOINT_INTERRUPT)
                         current_iface->endpoint_interrupt = endpoint;
-                    else if (endpoint->direction == USB_ENDPOINT_IN)
+                    else if (endpoint->type == USB_ENDPOINT_BULK &&
+                             endpoint->direction == USB_ENDPOINT_IN &&
+                             !current_iface->endpoint_in)
                         current_iface->endpoint_in = endpoint;
-                    else
+                    else if (!current_iface->endpoint_out)
                         current_iface->endpoint_out = endpoint;
+                    else
+                        current_iface->endpoint_out2 = endpoint;
                 }
             }
         }
@@ -1168,7 +1212,8 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
     usb_printk("usb: addr=%d set\n", dev->num);
 
     // now get full 18-byte descriptor for all speeds
-    usb_get_device_descriptor(dev, 18);
+    if ((res = usb_get_device_descriptor(dev, 18)) < 0)
+        return res;
 
     if((res = usb_get_config_descriptor(dev)) < 0)
     {
@@ -1215,30 +1260,51 @@ int usb_setup_device(struct usb_dev_t *dev, unsigned int addr)
     if(dev->class == 0x09)
     {
         usb_printk("usb: setting up USB hub\n");
-        init_hub(dev);
+        if ((res = init_hub(dev)) < 0)
+            return res;
     }
     else
     {
         struct usb_interface_t *iface;
         int found = 0;
+        int class_error = 0;
 
         for(iface = dev->interfaces; iface != NULL; iface = iface->next)
         {
-            if(iface->desc.class == 0x08 && iface->desc.subclass == 0x06)   // MSD
+            res = 0;
+            if(rtl8188eu_usb_match(dev) &&
+               iface->endpoint_in && iface->endpoint_out &&
+               iface->endpoint_in->type == USB_ENDPOINT_BULK &&
+               iface->endpoint_out->type == USB_ENDPOINT_BULK &&
+               iface->endpoint_in->direction == USB_ENDPOINT_IN &&
+               iface->endpoint_out->direction == USB_ENDPOINT_OUT)
+            {
+                found = 1;
+                usb_printk("usb: RTL8188EUS wireless adapter detected\n");
+                res = rtl8188eu_usb_probe(iface);
+            }
+            else if(iface->desc.class == 0x08 && iface->desc.subclass == 0x06)   // MSD
             {
                 found = 1;
                 usb_printk("usb: setting up Mass Storage Device (MSD)\n");
                 kernel_usb_msc_status_line("usb class", "mass storage detected");
-                init_msd(iface);
+                res = init_msd(iface);
             }
             else if(iface->desc.class == 0x03)
             {
                 found = 1;
                 usb_printk("usb: HID device detected, initializing...\n");
                 kernel_usb_status_line("usb class", "HID device detected");
-                init_hid(iface);
+                res = init_hid(iface);
+            }
+            if (res < 0) {
+                class_error = res;
+                usb_printk("usb: interface %u class=0x%x initialization failed (%d)\n",
+                           iface->desc.interfacenum, iface->desc.class, res);
             }
         }
+        if (class_error < 0)
+            return class_error;
 
         if(!found)
         {
@@ -1292,13 +1358,13 @@ void usb_process_deferred_clears(void)
      * xhci_poll_transfer (see "STALL recovery" block).
      * The HC driver writes CLEAR_FEATURE to EP0 and waits
      * for its completion inline, THEN re-arms EP3.
-     * No deferred processing needed â€?the flag is cleared
+     * No deferred processing needed ï¿½?the flag is cleared
      * inside the recovery function itself. */
 }
 
 /*
- * Poll interrupt transfers â€?called from xhci_poll() in the main
- * scheduler idle loop (via usb_periodic_poll_callback â†?usb_hcd_poll_hotplug).
+ * Poll interrupt transfers ï¿½?called from xhci_poll() in the main
+ * scheduler idle loop (via usb_periodic_poll_callback ï¿½?usb_hcd_poll_hotplug).
  * Each HC driver's poll() handles event-ring completions and
  * re-queues interrupt TRBs.
  */
@@ -1306,6 +1372,11 @@ void usb_poll_interrupts(void)
 {
     volatile struct usb_transfer_t *t;
     static int call_cnt = 0;
+    static int poll_busy = 0;
+
+    if (poll_busy)
+        return;
+    poll_busy = 1;
 
     if (++call_cnt <= 5)
         usb_printk("usb_poll_intr: call #%d head=%p\n",
@@ -1316,12 +1387,40 @@ void usb_poll_interrupts(void)
      * Also called from usb_periodic_poll_callback (idle path). */
     usb_process_deferred_clears();
 
+    /* The xHCI Event Ring is shared by interrupt and persistent Bulk IN
+     * transfers.  Service RTL8188EUS here as well so a DCI 3 RX event
+     * cannot block a synchronous DCI 4 Bulk OUT completion behind it. */
+    {
+        extern void rtl8188eu_wifi_poll(void);
+        rtl8188eu_wifi_poll();
+    }
+
     for (t = inttransfer_head.next_inttransfer; t != NULL;
          t = t->next_inttransfer) {
         if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback) {
             t->callback(t->callback_arg);
         }
     }
+    poll_busy = 0;
+}
+
+/* Service interrupt pipes without entering the WiFi Bulk-IN poller.  Long
+ * synchronous WiFi operations use this to keep the mouse callback and TRB
+ * re-arm moving without recursively polling the RTL8188EU state machine. */
+void usb_poll_hid_interrupts(void)
+{
+    volatile struct usb_transfer_t *t;
+    static int hid_poll_busy;
+
+    if (hid_poll_busy)
+        return;
+    hid_poll_busy = 1;
+    for (t = inttransfer_head.next_inttransfer; t != NULL;
+         t = t->next_inttransfer) {
+        if (usb_poll_transfer((struct usb_transfer_t *)t) && t->callback)
+            t->callback(t->callback_arg);
+    }
+    hid_poll_busy = 0;
 }
 
 static inline char *usbtype(uint8_t prog_if)

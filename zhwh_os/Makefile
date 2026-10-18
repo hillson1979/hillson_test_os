@@ -1,4 +1,4 @@
-# 编译器设置
+﻿# 编译器设置
 CC = gcc
 AS = gcc
 LD = gcc  # 使用gcc进行链接
@@ -14,13 +14,17 @@ CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-bui
          -fno-math-errno -fno-rounding-math -fno-signaling-nans \
          -mgeneral-regs-only  # 强制只使用通用寄存器，禁用 XMM/YMM 寄存器
 ASFLAGS = $(TARGET_ARCH)
+GRAPH_ENABLE_SELFTEST ?= 0
+CFLAGS += -DGRAPH_ENABLE_SELFTEST=$(GRAPH_ENABLE_SELFTEST)
 LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T linker/os.ld -Wl,-Map=kernel.map
 
 # 包含目录
-INCLUDES = -I./include -I./include/fs
+INCLUDES = -I./include -I./include/fs -I./graph/include -I./graph/framebuffer/include
 
+# Native graphics foundation. OpenGL and Minecraft remain user-space targets.
 # 源文件
-C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c klog.c
+C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c mm/buddy.c mm/pmm.c mm/kmalloc.c mm/user_vm.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c klog.c
+C_SOURCES += graph/src/graph.c graph/src/context.c graph/src/window.c graph/src/system.c graph/src/selftest.c graph/backends/framebuffer_backend.c
 C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += driver/vbe.c  # 添加 VBE 驱动
 C_SOURCES += driver/uart.c  # 添加串口驱动
@@ -52,7 +56,6 @@ C_SOURCES += driver/usb/usb_hub.c      # USB hub driver
 # C_SOURCES += driver/usb/usb_ohci.c
 # C_SOURCES += driver/usb/usb_ioctl.c
 C_SOURCES += driver/ps2mouse.c  # 添加 PS/2 鼠标驱动
-C_SOURCES += mm/buddy.c  # 启用 Buddy System
 # C_SOURCES += mm/slab.c    # Slab分配器 (需要先验证USB枚举)
 # C_SOURCES += mm/kmalloc.c  # kmalloc (复用了kmalloc_early)
 C_SOURCES += mm/test_memory.c  # 启用内存测试
@@ -72,6 +75,10 @@ C_SOURCES += net/wifi/intel_fw.c  # 添加 Intel 固件通信
 C_SOURCES += net/wifi/intel_fw_parser.c  # 添加 Intel 固件解析器
 C_SOURCES += net/wifi/dma.c  # 添加 DMA 管理
 C_SOURCES += net/wifi/firmware.c  # 添加固件加载
+C_SOURCES += net/rtl8188eu_wifi/rtl8188eu_usb.c  # RTL8188EUS USB WiFi
+C_SOURCES += net/rtl8188eu_wifi/wpa2_crypto.c # WPA2-PSK crypto primitives
+C_SOURCES += net/rtl8188eu_wifi/rtl8188eufw.c  # RTL8188EUS firmware
+C_SOURCES += net/rtl8188eu_wifi/rtl8188eu_tables.c # RTL8188E PHY/AGC/RF tables
 C_SOURCES += net/wifi/ieee80211.c  # 添加 802.11 帧处理
 # Intel WiFi 固件（小型占位固件，真实固件由用户态加载）
 C_SOURCES += net/wifi/firmware/intel/iwlwifi-6000g2a.c
@@ -99,6 +106,14 @@ OFFSET_HEADER = task_offsets.s
 
 # 默认目标（依赖自动生成的偏移量文件）
 all: $(OFFSET_HEADER) $(TARGET) $(RAW_TARGET) desktop
+
+opengl-test:
+	+$(MAKE) -C opengl gl_test.elf
+
+minecraft-test:
+	+$(MAKE) -C Minecraft mc.elf
+
+graph-objects: graph/src/graph.o graph/src/context.o graph/src/window.o graph/src/system.o graph/src/selftest.o graph/backends/framebuffer_backend.o
 
 # 自动生成汇编偏移量文件（推荐方式）
 $(OFFSET_HEADER): gen_asm_offsets.c include/task.h
@@ -161,8 +176,12 @@ net/wifi/firmware/atheros/fw-5.o:
 
 clean:
 	+$(MAKE) -C hillsonOs_desktop clean
+	+$(MAKE) -C opengl clean
+	+$(MAKE) -C Minecraft clean
 	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso $(OFFSETcalc) $(OFFSET_GEN) $(OFFSET_HEADER)
 	@echo "Cleaned object files and binaries"
+
+.PHONY: all desktop graph-objects opengl-test clean help
 
 help:
 	@echo "可用目标:"
@@ -175,4 +194,5 @@ help:
 	@echo "  help        - 显示此帮助信息"
 
 .PHONY: all clean help calc-offset gen-offsets desktop
+
 

@@ -258,6 +258,10 @@ struct usb_transfer_t {
     struct usb_endpoint_t *endpoint;
     uint8_t  type;          /* USB_TRANSFER_CTRL/BULK/INTERRUPT/ISOCHRONOUS */
     uint8_t  success;
+    uint8_t  event_pending;
+    uint8_t  event_cc;
+    uint8_t  trb_released;
+    uint64_t event_trb_phys;
     uint16_t pktsz;
     uint16_t actual_length; /* Bytes completed by the HC for the last event */
     uint8_t  freq;
@@ -278,6 +282,7 @@ struct usb_interface_t {
     struct usb_dev_t *usb;
     struct usb_endpoint_t *endpoint_in;
     struct usb_endpoint_t *endpoint_out;
+    struct usb_endpoint_t *endpoint_out2;
     struct usb_endpoint_t *endpoint_interrupt;
     uint32_t cur_tag;
     struct usb_interface_t *next;

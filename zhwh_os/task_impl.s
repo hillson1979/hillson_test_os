@@ -15,7 +15,7 @@
 .set TASK_HAS_RUN_USER, 52  # has_run_user 标志
 .set TASK_NICE,        56
 .set TASK_VRUNTIME,    96
-.set TASK_IFRAME,      156     # tf 字段偏移量（根据 GDB 内存 dump 验证：offset 0x98 = 0xC02A3114）
+.set TASK_IFRAME,      164     # tf 字段偏移量；thread_group/group_leader 位于 mm 后
 
 # 用户态段选择子定义
 .set USER_CS, 0x1B       # 用户代码段选择子 (RPL=3, TI=0, index=3)
@@ -251,9 +251,9 @@ setup_signal_handler:
 #   - pde (160-163) ⚠️ +4
 #   - kstack (164-167) ⚠️ +4
 #   - iret_frame (168-183) ⚠️ +4, uint32_t iret_frame[5] = 20字节
-.set TASK_PDE,       160   # ⚠️ 添加 has_run_user 后，pde = offset 160
-.set TASK_KSTACK,    164   # ⚠️ 添加 has_run_user 后，kstack = offset 164
-.set TASK_IRET_FRAME, 168  # ⚠️ 添加 has_run_user 后，iret_frame = offset 168
+.set TASK_PDE,       172
+.set TASK_KSTACK,    176
+.set TASK_IRET_FRAME, 180
 
 # 外部符号声明
 .extern th_u

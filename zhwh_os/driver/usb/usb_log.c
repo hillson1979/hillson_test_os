@@ -14,7 +14,33 @@ static char  usb_buf[USB_LOG_SZ];
 static int   usb_w = 0;
 static char  usb_snap[USB_LOG_SZ];
 static int   usb_snap_len = 0;
-static int   usb_console_enabled = 0;
+/* Temporary focused capture: keep RTL8188 diagnostics independent from the
+ * noisy shared USB ring so initialization through connect fits in the file. */
+static char  rtl8188_buf[USB_LOG_SZ];
+static int   rtl8188_w = 0;
+#define USB_LOG_EXPORT_RTL8188_ONLY 0
+/* Keep USB probe diagnostics visible on the serial console while drivers
+ * such as RTL8188EUS are being brought up. */
+static int   usb_console_enabled = 1;
+
+static int usb_log_contains(const char *text, int text_len,
+                            const char *needle)
+{
+    int i;
+    int j;
+
+    if (!text || !needle || text_len <= 0 || needle[0] == '\0')
+        return 0;
+    for (i = 0; i < text_len; i++) {
+        for (j = 0; needle[j] != '\0' && i + j < text_len; j++) {
+            if (text[i + j] != needle[j])
+                break;
+        }
+        if (needle[j] == '\0')
+            return 1;
+    }
+    return 0;
+}
 
 void usb_log_write(const char *s, int len) {
     if (len <= 0) return;
@@ -25,11 +51,19 @@ void usb_log_write(const char *s, int len) {
 }
 
 void usb_log_snapshot(void) {
+#if USB_LOG_EXPORT_RTL8188_ONLY
+    int total = (rtl8188_w < USB_LOG_SZ) ? rtl8188_w : USB_LOG_SZ;
+    int start = (rtl8188_w < USB_LOG_SZ) ? 0 : (rtl8188_w % USB_LOG_SZ);
+    usb_snap_len = total;
+    for (int i = 0; i < total; i++)
+        usb_snap[i] = rtl8188_buf[(start + i) % USB_LOG_SZ];
+#else
     int total = (usb_w < USB_LOG_SZ) ? usb_w : USB_LOG_SZ;
     int start = (usb_w < USB_LOG_SZ) ? 0 : (usb_w % USB_LOG_SZ);
     usb_snap_len = total;
     for (int i = 0; i < total; i++)
         usb_snap[i] = usb_buf[(start + i) % USB_LOG_SZ];
+#endif
 
     /* Preserve the complete ring contents for diagnostics export. */
     /* Reserve one byte for the terminator when the ring is full. */
@@ -40,7 +74,7 @@ void usb_log_snapshot(void) {
 
 void *usb_log_get_buf(void) { return usb_snap; }
 int   usb_log_get_size(void) { return usb_snap_len; }
-void  usb_log_clear(void) { usb_w = 0; }
+void  usb_log_clear(void) { usb_w = 0; rtl8188_w = 0; }
 void  usb_log_append(const char *s) { if(s) usb_log_write(s, strlen(s)); }
 void usb_log_set_console(int enabled) { usb_console_enabled = enabled ? 1 : 0; }
 int  usb_log_get_console(void) { return usb_console_enabled; }
@@ -51,6 +85,33 @@ void usb_printk_set_dev(net_device_t *d) {
     printf("[usb_log] dev set: %s\n", d ? d->name : "NULL");
 }
 
+extern void kernel_usb_status_line(const char *stage, const char *detail);
+
+static char usb_screen_line[256];
+static int usb_screen_line_len;
+
+static void usb_log_write_screen_lines(const char *text, int length)
+{
+    int i;
+
+    if (!text || length <= 0)
+        return;
+    for (i = 0; i < length; i++) {
+        char c = text[i];
+        if (c == '\r')
+            continue;
+        if (c == '\n') {
+            if (usb_screen_line_len > 0) {
+                usb_screen_line[usb_screen_line_len] = 0;
+                kernel_usb_status_line("kernel", usb_screen_line);
+                usb_screen_line_len = 0;
+            }
+            continue;
+        }
+        if (usb_screen_line_len < (int)sizeof(usb_screen_line) - 1)
+            usb_screen_line[usb_screen_line_len++] = c;
+    }
+}
 /* usb_printk — printf + buffer + UDP via eth0 */
 int usb_printk(const char *fmt, ...) {
     char line[2048];
@@ -64,10 +125,19 @@ int usb_printk(const char *fmt, ...) {
     if (usb_console_enabled)
         printf("%s", line);
     if (len <= 0) return len;
-    /* netdebug_vsnprintf may return the would-be length on truncation. */
     if (len >= (int)sizeof(line))
         len = sizeof(line) - 1;
+    if (usb_console_enabled)
+        usb_log_write_screen_lines(line, len);
+    /* Length was clamped before screen and ring-buffer output. */
     usb_log_write(line, len);
+    if (usb_log_contains(line, len, "rtl8188eu")) {
+        int i;
+        for (i = 0; i < len; i++) {
+            rtl8188_buf[rtl8188_w % USB_LOG_SZ] = line[i];
+            rtl8188_w++;
+        }
+    }
 
     return len;
 }

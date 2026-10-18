@@ -16,11 +16,15 @@
 #include "fs.h"
 #include "mm.h"
 #include "usb_display.h"
+#include "mm/user_vm.h"
+#include <kernel/rtl8188eu_wifi.h>
 
 #define SYS_USB_INIT 83
 #define SYS_USB_LOG_SAVE 84
 #define SYS_USB_STATUS 85
 #define SYS_USB_LOG_DISPLAY 86
+#define SYS_GRAPH_GET_DISPLAY_INFO 87
+#define SYS_GRAPH_PRESENT 88
 
 // PCI ???????????? I/O ??????
 #define CONFIG_ADDRESS 0xCF8
@@ -76,6 +80,17 @@ static int usb_mouse_x = 512;
 static int usb_mouse_y = 384;
 static uint8_t usb_mouse_buttons = 0;
 static int mouse_last_x = -1, mouse_last_y = -1, mouse_last_buttons = -1;
+static int desktop_usb_runtime_started = 0;
+static int wifi_usb_log_export_pending = 0;
+
+static void queue_usb_log_snapshot_after_wifi(const char *operation)
+{
+    extern void usb_log_snapshot(void);
+    usb_log_snapshot();
+    wifi_usb_log_export_pending = 1;
+    printf("[WiFi] USB log snapshot after %s queued for export\n",
+           operation);
+}
 
 // ???? ?????????????????????????????????????????????????????????????????????
 // ???? ?????????static?????????????????????????????????
@@ -347,7 +362,9 @@ void syscall_dispatch(struct trapframe *tf) {
             tf->eax = 0;
             break;
         case SYS_YIELD: {
-            // CPU,
+            extern void usb_periodic_poll_callback(void);
+            usb_periodic_poll_callback();
+
             extern int need_resched;
             need_resched = 1;
             tf->eax = 0;
@@ -728,9 +745,21 @@ void syscall_dispatch(struct trapframe *tf) {
                     allocation_failed = 1;
                     break;
                 }
+                void *page_mem = map_physical_scratch(phys);
+                if (!page_mem) {
+                    pmm_free_page(phys);
+                    allocation_failed = 1;
+                    break;
+                }
+                memset(page_mem, 0, 0x1000);
                 uint32_t virt = old_brk + i * 0x1000;
-                map_4k_page(phys, virt, 0x7);
-                memset((void *)virt, 0, 0x1000);
+                /* Allocate backing pages from the buddy allocator and map
+                 * them into this process's private address space. */
+                if (user_vm_map_page(task, virt, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER) != 0) {
+                    pmm_free_page(phys);
+                    allocation_failed = 1;
+                    break;
+                }
             }
             if (allocation_failed) { tf->eax = 0; break; }
             task->user_brk = new_brk;
@@ -964,10 +993,17 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         case SYS_WIFI_SCAN: {
-            // wifi_scan() - WiFi 
-            extern int wifi_scan(void);
-            int ret = wifi_scan();
-            tf->eax = ret;  // 
+            extern int xhci_probe_deferred_wifi(void);
+            extern void usb_init_poll(void);
+            int wifi_polls;
+
+            for (wifi_polls = 0; wifi_polls < 2048; wifi_polls++) {
+                if (xhci_probe_deferred_wifi() == 0)
+                    break;
+                usb_init_poll();
+            }
+            tf->eax = rtl8188eu_wifi_scan();
+            queue_usb_log_snapshot_after_wifi("scan");
             break;
         }
         case SYS_WIFI_CONNECT: {
@@ -976,59 +1012,33 @@ void syscall_dispatch(struct trapframe *tf) {
             const char *password = (const char *)arg2;
 
             // 
-            char kssid[32];
+            char kssid[33];
             char kpassword[64];
-
             int i;
-            for (i = 0; i < 31 && ssid[i] != '\0'; i++) {
-                __asm__ volatile (
-                    "pushfl\n"
-                    "orl $0x40000, (%%esp)\n"
-                    "popfl\n"
-                    "movb (%1), %0\n"
-                    "pushfl\n"
-                    "andl $~0x40000, (%%esp)\n"
-                    "popfl\n"
-                    : "=r"(kssid[i])
-                    : "r"(&ssid[i])
-                    : "memory", "cc"
-                );
+            if (!ssid || !password) { tf->eax = -1; break; }
+            for (i = 0; i < 32; i++) {
+                copy_from_user(&kssid[i], &ssid[i], 1);
+                if (!kssid[i]) break;
             }
-            kssid[i] = '\0';
-
-            for (i = 0; i < 63 && password[i] != '\0'; i++) {
-                __asm__ volatile (
-                    "pushfl\n"
-                    "orl $0x40000, (%%esp)\n"
-                    "popfl\n"
-                    "movb (%1), %0\n"
-                    "pushfl\n"
-                    "andl $~0x40000, (%%esp)\n"
-                    "popfl\n"
-                    : "=r"(kpassword[i])
-                    : "r"(&password[i])
-                    : "memory", "cc"
-                );
+            kssid[i < 32 ? i : 32] = 0;
+            for (i = 0; i < 63; i++) {
+                copy_from_user(&kpassword[i], &password[i], 1);
+                if (!kpassword[i]) break;
             }
-            kpassword[i] = '\0';
-
-            extern int wifi_connect(const char *, const char *);
-            int ret = wifi_connect(kssid, kpassword);
-            tf->eax = ret;
+            kpassword[i < 63 ? i : 63] = 0;
+            tf->eax = rtl8188eu_wifi_connect(kssid, kpassword);
+            for (i = 0; i < (int)sizeof(kpassword); i++) kpassword[i] = 0;
+            queue_usb_log_snapshot_after_wifi("connect");
             break;
         }
         case SYS_WIFI_DISCONNECT: {
             // wifi_disconnect() - WiFi 
-            extern int wifi_disconnect(void);
-            int ret = wifi_disconnect();
-            tf->eax = ret;
+            tf->eax = rtl8188eu_wifi_disconnect();
             break;
         }
         case SYS_WIFI_STATUS: {
             // wifi_status() - WiFi 
-            extern void wifi_status(void);
-            wifi_status();
-            tf->eax = 0;
+            tf->eax = rtl8188eu_wifi_status();
             break;
         }
         case SYS_WIFI_LOAD_FIRMWARE: {
@@ -1942,6 +1952,43 @@ void syscall_dispatch(struct trapframe *tf) {
             break;
         }
         // ==================== GUI ???????????? ====================
+        case SYS_GRAPH_GET_DISPLAY_INFO: {
+            struct graph_display_info {
+                uint32_t width, height, pitch, bytes_per_pixel;
+            } info;
+            extern int vbe_is_available(void);
+            extern void vbe_get_resolution(uint16_t*, uint16_t*);
+            extern uint16_t vbe_get_pitch(void);
+            extern uint8_t vbe_get_bpp(void);
+            uint16_t width, height;
+            if (!vbe_is_available() || !tf->ebx) { tf->eax = -1; break; }
+            vbe_get_resolution(&width, &height);
+            info.width = width; info.height = height; info.pitch = vbe_get_pitch();
+            info.bytes_per_pixel = vbe_get_bpp() / 8;
+            tf->eax = copy_to_user((void*)tf->ebx, &info, sizeof(info));
+            break;
+        }
+        case SYS_GRAPH_PRESENT: {
+            const uint8_t *src = (const uint8_t*)tf->ebx;
+            uint32_t width = tf->ecx, height = tf->edx, src_pitch = tf->esi;
+            extern int vbe_is_available(void);
+            extern void vbe_get_resolution(uint16_t*, uint16_t*);
+            extern uint16_t vbe_get_pitch(void);
+            uint16_t fb_width, fb_height; uint32_t y, row_bytes;
+            uint8_t *dst = (uint8_t*)0xF0000000u;
+            if (!src || !vbe_is_available() || !width || !height ||
+                src_pitch < width * 4u) { tf->eax = -1; break; }
+            vbe_get_resolution(&fb_width, &fb_height);
+            if (width > fb_width || height > fb_height) { tf->eax = -1; break; }
+            row_bytes = width * 4u;
+            for (y = 0; y < height; ++y) {
+                if (copy_from_user(dst + y * vbe_get_pitch(), src + y * src_pitch,
+                                   row_bytes) != 0) { tf->eax = -1; goto graph_present_done; }
+            }
+            tf->eax = 0;
+        graph_present_done:
+            break;
+        }
         case SYS_GUI_FB_INFO: {
             // ????????????????????????
             // ?????????ebx = fb_info_t* (???????????????
@@ -1995,6 +2042,15 @@ void syscall_dispatch(struct trapframe *tf) {
             if (copy_to_user(user_info, &info, sizeof(info)) != 0) {
                 tf->eax = -1;
                 break;
+            }
+
+            if (!desktop_usb_runtime_started) {
+                extern void usb_msc_enable_runtime(int enabled);
+                extern void xhci_request_msc_port_rescan(void);
+                desktop_usb_runtime_started = 1;
+                usb_msc_enable_runtime(1);
+                xhci_request_msc_port_rescan();
+                printf("[GUI] USB MSC runtime enabled; async port rescan requested\n");
             }
 
             tf->eax = 0;
@@ -2578,6 +2634,29 @@ void syscall_dispatch(struct trapframe *tf) {
                 kpath[sizeof(kpath) - 1] = '\0';
                 path = kpath;
             }
+            /* FAT32 probing performs synchronous USB block transfers.  Run it
+             * only for an explicit /usb access, never from the scheduler idle
+             * hook where it would stop mouse callbacks and WiFi RX progress. */
+            if (path[0] == '/' && path[1] == 'u' && path[2] == 's' &&
+                path[3] == 'b' && (path[4] == 0 || path[4] == '/')) {
+                extern int vfs_mount_active(const char *mount_path);
+                extern int xhci_wait_for_msc_mount(unsigned int timeout_ms);
+                if (!vfs_mount_active("/usb"))
+                    (void)xhci_wait_for_msc_mount(3000);
+                if (!vfs_mount_active("/usb")) {
+                    const char *pending = "USB mount failed or device not ready.\n";
+                    int p = 0;
+                    while (pending[p] && p < outmax - 1) {
+                        kbuf[p] = pending[p];
+                        p++;
+                    }
+                    kbuf[p] = '\0';
+                    if (arg1) copy_to_user((void*)arg1, kbuf, outmax);
+                    kfree(kbuf);
+                    tf->eax = p;
+                    break;
+                }
+            }
             extern int vfs_list_dir(const char *path, char *buf, int max);
             ret = vfs_list_dir(path, kbuf, outmax);
             printf("[lsdisk] path='%s' ret=%d first='%c'\n",
@@ -2720,9 +2799,27 @@ void syscall_dispatch(struct trapframe *tf) {
         }
         case SYS_USB_LOG_SAVE: {
             extern int fat32_save_log(void);
+            extern int vfs_mount_active(const char *mount_path);
+            extern int xhci_wait_for_msc_mount(unsigned int timeout_ms);
+            if (!vfs_mount_active("/usb"))
+                (void)xhci_wait_for_msc_mount(3000);
+            if (!vfs_mount_active("/usb")) {
+                tf->eax = -1;
+                extern int usb_printk(const char *fmt, ...);
+                usb_printk("usb log save: /usb not mounted after wait\n");
+                printf("[syscall] USB log save failed: /usb not mounted\n");
+                break;
+            }
             tf->eax = fat32_save_log();
+            if (tf->eax == 0)
+                wifi_usb_log_export_pending = 0;
             printf("[syscall] USB log save %s\n",
                    tf->eax == 0 ? "OK" : "failed");
+            {
+                extern int usb_printk(const char *fmt, ...);
+                usb_printk("usb log save result=%d mount=%d\n",
+                           tf->eax, vfs_mount_active("/usb"));
+            }
             break;
         }
         case SYS_USB_STATUS: {

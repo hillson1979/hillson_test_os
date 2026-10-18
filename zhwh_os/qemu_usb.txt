@@ -1,0 +1,5 @@
+QEMU 10.1.94 monitor - type 'help' for more information
+(qemu) i[K[Din[K[D[Dinf[K[D[D[Dinfo[K[D[D[D[Dinfo [K[D[D[D[D[Dinfo u[K[D[D[D[D[D[Dinfo us[K[D[D[D[D[D[D[Dinfo usb[K
+  Device 0.0, Port 1, Speed 480 Mb/s, Product QEMU USB Mouse
+  Device 0.0, Port 2, Speed 5000 Mb/s, Product QEMU USB MSD
+(qemu) q[K[Dqu[K[D[Dqui[K[D[D[Dquit[K

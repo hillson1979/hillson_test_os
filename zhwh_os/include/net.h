@@ -363,6 +363,23 @@ typedef struct {
     uint8_t privacy;
 } wifi_beacon_t;
 
+struct ieee80211_mgmt_info {
+    uint16_t frame_control;
+    uint8_t subtype;
+    uint8_t addr1[ETH_ALEN];
+    uint8_t addr2[ETH_ALEN];
+    uint8_t addr3[ETH_ALEN];
+    uint8_t ssid[32];
+    uint8_t ssid_length;
+    uint8_t channel;
+    uint8_t privacy;
+    uint8_t rsn;
+    uint16_t auth_algorithm;
+    uint16_t auth_transaction;
+    uint16_t status_code;
+    uint16_t assoc_aid;
+};
+
 // ==================== WiFi ====================
 
 // WiFi 设备初始化
@@ -381,6 +398,10 @@ int wifi_input_80211(net_device_t *dev, uint8_t *data, uint32_t len);
 
 // 802.11 帧处理
 int ieee80211_input_mgmt(net_device_t *dev, uint8_t *data, uint32_t len);
+int ieee80211_parse_mgmt(const uint8_t *data, uint32_t len,
+                         struct ieee80211_mgmt_info *info);
+int ieee80211_build_auth(uint8_t *frame, uint32_t capacity,
+                         const uint8_t *source, const uint8_t *bssid);
 int ieee80211_send_probe_req(net_device_t *dev);
 int ieee80211_send_auth(net_device_t *dev, uint8_t *bssid);
 int ieee80211_send_assoc_req(net_device_t *dev, uint8_t *bssid, const char *ssid);

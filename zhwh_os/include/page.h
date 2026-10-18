@@ -89,6 +89,7 @@ typedef uint32_t pte_user_t;
 void early_remap_page(uint32_t phys_addr, uint32_t virt_addr, uint32_t flags);
 
 void map_4k_page(uint32_t phys_addr, uint32_t virt_addr, uint32_t flags);
+void *map_physical_scratch(uint32_t phys_addr);
 
 void identity_map_8m_4k( uint32_t addr);
 

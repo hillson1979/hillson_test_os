@@ -31,6 +31,61 @@ get_esp
 *.bak*
 *.bak
 
+# Large local runtime assets (keep out of future commits)
+/zhwh_os/fat32_usb.img
+/zhwh_os/ai/models/granite-3.0-2b-instruct-Q4_K_M.gguf
+
+# Embedded OS build artifacts
+*.obj
+kernel.bin
+kernel.raw
+kernel.iso
+*.debug
+*.sym
+iso/*.iso
+iso/boot/*.bin
+iso/boot/*.elf
+!iso/boot/grub/grub.cfg
+
+# Embedded OS logs and generated diagnostics
+*.log
+*_output.txt
+debug.gdb
+debug_notes.md
+NOTES.md
+
+# Test sources and temporary editor files
+test_*.c
+*_test.c
+*~
+*.swp
+*.swo
+.nfs*
+
+# Backup files
+*.backup
+*.old
+
+# Documentation and generated LVGL content
+docs/
+zhwh_os/lvgl/source/demos/
+zhwh_os/lvgl/source/docs/
+zhwh_os/lvgl/source/examples/
+zhwh_os/lvgl/source/tests/
+zhwh_os/lvgl/source/scripts/
+zhwh_os/lvgl/source/env_support/
+zhwh_os/lvgl/source/CMakeLists.txt
+zhwh_os/lvgl/source/component.mk
+zhwh_os/lvgl/source/idf_component.yml
+zhwh_os/lvgl/source/library.json
+zhwh_os/lvgl/source/library.properties
+zhwh_os/lvgl/source/SConscript
+zhwh_os/lvgl/source/Kconfig
+
+# Large local captures and reference documents
+*.pcapng
+*.pdf
+
 # Python
 __pycache__/
 *.pyc

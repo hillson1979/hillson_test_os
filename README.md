@@ -1,5 +1,3 @@
-
-cd /zhwh_os/test && make clean && make
 cd /zhwh_os && make clean && make && ./zh.sh
 
 1:in qemu:

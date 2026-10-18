@@ -3,7 +3,7 @@
  * @brief XHCI (USB 3.0+) Host Controller Driver definitions
  *
  * Based on eXtensible Host Controller Interface spec rev 1.2.
- * 32-bit only — 64-bit registers are accessed as two 32-bit halves.
+ * 32-bit only �?64-bit registers are accessed as two 32-bit halves.
  */
 #ifndef KERNEL_USB_XHCI_H
 #define KERNEL_USB_XHCI_H
@@ -177,7 +177,7 @@ struct ata_dev_s;
 #define XHCI_PORT_SPEED_SUPER     4
 
 /* ================================================================
- * TRB (Transfer Request Block) — 16 bytes, 16-byte aligned
+ * TRB (Transfer Request Block) �?16 bytes, 16-byte aligned
  * ================================================================ */
 struct xhci_trb_t {
     uint64_t param;       /* Data pointer or command-specific */
@@ -278,7 +278,7 @@ struct xhci_trb_t {
 #define CC_SPLIT_XACT_ERROR        36
 
 /* ================================================================
- * Event Ring Segment Table Entry — 16 bytes
+ * Event Ring Segment Table Entry �?16 bytes
  * ================================================================ */
 struct xhci_erst_entry_t {
     uint32_t addr_lo;      /* Segment base address (low 32) */
@@ -291,7 +291,7 @@ struct xhci_erst_entry_t {
  * XHCI Context Structures (32 bytes each, 64-byte aligned)
  * ================================================================ */
 
-/* Slot Context (32 bytes) — xHCI spec rev 1.2, Table 6-7 */
+/* Slot Context (32 bytes) �?xHCI spec rev 1.2, Table 6-7 */
 struct xhci_slot_ctx_t {
     uint32_t dw0;          /* Route String (19:0) | Speed (23:20) | RSVDZ (26:24)
                                | Context Entries (31:27): last valid context index */
@@ -328,7 +328,7 @@ struct xhci_slot_ctx_t {
 #define SLOT_STATE_ADDRESSED       2
 #define SLOT_STATE_CONFIGURED      3
 
-/* Endpoint Context (32 bytes) — xHCI spec rev 1.2, Table 6-12 */
+/* Endpoint Context (32 bytes) �?xHCI spec rev 1.2, Table 6-12 */
 struct xhci_ep_ctx_t {
     uint32_t dw0;          /* EP State (2:0) | Mult (9:8) | MaxPStreams (14:10) | LSA (15)
                                | Interval (23:16) | Max ESIT Payload Hi (31:24) */
@@ -457,7 +457,7 @@ struct xhci_dev_t {
     uint64_t           *sp_array;       /* Array of phys addresses for scratchpads */
     uint64_t            sp_array_phys;
 
-    /* Per-slot state — dynamically allocated array */
+    /* Per-slot state �?dynamically allocated array */
     struct {
         uint8_t           enabled;
         uint8_t           addressed;
@@ -465,11 +465,12 @@ struct xhci_dev_t {
         uint8_t           speed;
         uint8_t           port;
         struct usb_dev_t *usb;
+        struct usb_transfer_t *transfers[XHCI_MAX_ENDPOINTS];
         void             *dev_ctx;
         uint64_t          dev_ctx_phys;
         void             *input_ctx;
         uint64_t          input_ctx_phys;
-        struct xhci_ring_t *ep_rings;  /* [XHCI_MAX_ENDPOINTS] — dyn alloc */
+        struct xhci_ring_t *ep_rings;  /* [XHCI_MAX_ENDPOINTS] �?dyn alloc */
     } *slots;                            /* [XHCI_MAX_SLOTS + 1] */
 
     /* Device address bitmap */
@@ -491,6 +492,13 @@ struct xhci_dev_t {
     struct usb_endpoint_t *init_endpoint;
     struct usb_interface_t *init_iface;
     struct usb_transfer_t *init_transfer;
+    uint8_t             init_event_pending;
+    uint8_t             init_event_cc;
+    uint32_t            init_event_trb_phys;
+    uint8_t             cmd_event_pending;
+    uint8_t             cmd_event_cc;
+    uint8_t             cmd_event_slot;
+    uint64_t            cmd_event_trb_phys;
     struct usb_cmd_blk_wrapper_t init_cbw;
     uint8_t             init_scsi_data[36];
     uint8_t             init_scsi_csw[16];
@@ -501,10 +509,34 @@ struct xhci_dev_t {
 };
 
 int xhci_update_ep0_mps(struct usb_dev_t *dev, uint16_t mps);
+int xhci_cancel_transfer(struct usb_transfer_t *transfer);
+
+struct xhci_transfer_debug_t {
+    uint8_t slot;
+    uint8_t dci;
+    uint8_t ep_state;
+    uint8_t owner_matches;
+    uint32_t enqueue;
+    uint32_t dequeue;
+    uint32_t cycle;
+    uint32_t ring_phys;
+    uint32_t ep_ctx0;
+    uint32_t ep_dequeue;
+    uint32_t expected_trb;
+    uint32_t event_trb;
+    uint32_t event_cc;
+    uint32_t event_pending;
+    uint32_t event_ready;
+    uint32_t usb_sts;
+};
+
+int xhci_get_transfer_debug(struct usb_transfer_t *transfer,
+                            struct xhci_transfer_debug_t *debug);
 
 /* Flags */
 #define XHCI_FLAG_RUN            0x01
 #define XHCI_FLAG_PORTSENABLED   0x02
+#define XHCI_FLAG_PORTSINITIALIZING 0x04
 
 /* ================================================================
  * Function declarations
@@ -514,7 +546,13 @@ int  xhci_async_reset_step(pci_compat_t *pci, struct pci_bar_t *bar);
 void xhci_poll(void);
 void xhci_init_ports_step(void);
 void xhci_mark_reset_complete(void);
+int  xhci_controller_present(void);
 int  xhci_all_ports_enabled(void);
+int  xhci_probe_deferred_wifi(void);
+void usb_msc_enable_runtime(int enabled);
+void xhci_request_msc_port_rescan(void);
+int  xhci_service_deferred_msc_mount(void);
+int  xhci_wait_for_msc_mount(unsigned int timeout_ms);
 struct usb_dev_t *xhci_get_dev_struct(pci_compat_t *bus, uint8_t num);
 
 #endif /* KERNEL_USB_XHCI_H */

@@ -215,6 +215,7 @@ int vfs_list_dir(const char *path, char *buf, int max);
  * @return 0 on success, negative on error
  */
 int vfs_mount(const char *mount_path, inode_t *root_inode);
+int vfs_mount_active(const char *mount_path);
 
 /**
  * @brief Check if a path prefix is a mount point

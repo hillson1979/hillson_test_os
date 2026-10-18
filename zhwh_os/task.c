@@ -210,22 +210,72 @@ void copy_kernel_mappings_to_pd(uint32_t *pd_user) {
 
 void task_prepare_pde(struct task_t *task){
        printf("[task_prepare_pde] START for task=0x%x\n", task);
-
-       // ⚠️⚠️⚠️ Linux 方案：用户任务直接使用内核 CR3，共享内核页表
-       // 这样所有进程的 CR3 都相同，switch_to 时不需要切换 CR3
        extern uint32_t kernel_page_directory_phys;
 
-       task->pde = (uint32_t*)kernel_page_directory_phys;
-       task->cr3 = (uint32_t*)kernel_page_directory_phys;
+       uint32_t user_pd_phys = pmm_alloc_page();
+       if (!user_pd_phys) {
+           printf("[task_prepare_pde] ERROR: cannot allocate page directory\n");
+           return;
+       }
+       uint32_t *user_pd = (uint32_t *)map_highmem_physical(user_pd_phys, PAGE_SIZE, 0x3);
+       if (!user_pd) {
+           pmm_free_page(user_pd_phys);
+           printf("[task_prepare_pde] ERROR: cannot map page directory phys=0x%x\n", user_pd_phys);
+           return;
+       }
+       uint32_t *kernel_pd = (uint32_t *)phys_to_virt(kernel_page_directory_phys);
+       memset(user_pd, 0, PAGE_SIZE);
+
+       /* Share only supervisor mappings in the kernel half. User mappings
+        * below KERNEL_BASE are constructed independently by the ELF loader. */
+       for (uint32_t i = 768; i < 1024; ++i) {
+           user_pd[i] = kernel_pd[i] & ~0x4u;
+       }
+       /* Keep a supervisor-only identity mapping for the kernel's early
+        * physical page-table accessors.  User ELF/stack mappings below 3GB
+        * are built separately and never inherit this low mapping. */
+       user_pd[0] = kernel_pd[0] & ~0x4u;
+       task->pde = (uint32_t *)user_pd_phys;
+       task->cr3 = (uint32_t *)user_pd_phys;
        task->directory = task->cr3;
 
-       printf("[task_prepare_pde] User task using kernel CR3: 0x%x (shared with all)\n",
+       printf("[task_prepare_pde] private user CR3=0x%x; shared supervisor kernel mappings\n",
               (uint32_t)task->cr3);
-       printf("[task_prepare_pde] task->pde=0x%x (kernel page directory)\n", (uint32_t)task->pde);
 
        printf("[task_prepare_pde] Calling load_module_to_user...\n");
-       load_module_to_user(task, task->pde);
+       load_module_to_user(task, user_pd);
        printf("[task_prepare_pde] load_module_to_user returned, checking EIP...\n");
+
+       /* map_highmem_physical() may allocate new kernel page tables while
+        * loading the module.  Refresh the shared supervisor half after all
+        * loader activity so the first CR3 switch keeps the highmem window. */
+       for (uint32_t i = 768; i < 1024; ++i) {
+           uint32_t user_bit = user_pd[i] & PAGE_USER;
+           user_pd[i] = (kernel_pd[i] & ~PAGE_USER) | user_bit;
+       }
+
+       /* Verify the two user mappings before the first CR3 switch.  This
+        * catches a malformed PDE/PTE while all page-table pages are still
+        * reachable through the kernel's temporary mapping window. */
+       {
+           uint32_t code_pd_index = 0x08000000u >> 22;
+           uint32_t stack_pd_index = 0xBFFFE000u >> 22;
+           uint32_t code_pde = user_pd[code_pd_index];
+           uint32_t stack_pde = user_pd[stack_pd_index];
+           uint32_t code_pte = 0;
+           uint32_t stack_pte = 0;
+           if (code_pde & PAGE_PRESENT) {
+               uint32_t *pt = (uint32_t *)map_highmem_physical(code_pde & ~0xfffu, PAGE_SIZE, 0x3);
+               if (pt) code_pte = pt[(0x08000000u >> 12) & 0x3ffu];
+           }
+           if (stack_pde & PAGE_PRESENT) {
+               uint32_t *pt = (uint32_t *)map_highmem_physical(stack_pde & ~0xfffu, PAGE_SIZE, 0x3);
+               if (pt) stack_pte = pt[(0xBFFFE000u >> 12) & 0x3ffu];
+           }
+           printf("[vm-check] cr3=0x%x code pd[%u]=0x%x pte=0x%x stack pd[%u]=0x%x pte=0x%x kernel pd[768]=0x%x\n",
+                  user_pd_phys, code_pd_index, code_pde, code_pte,
+                  stack_pd_index, stack_pde, stack_pte, user_pd[768]);
+       }
 
        printf("[task_prepare_pde] task->tf=0x%x, task->tf->eip=0x%x\n",
               (uint32_t)task->tf, task->tf ? task->tf->eip : 0);
