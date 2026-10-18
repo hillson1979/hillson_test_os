@@ -24,3 +24,5 @@ graph_user.o: ../user/graph_user.c
 
 clean:
 	rm -f *.o *.elf ../user/libuser_nostart.o
+
+.PHONY: all clean

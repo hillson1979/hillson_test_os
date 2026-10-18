@@ -109,7 +109,10 @@ OFFSET_HEADER = task_offsets.s
 all: $(OFFSET_HEADER) $(TARGET) $(RAW_TARGET) desktop
 
 opengl-test:
-	+$(MAKE) -C opengl
+	+$(MAKE) -C opengl gl_test.elf
+
+minecraft-test:
+	+$(MAKE) -C Minecraft mc.elf
 
 graph-objects: graph/src/graph.o graph/src/context.o graph/src/window.o graph/src/system.o graph/src/selftest.o graph/backends/framebuffer_backend.o
 
@@ -174,8 +177,12 @@ net/wifi/firmware/atheros/fw-5.o:
 
 clean:
 	+$(MAKE) -C hillsonOs_desktop clean
+	+$(MAKE) -C opengl clean
+	+$(MAKE) -C Minecraft clean
 	rm -f $(OBJECTS) $(TARGET) $(RAW_TARGET) *.o *~ *.map *.iso $(OFFSETcalc) $(OFFSET_GEN) $(OFFSET_HEADER)
 	@echo "Cleaned object files and binaries"
+
+.PHONY: all desktop graph-objects opengl-test clean help
 
 help:
 	@echo "可用目标:"

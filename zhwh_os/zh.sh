@@ -21,6 +21,7 @@ cp kernel.bin iso/boot/
 [ -f qt/qt_embedded_test.elf ] && cp qt/qt_embedded_test.elf iso/boot/
 [ -f hillsonOs_desktop/desktop.elf ] && cp hillsonOs_desktop/desktop.elf iso/boot/
 [ -f opengl/gl_test.elf ] && cp opengl/gl_test.elf iso/boot/
+[ -f Minecraft/mc.elf ] && cp Minecraft/mc.elf iso/boot/
 [ -f test/syscall_test.elf ] && cp test/syscall_test.elf iso/boot/
 [ -f test/simple_keyboard.elf ] && cp test/simple_keyboard.elf iso/boot/
 [ -f test/text_test.elf ] && cp test/text_test.elf iso/boot/
@@ -29,7 +30,7 @@ cp kernel.bin iso/boot/
 
 cat > iso/boot/grub/grub.cfg << 'EOF'
 set timeout=5
-set default=0
+set default=1
 
 insmod vbe
 insmod multiboot2
@@ -46,6 +47,12 @@ menuentry "HillsonOS Desktop" {
 menuentry "OpenGL Graph Test" {
     multiboot2 /boot/kernel.bin
     module2 /boot/gl_test.elf
+    boot
+}
+
+menuentry "Minecraft Test" {
+    multiboot2 /boot/kernel.bin
+    module2 /boot/mc.elf
     boot
 }
 

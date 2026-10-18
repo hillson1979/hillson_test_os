@@ -12,7 +12,12 @@ Current API skeleton:
 - `glEnable`
 - `glViewport`
 - `glDrawArrays`
-- `glSetContext`
+- `glVertexData2D`
+- `glPresent`
+
+The current software rasterizer supports filled 2D triangles with integer
+barycentric color interpolation. This is the screen-space foundation for the
+later 3D projection, depth, and texture pipeline.
 
 Planned order:
 
