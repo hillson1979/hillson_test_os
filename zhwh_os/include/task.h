@@ -131,6 +131,8 @@ typedef struct task_t {
         struct llist_header *sched_node;  // 调度链表节点
         struct haybed sleep;
         struct task_mm* mm;
+        struct thread_group *thread_group;
+        struct task_t *group_leader;
         struct task_t*	prev;       /**< Previous taskess in doubly linked list */
 	struct task_t*	next;       /**< Next taskess in doubly linked list */
 	activity_callback_t	check_idle; /**< If non-null, called to check if the taskess should remain idle */
@@ -164,6 +166,15 @@ struct task_mm
     //struct mm_region* heap;
     struct task_t* task;
     struct task_mm*   guest_mm;     // vmspace mounted by this vmspace
+};
+
+/* Tasks in one thread group share this address space and user heap.  Each
+ * schedulable task still owns its own trapframe and kernel stack. */
+struct thread_group {
+    uint32_t id;
+    uint32_t refcount;
+    uint32_t *cr3;
+    uint32_t user_brk;
 };
 
 /*

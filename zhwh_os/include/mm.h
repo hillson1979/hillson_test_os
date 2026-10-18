@@ -10,7 +10,6 @@ struct kernel_mem_mapping {
     bool in_use;
     const char* description;
 };
-int km_init(void);
 int mm_init(void);
 void print_memory_detection_result(void);
 page_entry_t *copy_pde_(task_t *task);
@@ -19,6 +18,7 @@ uint32_t *copy_pde(task_t *task);
 
 // Physical Memory Manager
 void pmm_init(void);
+bool pmm_is_ready(void);
 uint32_t pmm_alloc_page(void);
 uint32_t pmm_alloc_page_type(uint8_t alloc_type);
 void pmm_free_page(uint32_t phys_addr);
@@ -35,5 +35,3 @@ void umem_free_pages(uint32_t phys_addr, uint32_t count);  // 释放用户空间
 void test_memory_management(void);
 void test_kernel_user_memory_isolation(void);
 
-// Page Table Query Function
-uint32_t get_physical_address(uint32_t *pde, uint32_t vaddr);

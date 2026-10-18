@@ -1,4 +1,4 @@
-# 编译器设置
+﻿# 编译器设置
 CC = gcc
 AS = gcc
 LD = gcc  # 使用gcc进行链接
@@ -23,7 +23,7 @@ INCLUDES = -I./include -I./include/fs -I./graph/include -I./graph/framebuffer/in
 
 # Native graphics foundation. OpenGL and Minecraft remain user-space targets.
 # 源文件
-C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c klog.c
+C_SOURCES = kernel.c printf.c vga.c pci.c kmalloc_early.c mm/buddy.c mm/pmm.c mm/kmalloc.c mm/user_vm.c string.c highmem_mapping.c hardware_highmem.c madt_parser.c lapic.c ioapic.c page.c acpi.c mp.c segment.c interrupt.c mm.c task.c sched.c llist.c signal.c userboot.c syscall.c multiboot2.c pci_msi.c msi_test.c klog.c
 C_SOURCES += graph/src/graph.c graph/src/context.c graph/src/window.c graph/src/system.c graph/src/selftest.c graph/backends/framebuffer_backend.c
 C_SOURCES += driver/keyboard.c  # 添加键盘驱动
 C_SOURCES += driver/vbe.c  # 添加 VBE 驱动
@@ -56,7 +56,6 @@ C_SOURCES += driver/usb/usb_hub.c      # USB hub driver
 # C_SOURCES += driver/usb/usb_ohci.c
 # C_SOURCES += driver/usb/usb_ioctl.c
 C_SOURCES += driver/ps2mouse.c  # 添加 PS/2 鼠标驱动
-C_SOURCES += mm/buddy.c  # 启用 Buddy System
 # C_SOURCES += mm/slab.c    # Slab分配器 (需要先验证USB枚举)
 # C_SOURCES += mm/kmalloc.c  # kmalloc (复用了kmalloc_early)
 C_SOURCES += mm/test_memory.c  # 启用内存测试
@@ -195,4 +194,5 @@ help:
 	@echo "  help        - 显示此帮助信息"
 
 .PHONY: all clean help calc-offset gen-offsets desktop
+
 

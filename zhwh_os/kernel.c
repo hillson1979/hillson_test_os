@@ -519,14 +519,14 @@ kernel_main(uint32_t mb_magic, uint32_t mb_info_addr)
         // ================================
         printf("==================== TASK_IFRAME OFFSET CHECK ====================\n");
         printf("[include/task.h]  TASK_IFRAME (OFFSETOF) = %d\n", TASK_IFRAME);
-        printf("[task_impl.s]     .set TASK_IFRAME, 156\n");
-        printf("[interrupt_exit.s].set TASK_TF, 156\n");
-        printf("[task_offsets.s]  .set TASK_IFRAME, 156\n");
+        printf("[task_impl.s]     .set TASK_IFRAME, 164\n");
+        printf("[interrupt_exit.s].set TASK_TF, 164\n");
+        printf("[task_offsets.s]  .set TASK_IFRAME, 164\n");
         printf("================================================================\n");
-        if (TASK_IFRAME != 156) {
-            printf("WARNING: TASK_IFRAME mismatch! Expected 156, got %d\n", TASK_IFRAME);
+        if (TASK_IFRAME != 164) {
+            printf("WARNING: TASK_IFRAME mismatch! Expected 164, got %d\n", TASK_IFRAME);
         } else {
-            printf("OK: All TASK_IFRAME values are consistent (156)\n");
+            printf("OK: All TASK_IFRAME values are consistent (164)\n");
         }
         printf("================================================================\n\n");
 

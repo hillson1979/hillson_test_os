@@ -4,11 +4,11 @@ LD = g++
 TARGET_ARCH = -m32
 CFLAGS = $(TARGET_ARCH) -g -O0 -Wall -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector -fno-pic
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ../test/ts_cpp.ld
+LDFLAGS = $(TARGET_ARCH) -nostdlib -static -T ../test/ts.ld
 INCLUDES = -Iinclude -I../opengl/include -I../user -I../include
 
 all: mc.elf
-mc.elf: main.o world.o mesh.o ../opengl/gl_context.o ../opengl/graph_user.o ../user/libuser_nostart.o ../qt/cxx_runtime.o ../qt/qobject.o ../qt/qpainter.o ../lvgl/string_compat.o ../lvgl/libgcc_compat.o
+mc.elf: main.o world.o mesh.o ../opengl/gl_context.o ../opengl/graph_user.o ../user/libuser_nostart.o ../lvgl/string_compat.o ../lvgl/libgcc_compat.o
 	$(LD) $(LDFLAGS) -o $@ $^
 main.o: src/main.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@

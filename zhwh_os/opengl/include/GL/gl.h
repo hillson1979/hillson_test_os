@@ -2,6 +2,9 @@
 #define HILLSON_GL_H
 
 #include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef unsigned int GLenum;
 typedef unsigned int GLuint;
@@ -55,5 +58,8 @@ void glTranslateFixed(int x, int y, int z);
 void glRotateYStep(int step);
 void glPerspectiveFixed(int focal_length);
 int glPresent(void);
+#ifdef __cplusplus
+}
+#endif
 
 #endif

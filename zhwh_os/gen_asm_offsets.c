@@ -112,6 +112,8 @@ struct task_t {
     struct llist_header *sched_node;
     struct haybed sleep;
     struct task_mm* mm;
+    struct thread_group* thread_group;
+    struct task_t* group_leader;
     struct task_t* prev;
     struct task_t* next;
     activity_callback_t check_idle;

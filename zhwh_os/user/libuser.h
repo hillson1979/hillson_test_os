@@ -22,6 +22,7 @@
 #define SYS_READ 22
 #define SYS_LSEEK 23
 #define SYS_SBRK 24      // sbrk — dynamic memory for user programs
+void *sbrk(int increment);
 #define SYS_NET_PING 30  // 新增：网络 ping 系统调用
 #define SYS_NET_IFCONFIG 31  // 新增：网卡接口配置
 #define SYS_WIFI_SCAN 32    // WiFi 扫描

@@ -16,6 +16,7 @@
 #include "fs.h"
 #include "mm.h"
 #include "usb_display.h"
+#include "mm/user_vm.h"
 #include <kernel/rtl8188eu_wifi.h>
 
 #define SYS_USB_INIT 83
@@ -744,9 +745,21 @@ void syscall_dispatch(struct trapframe *tf) {
                     allocation_failed = 1;
                     break;
                 }
+                void *page_mem = map_physical_scratch(phys);
+                if (!page_mem) {
+                    pmm_free_page(phys);
+                    allocation_failed = 1;
+                    break;
+                }
+                memset(page_mem, 0, 0x1000);
                 uint32_t virt = old_brk + i * 0x1000;
-                map_4k_page(phys, virt, 0x7);
-                memset((void *)virt, 0, 0x1000);
+                /* Allocate backing pages from the buddy allocator and map
+                 * them into this process's private address space. */
+                if (user_vm_map_page(task, virt, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER) != 0) {
+                    pmm_free_page(phys);
+                    allocation_failed = 1;
+                    break;
+                }
             }
             if (allocation_failed) { tf->eax = 0; break; }
             task->user_brk = new_brk;
